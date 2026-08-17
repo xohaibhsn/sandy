@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  CONTACT_EMAIL,
+  PHONE_DISPLAY,
+  WHATSAPP_DIGITS,
+  WHATSAPP_URL,
+} from "@/lib/site";
 
 export type ContactConfigClient = {
   whatsapp: string;
@@ -12,12 +18,12 @@ export type ContactConfigClient = {
 };
 
 const FALLBACK: ContactConfigClient = {
-  whatsapp: "447518787653",
-  email: "firestick4uk@gmail.com",
-  telegram: "@firestick44",
-  phone: "+447518787653",
-  whatsappUrl: "https://wa.me/447518787653",
-  telegramUrl: "https://t.me/firestick44",
+  whatsapp: WHATSAPP_DIGITS,
+  email: CONTACT_EMAIL,
+  telegram: "",
+  phone: PHONE_DISPLAY,
+  whatsappUrl: WHATSAPP_URL,
+  telegramUrl: "",
 };
 
 export function useContactConfig(): ContactConfigClient {
@@ -29,15 +35,15 @@ export function useContactConfig(): ContactConfigClient {
       .then((data) => {
         if (!data || typeof data !== "object") return;
         const wa = data.contact_whatsapp || data.whatsapp_number || FALLBACK.whatsapp;
-        const rawTg = data.contact_telegram || FALLBACK.telegram;
-        const tgHandle = String(rawTg).replace(/^@/, "");
+        const rawTg = String(data.contact_telegram || "").trim();
+        const tgHandle = rawTg.replace(/^@/, "");
         setConfig({
           whatsapp: wa,
           email: data.contact_email || FALLBACK.email,
-          telegram: String(rawTg).startsWith("@") ? String(rawTg) : `@${tgHandle}`,
+          telegram: rawTg ? (rawTg.startsWith("@") ? rawTg : `@${tgHandle}`) : "",
           phone: data.contact_phone || FALLBACK.phone,
           whatsappUrl: `https://wa.me/${wa}`,
-          telegramUrl: `https://t.me/${tgHandle}`,
+          telegramUrl: tgHandle ? `https://t.me/${tgHandle}` : "",
         });
       })
       .catch(() => {});

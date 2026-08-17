@@ -1,3 +1,5 @@
+import { SITE_URL } from "@/lib/site";
+
 /** Internal links should be dofollow (no rel=nofollow). External get noopener only. */
 
 export function isInternalHref(href: string): boolean {
@@ -13,9 +15,10 @@ export function isInternalHref(href: string): boolean {
     return true;
   }
   try {
-    const url = new URL(h, "https://firestick4uk.com");
+    const url = new URL(h, SITE_URL);
     const host = url.hostname.replace(/^www\./i, "").toLowerCase();
-    return host === "firestick4uk.com";
+    const siteHost = new URL(SITE_URL).hostname.replace(/^www\./i, "").toLowerCase();
+    return host === siteHost;
   } catch {
     return false;
   }

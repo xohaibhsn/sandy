@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
-  title: "FAQ — Firestick4UK | Frequently Asked Questions",
-  description: "Find answers to common questions about ordering, delivery, Firestick setup, Firestick Subscriptions and more.",
-  alternates: { canonical: "https://firestick4uk.com/faq" },
-  openGraph: { title: "FAQ — Firestick4UK", description: "Answers to common questions about ordering and streaming.", url: "https://firestick4uk.com/faq", siteName: "Firestick4UK", type: "website" },
+  title: `FAQ — ${SITE_NAME}`,
+  description: "Find answers to common questions about ordering, delivery, payments and returns at Sandy.",
+  alternates: { canonical: `${SITE_URL}/faq` },
+  openGraph: { title: `FAQ — ${SITE_NAME}`, description: "Answers to common questions about ordering and delivery.", url: `${SITE_URL}/faq`, siteName: SITE_NAME, type: "website" },
 };
 export default function Layout({ children }: { children: React.ReactNode }) { return <>{children}</>; }

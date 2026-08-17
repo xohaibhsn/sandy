@@ -3,6 +3,7 @@ import ProductDetail from "./ProductDetail";
 import pool from "../../../lib/db";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import JsonLd from "@/components/JsonLd";
+import { CURRENCY_CODE, SITE_NAME, SITE_URL } from "@/lib/site";
 
 interface Product {
   id: number; name: string; description: string;
@@ -41,9 +42,9 @@ function stripHtml(html: string): string {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const product = await getProduct(slug);
-  if (!product) return { title: "Product Not Found | Firestick4UK" };
+  if (!product) return { title: `Product Not Found | ${SITE_NAME}` };
 
-  const title = `${product.seo_title || product.name} | Firestick4UK`;
+  const title = `${product.seo_title || product.name} | ${SITE_NAME}`;
   const rawDescription =
     product.meta_description || product.short_description || product.description || "";
   const description = stripHtml(rawDescription);
@@ -54,13 +55,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     description,
     keywords: product.focus_keyword || "",
     alternates: {
-      canonical: `https://firestick4uk.com/products/${slug}`,
+      canonical: `${SITE_URL}/products/${slug}`,
     },
     openGraph: {
       title,
       description,
-      url: `https://firestick4uk.com/products/${slug}`,
-      siteName: "Firestick4UK",
+      url: `${SITE_URL}/products/${slug}`,
+      siteName: SITE_NAME,
       type: "website",
       images: image ? [{ url: image, width: 1200, height: 630, alt: product.name }] : [],
     },
@@ -76,7 +77,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = await getProduct(slug);
-  const productUrl = `https://firestick4uk.com/products/${slug}`;
+  const productUrl = `${SITE_URL}/products/${slug}`;
 
   const productLd = product
     ? {
@@ -89,23 +90,18 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         image: product.image || product.og_image || "",
         brand: {
           "@type": "Brand",
-          name: "Firestick4UK",
+          name: SITE_NAME,
         },
         offers: {
           "@type": "Offer",
           price: String(Number(product.price).toFixed(2)),
-          priceCurrency: "GBP",
+          priceCurrency: CURRENCY_CODE,
           availability: "https://schema.org/InStock",
           url: productUrl,
           seller: {
             "@type": "Organization",
-            name: "Firestick4UK",
+            name: SITE_NAME,
           },
-        },
-        aggregateRating: {
-          "@type": "AggregateRating",
-          ratingValue: "4.9",
-          reviewCount: "500",
         },
       }
     : null;
@@ -114,8 +110,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     <>
       <BreadcrumbSchema
         items={[
-          { name: "Home", url: "https://firestick4uk.com" },
-          { name: "Products", url: "https://firestick4uk.com/products" },
+          { name: "Home", url: SITE_URL },
+          { name: "Products", url: `${SITE_URL}/products` },
           { name: product?.name || slug, url: productUrl },
         ]}
       />

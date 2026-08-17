@@ -5,6 +5,7 @@ import { fixContentLinkRels } from "@/lib/seoLinks";
 import { useCart } from "../../lib/cartContext";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import { FOOTER_COPY, SITE_NAME_CAPS, formatPrice } from "@/lib/site";
 
 const xssOptions = {
   whiteList: {
@@ -158,15 +159,15 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
                     }}
                   />
                 )}
-                <div className="product-price">£{Number(product.price).toFixed(2)}</div>
+                <div className="product-price">{formatPrice(product.price)}</div>
                 <div className="meta-row">
                   <span className="meta-pill">📦 {product.stock || "In Stock"}</span>
                   <span className="meta-pill">🚚 Fast Delivery</span>
-                  <span className="meta-pill">⚡ Active within 1 hour</span>
-                  <span className="meta-pill">✅ UK Based</span>
+                  <span className="meta-pill">🇵🇰 Pakistan</span>
+                  <span className="meta-pill">✅ Authentic</span>
                 </div>
                 <div className="activation-note">
-                  Subscription services are active within 1 hour of payment confirmation. Need help? WhatsApp {contact.phone} or Telegram {contact.telegram}.
+                  We deliver across Pakistan. Need help? WhatsApp {contact.phone}.
                 </div>
                 <button
                   className="add-btn"
@@ -211,8 +212,8 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
       )}
 
       <footer>
-        <div className="footer-logo">FIRESTICK4UK</div>
-        <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+        <div className="footer-logo">{SITE_NAME_CAPS}</div>
+        <div className="footer-copy">{FOOTER_COPY}</div>
       </footer>
 
     </>

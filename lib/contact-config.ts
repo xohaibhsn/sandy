@@ -1,4 +1,10 @@
 import pool from "@/lib/db";
+import {
+  CONTACT_EMAIL,
+  PHONE_DISPLAY,
+  WHATSAPP_DIGITS,
+  WHATSAPP_URL,
+} from "@/lib/site";
 
 export type ContactConfig = {
   whatsapp: string;
@@ -10,12 +16,12 @@ export type ContactConfig = {
 };
 
 const FALLBACK: ContactConfig = {
-  whatsapp: "447518787653",
-  email: "firestick4uk@gmail.com",
-  telegram: "@firestick44",
-  phone: "+447518787653",
-  whatsappUrl: "https://wa.me/447518787653",
-  telegramUrl: "https://t.me/firestick44",
+  whatsapp: WHATSAPP_DIGITS,
+  email: CONTACT_EMAIL,
+  telegram: "",
+  phone: PHONE_DISPLAY,
+  whatsappUrl: WHATSAPP_URL,
+  telegramUrl: "",
 };
 
 export async function getContactConfig(): Promise<ContactConfig> {
@@ -39,16 +45,16 @@ export async function getContactConfig(): Promise<ContactConfig> {
 
     const whatsapp =
       config.contact_whatsapp || config.whatsapp_number || FALLBACK.whatsapp;
-    const telegram = config.contact_telegram || FALLBACK.telegram;
+    const telegram = (config.contact_telegram || "").trim();
     const telegramHandle = telegram.replace(/^@/, "");
 
     return {
       whatsapp,
       email: config.contact_email || FALLBACK.email,
-      telegram: telegram.startsWith("@") ? telegram : `@${telegramHandle}`,
+      telegram: telegram ? (telegram.startsWith("@") ? telegram : `@${telegramHandle}`) : "",
       phone: config.contact_phone || FALLBACK.phone,
       whatsappUrl: `https://wa.me/${whatsapp}`,
-      telegramUrl: `https://t.me/${telegramHandle}`,
+      telegramUrl: telegramHandle ? `https://t.me/${telegramHandle}` : "",
     };
   } catch {
     return { ...FALLBACK };

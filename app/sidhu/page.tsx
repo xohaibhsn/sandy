@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { toEditorHtml } from "@/lib/contentHtml";
+import { CLOUDINARY_FOLDER, SITE_NAME_CAPS, SITE_URL, formatPrice } from "@/lib/site";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
 const styles = `
@@ -183,30 +184,18 @@ const styles = `
 
 // DEMO DATA
 const demoOrders = [
-  { id:"FK44-62305", customer:"John Smith", email:"john@example.com", phone:"+447518787653", items:"B1G 6 Month Plan + Firestick 4K", total:"£89.98", status:"confirmed", date:"30 May 2026", receipt:true },
-  { id:"FK44-22222", customer:"Ali Hassan", email:"ali@example.com", phone:"+44 7222 222222", items:"B1G 1 Year Plan", total:"£79.99", status:"pending", date:"30 May 2026", receipt:true },
-  { id:"FK44-11111", customer:"Sarah Jones", email:"sarah@example.com", phone:"+44 7111 111111", items:"Android Box Ultra", total:"£73.98", status:"dispatched", date:"28 May 2026", receipt:true },
-  { id:"FK44-33333", customer:"David Brown", email:"david@example.com", phone:"+44 7333 333333", items:"Firestick 4K Max", total:"£54.99", status:"delivered", date:"25 May 2026", receipt:false },
-  { id:"FK44-44444", customer:"Emma Wilson", email:"emma@example.com", phone:"+44 7444 444444", items:"B1G 1 Month Plan", total:"£9.99", status:"pending", date:"31 May 2026", receipt:true },
+  { id:"SND-10001", customer:"Ahmed Khan", email:"ahmed@example.com", phone:"+923334800181", items:"Phone Case", total: formatPrice(2499), status:"confirmed", date:"17 Aug 2026", receipt:true },
+  { id:"SND-10002", customer:"Sara Ali", email:"sara@example.com", phone:"+923001112223", items:"Wireless Earbuds", total: formatPrice(4999), status:"pending", date:"17 Aug 2026", receipt:true },
 ];
 
 const demoProducts = [
-  { id:1, name:"B1G 1 Month Plan", category:"Subscription", price:"£9.99", stock:"Digital", emoji:"📦" },
-  { id:2, name:"B1G 6 Month Plan", category:"Subscription", price:"£49.99", stock:"Digital", emoji:"📦" },
-  { id:3, name:"B1G 1 Year Plan", category:"Subscription", price:"£79.99", stock:"Digital", emoji:"📦" },
-  { id:4, name:"Firestick 4K", category:"Device", price:"£39.99", stock:"12", emoji:"🔥" },
-  { id:5, name:"Firestick 4K Max", category:"Device", price:"£54.99", stock:"8", emoji:"🔥" },
-  { id:6, name:"Android Box Pro", category:"Device", price:"£49.99", stock:"5", emoji:"📺" },
-  { id:7, name:"Android Box Ultra", category:"Device", price:"£69.99", stock:"3", emoji:"📺" },
-  { id:8, name:"Starter Bundle", category:"Bundle", price:"£44.99", stock:"10", emoji:"⭐" },
+  { id:1, name:"Phone Case", category:"Accessories", price: formatPrice(999), stock:"24", emoji:"📦" },
+  { id:2, name:"Wireless Earbuds", category:"Gadgets", price: formatPrice(4999), stock:"12", emoji:"📦" },
 ];
 
 const demoCustomers = [
-  { name:"John Smith", email:"john@example.com", phone:"+447518787653", orders:3, spent:"£219.96", joined:"Jan 2026" },
-  { name:"Sarah Jones", email:"sarah@example.com", phone:"+44 7111 111111", orders:2, spent:"£123.97", joined:"Feb 2026" },
-  { name:"Ali Hassan", email:"ali@example.com", phone:"+44 7222 222222", orders:1, spent:"£79.99", joined:"May 2026" },
-  { name:"David Brown", email:"david@example.com", phone:"+44 7333 333333", orders:4, spent:"£189.95", joined:"Dec 2025" },
-  { name:"Emma Wilson", email:"emma@example.com", phone:"+44 7444 444444", orders:1, spent:"£9.99", joined:"May 2026" },
+  { name:"Ahmed Khan", email:"ahmed@example.com", phone:"+923334800181", orders:3, spent: formatPrice(7497), joined:"Jan 2026" },
+  { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026" },
 ];
 
 type Tab = "dashboard"|"orders"|"products"|"customers"|"leads"|"training"|"blog"|"settings"|"pages"|"coupons"|"builder"|"faqadmin"|"staff";
@@ -321,7 +310,7 @@ export default function AdminPage() {
             email: o.customer_email,
             phone: o.customer_phone,
             items: o.items_list || o.payment_method || "—",
-            total: `£${parseFloat(o.total || 0).toFixed(2)}`,
+            total: formatPrice(o.total || 0),
             status: o.status,
             date: o.created_at ? new Date(o.created_at).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "—",
             receipt: !!o.receipt_path,
@@ -346,7 +335,7 @@ export default function AdminPage() {
             email: c.customer_email || "",
             phone: c.customer_phone || "",
             orders: Number(c.order_count) || 0,
-            spent: `£${parseFloat(c.total_spent || 0).toFixed(2)}`,
+            spent: formatPrice(c.total_spent || 0),
             joined: c.first_order ? new Date(c.first_order).toLocaleDateString("en-GB",{month:"short",year:"numeric"}) : "—",
           })));
         }
@@ -464,7 +453,7 @@ export default function AdminPage() {
       const data = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name, folder: "firestick4uk/logo" }),
+        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/logo` }),
       }).then(r => r.json());
       if (data.path) {
         setSiteContent(s => ({ ...s, site_logo_url: data.path }));
@@ -495,7 +484,7 @@ export default function AdminPage() {
       const data = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name, folder: "firestick4uk/hero-slides" }),
+        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/hero-slides` }),
       }).then((r) => r.json());
       if (data.path) {
         setSiteContent((s) => ({ ...s, [key]: data.path }));
@@ -522,7 +511,7 @@ export default function AdminPage() {
       const data = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name, folder: "firestick4uk/whatsapp-icon" }),
+        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/whatsapp-icon` }),
       }).then(r => r.json());
       if (data.path) {
         const url = `${data.path}${data.path.includes("?") ? "&" : "?"}v=${Date.now()}`;
@@ -553,7 +542,7 @@ export default function AdminPage() {
       const data = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name, folder: "firestick4uk/og" }),
+        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/og` }),
       }).then((r) => r.json());
       if (data.path) {
         const url = `${data.path}${data.path.includes("?") ? "&" : "?"}v=${Date.now()}`;
@@ -638,9 +627,9 @@ export default function AdminPage() {
   };
 
   const deleteOrder = async (orderId: string, total: string, status: string) => {
-    const amountNum = parseFloat((total||"0").replace("£","").replace(",",""));
+    const amountNum = parseFloat((total||"0").replace("Rs.","").replace("£","").replace(",",""));
     const isRevenue = ["confirmed","dispatched","delivered"].includes(status);
-    const msg = `⚠️ Delete order ${orderId}?\n\nAmount: ${total}\nStatus: ${status.toUpperCase()}${isRevenue ? `\n\n💰 This will reverse £${amountNum.toFixed(2)} from confirmed revenue.` : ""}\n\nThis cannot be undone.`;
+    const msg = `⚠️ Delete order ${orderId}?\n\nAmount: ${total}\nStatus: ${status.toUpperCase()}${isRevenue ? `\n\n💰 This will reverse ${formatPrice(amountNum)} from confirmed revenue.` : ""}\n\nThis cannot be undone.`;
     if (!confirm(msg)) return;
     const res = await fetch("/api/admin-orders", {
       method: "DELETE",
@@ -907,7 +896,7 @@ export default function AdminPage() {
   };
 
   const openEditProduct = (p: any) => {
-    const rawPrice = p.price ? `£${Number(String(p.price).replace(/[^0-9.]/g,'')).toFixed(2)}` : "";
+    const rawPrice = p.price ? formatPrice(String(p.price).replace(/[^0-9.]/g,'')) : "";
     setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||"Subscription", price:rawPrice, stock:p.stock||"Digital", image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"" });
     setProductModal(p);
   };
@@ -921,7 +910,7 @@ export default function AdminPage() {
   const pendingCount = orders.filter(o => o.status === "pending").length;
   // Fix 1 — dynamic dashboard stats from real data
   const revenueOrders = orders.filter(o => ["confirmed","dispatched","delivered"].includes(o.status));
-  const totalRevenue = revenueOrders.reduce((s, o) => s + parseFloat((o.total||"0").replace("£","").replace(",","")), 0);
+  const totalRevenue = revenueOrders.reduce((s, o) => s + parseFloat((o.total||"0").replace("Rs.","").replace("£","").replace(",","")), 0);
   const deliveredCount = orders.filter(o => o.status === "delivered").length;
   const leadsLast24 = chatLeads.filter(lead => new Date(lead.created_at).getTime() >= leadWindowStart).length;
 
@@ -933,7 +922,7 @@ export default function AdminPage() {
         <style>{styles}</style>
         <div className="login-screen">
           <div className="login-box">
-            <div className="login-logo">FIRESTICK4UK</div>
+            <div className="login-logo">{SITE_NAME_CAPS}</div>
             <div className="login-sub">Admin Panel</div>
             <input className="login-input" type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} onKeyDown={e => e.key==="Enter" && handleLogin()} />
             <input className="login-input" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key==="Enter" && handleLogin()} />
@@ -1079,11 +1068,11 @@ export default function AdminPage() {
                 placeholder="e.g. b1g-1-month-plan"
               />
               <small style={{display:"block",marginTop:4,fontSize:11,color:"rgba(255,255,255,0.35)"}}>
-                URL: firestick4uk.com/products/{editProduct.slug || "product-slug"}
+                URL: {SITE_URL.replace(/^https?:\/\//, "")}/products/{editProduct.slug || "product-slug"}
               </small>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-              <div className="modal-field"><label>Price</label><input placeholder="e.g. £9.99" value={editProduct.price} onChange={e => setEditProduct({...editProduct,price:e.target.value})} /></div>
+              <div className="modal-field"><label>Price</label><input placeholder="e.g. Rs. 999" value={editProduct.price} onChange={e => setEditProduct({...editProduct,price:e.target.value})} /></div>
               <div className="modal-field"><label>Stock / Type</label><input placeholder="e.g. 10 or Digital" value={editProduct.stock} onChange={e => setEditProduct({...editProduct,stock:e.target.value})} /></div>
             </div>
 
@@ -1132,7 +1121,7 @@ export default function AdminPage() {
                 <label style={{display:"flex",justifyContent:"space-between"}}>
                   SEO Title <span style={{fontSize:11,color:editProduct.seo_title.length>55?"#ff6666":editProduct.seo_title.length>40?"#00c864":"rgba(255,255,255,0.3)"}}>{editProduct.seo_title.length}/60</span>
                 </label>
-                <input placeholder={`Auto: "${editProduct.name || 'Product Name'} | Firestick4UK"`} maxLength={60} value={editProduct.seo_title} onChange={e => setEditProduct({...editProduct,seo_title:e.target.value})} />
+                <input placeholder={`Auto: "${editProduct.name || 'Product Name'} | Sandy"`} maxLength={60} value={editProduct.seo_title} onChange={e => setEditProduct({...editProduct,seo_title:e.target.value})} />
                 <div className="char-bar" style={{background:"rgba(255,255,255,0.08)",width:"100%"}}><div className="char-bar" style={{width:`${Math.min(100,(editProduct.seo_title.length/60)*100)}%`,background:editProduct.seo_title.length>55?"#ff6666":editProduct.seo_title.length>40?"#00c864":"rgba(139,0,255,0.5)"}} /></div>
               </div>
               <div className="modal-field">
@@ -1142,7 +1131,7 @@ export default function AdminPage() {
                 <textarea rows={2} placeholder={`Auto: Short description will be used if empty (max 180 chars)`} maxLength={180} value={editProduct.meta_description} onChange={e => setEditProduct({...editProduct,meta_description:e.target.value})} style={{resize:"none"}} />
                 <div className="char-bar" style={{background:"rgba(255,255,255,0.08)",width:"100%"}}><div className="char-bar" style={{width:`${Math.min(100,(editProduct.meta_description.length/180)*100)}%`,background:editProduct.meta_description.length>=175?"#ff6666":editProduct.meta_description.length>=140?"#00c864":"rgba(139,0,255,0.5)"}} /></div>
               </div>
-              <div className="modal-field" style={{marginBottom:0}}><label>Focus Keyword</label><input placeholder="e.g. firestick 4k uk" value={editProduct.focus_keyword} onChange={e => setEditProduct({...editProduct,focus_keyword:e.target.value})} /></div>
+              <div className="modal-field" style={{marginBottom:0}}><label>Focus Keyword</label><input placeholder="e.g. phone case pakistan" value={editProduct.focus_keyword} onChange={e => setEditProduct({...editProduct,focus_keyword:e.target.value})} /></div>
             </div>
 
             <div className="modal-actions">
@@ -1209,10 +1198,10 @@ export default function AdminPage() {
                 <textarea rows={2} placeholder="SEO description (max 180 chars)" value={editBlog.meta_description} onChange={e=>setEditBlog(p=>({...p,meta_description:e.target.value.slice(0,180)}))} style={{resize:"none"}} />
                 <div className="char-count" style={{color:editBlog.meta_description.length>=175?"#DC2626":editBlog.meta_description.length>=140?"#16A34A":"#999999"}}>{editBlog.meta_description.length}/180</div>
               </div>
-              <div className="modal-field"><label>Focus Keyword</label><input placeholder="e.g. firestick uk" value={editBlog.focus_keyword} onChange={e=>setEditBlog(p=>({...p,focus_keyword:e.target.value}))} /></div>
+              <div className="modal-field"><label>Focus Keyword</label><input placeholder="e.g. accessories pakistan" value={editBlog.focus_keyword} onChange={e=>setEditBlog(p=>({...p,focus_keyword:e.target.value}))} /></div>
               <div className="modal-field" style={{marginBottom:0}}>
                 <label>Canonical URL</label>
-                <input placeholder={`https://firestick4uk.com/blog/${editBlog.slug||"post-slug"}`} value={editBlog.canonical_url} onChange={e=>setEditBlog(p=>({...p,canonical_url:e.target.value}))} />
+                <input placeholder={`${SITE_URL}/blog/${editBlog.slug||"post-slug"}`} value={editBlog.canonical_url} onChange={e=>setEditBlog(p=>({...p,canonical_url:e.target.value}))} />
                 <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:3}}>Leave empty to auto-generate from slug</div>
               </div>
             </div>
@@ -1266,7 +1255,7 @@ export default function AdminPage() {
         {/* SIDEBAR */}
         <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sidebar-logo">
-            <div className="sidebar-logo-text">FIRESTICK4UK</div>
+            <div className="sidebar-logo-text">{SITE_NAME_CAPS}</div>
             <div className="sidebar-label">Admin Panel</div>
           </div>
           <nav className="sidebar-nav">
@@ -1293,7 +1282,7 @@ export default function AdminPage() {
             ))}
           </nav>
           <div className="sidebar-footer" style={{padding:"12px 10px"}}>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center",letterSpacing:"1px"}}>FIRESTICK4UK ADMIN</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center",letterSpacing:"1px"}}>{SITE_NAME_CAPS} ADMIN</div>
           </div>
         </aside>
 
@@ -1344,7 +1333,7 @@ export default function AdminPage() {
                 {[
                   { icon:"🛒", label:"Total Orders", value:orders.length, trend:"All time" },
                   { icon:"⏳", label:"Pending Orders", value:pendingCount, trend:"Needs action" },
-                  { icon:"💰", label:"Total Revenue", value:`£${totalRevenue.toFixed(2)}`, trend:"Confirmed only" },
+                  { icon:"💰", label:"Total Revenue", value: formatPrice(totalRevenue), trend:"Confirmed only" },
                   { icon:"👥", label:"Customers", value:customers.length, trend:"Unique" },
                   { icon:"📦", label:"Products", value:products.length, trend:"Active" },
                   { icon:"✅", label:"Delivered", value:deliveredCount, trend:"All time" },
@@ -1781,9 +1770,9 @@ export default function AdminPage() {
                 <div className="section-title" style={{marginBottom:16}}>Add New Coupon</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
                   <div className="modal-field"><label>Code *</label><input placeholder="SAVE10" style={{width:"100%",textTransform:"uppercase"}} value={couponForm.code} onChange={e=>setCouponForm(f=>({...f,code:e.target.value.toUpperCase()}))} /></div>
-                  <div className="modal-field"><label>Type</label><select style={{width:"100%"}} value={couponForm.type} onChange={e=>setCouponForm(f=>({...f,type:e.target.value}))}><option value="percentage">% Percentage</option><option value="fixed">£ Fixed</option></select></div>
+                  <div className="modal-field"><label>Type</label><select style={{width:"100%"}} value={couponForm.type} onChange={e=>setCouponForm(f=>({...f,type:e.target.value}))}><option value="percentage">% Percentage</option><option value="fixed">Rs. Fixed</option></select></div>
                   <div className="modal-field"><label>Value</label><input type="number" placeholder="10" style={{width:"100%"}} value={couponForm.value} onChange={e=>setCouponForm(f=>({...f,value:e.target.value}))} /></div>
-                  <div className="modal-field"><label>Min Order (£)</label><input type="number" placeholder="0" style={{width:"100%"}} value={couponForm.minimum_order} onChange={e=>setCouponForm(f=>({...f,minimum_order:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Min Order (Rs.)</label><input type="number" placeholder="0" style={{width:"100%"}} value={couponForm.minimum_order} onChange={e=>setCouponForm(f=>({...f,minimum_order:e.target.value}))} /></div>
                   <div className="modal-field"><label>Usage Limit</label><input type="number" placeholder="Unlimited" style={{width:"100%"}} value={couponForm.usage_limit} onChange={e=>setCouponForm(f=>({...f,usage_limit:e.target.value}))} /></div>
                   <div className="modal-field"><label>Expires</label><input type="date" style={{width:"100%"}} value={couponForm.expires_at} onChange={e=>setCouponForm(f=>({...f,expires_at:e.target.value}))} /></div>
                 </div>
@@ -1805,9 +1794,9 @@ export default function AdminPage() {
                       {coupons.map((c:any)=>(
                         <tr key={c.id}>
                           <td style={{fontFamily:"monospace",color:"#5B21B6",fontWeight:700}}>{c.code}</td>
-                          <td><span className="status-badge status-pending" style={{fontSize:11}}>{c.type==="percentage"?`${c.value}%`:`£${c.value}`}</span></td>
-                          <td style={{fontWeight:600}}>{c.type==="percentage"?`${c.value}%`:`£${Number(c.value).toFixed(2)}`}</td>
-                          <td>{c.minimum_order>0?`£${c.minimum_order}`:"None"}</td>
+                          <td><span className="status-badge status-pending" style={{fontSize:11}}>{c.type==="percentage"?`${c.value}%`:`${formatPrice(c.value)}`}</span></td>
+                          <td style={{fontWeight:600}}>{c.type==="percentage"?`${c.value}%`:formatPrice(c.value)}</td>
+                          <td>{c.minimum_order>0?formatPrice(c.minimum_order):"None"}</td>
                           <td>{c.used_count}{c.usage_limit?`/${c.usage_limit}`:" / ∞"}</td>
                           <td style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{c.expires_at?new Date(c.expires_at).toLocaleDateString("en-GB"):"Never"}</td>
                           <td>
@@ -2115,8 +2104,8 @@ export default function AdminPage() {
               </div>
 
               <div style={{maxWidth:600}}>
-                <div className="modal-field"><label>Website Title</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_title||""} onChange={e=>setSiteContent(s=>({...s,site_title:e.target.value}))} placeholder="Firestick4UK" /></div>
-                <div className="modal-field"><label>Website Tagline</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_tagline||""} onChange={e=>setSiteContent(s=>({...s,site_tagline:e.target.value}))} placeholder="Best Firestick Service in UK" /></div>
+                <div className="modal-field"><label>Website Title</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_title||""} onChange={e=>setSiteContent(s=>({...s,site_title:e.target.value}))} placeholder="Sandy" /></div>
+                <div className="modal-field"><label>Website Tagline</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_tagline||""} onChange={e=>setSiteContent(s=>({...s,site_tagline:e.target.value}))} placeholder="Quality products, delivered across Pakistan" /></div>
 
                 <div className="modal-field">
                   <label>Site Logo</label>
@@ -2370,7 +2359,7 @@ export default function AdminPage() {
                       style={{width:"100%"}}
                       value={siteContent.contact_whatsapp||siteContent.whatsapp_number||""}
                       onChange={e=>setSiteContent(s=>({...s,contact_whatsapp:e.target.value,whatsapp_number:e.target.value}))}
-                      placeholder="447518787653"
+                      placeholder="923334800181"
                     />
                     <div style={{fontSize:11,color:"#888",marginTop:4}}>(without + sign)</div>
                   </div>
@@ -2381,7 +2370,7 @@ export default function AdminPage() {
                       style={{width:"100%"}}
                       value={siteContent.contact_phone||""}
                       onChange={e=>setSiteContent(s=>({...s,contact_phone:e.target.value}))}
-                      placeholder="+447518787653"
+                      placeholder="+923334800181"
                     />
                   </div>
                   <div className="modal-field">
@@ -2391,7 +2380,7 @@ export default function AdminPage() {
                       style={{width:"100%"}}
                       value={siteContent.contact_email||""}
                       onChange={e=>setSiteContent(s=>({...s,contact_email:e.target.value}))}
-                      placeholder="firestick4uk@gmail.com"
+                      placeholder="info@sandy.com.pk"
                     />
                   </div>
                   <div className="modal-field">
@@ -2401,7 +2390,7 @@ export default function AdminPage() {
                       style={{width:"100%"}}
                       value={siteContent.contact_telegram||""}
                       onChange={e=>setSiteContent(s=>({...s,contact_telegram:e.target.value}))}
-                      placeholder="@firestick44"
+                      placeholder=""
                     />
                   </div>
                   <button
@@ -2444,20 +2433,20 @@ export default function AdminPage() {
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">🏠 Home Page Content</div></div>
                   <div className="modal-field">
                     <label>Meta Title <span style={{fontSize:11,color:(siteContent.home_meta_title||"").length>55?"#ff6666":(siteContent.home_meta_title||"").length>40?"#00c864":"rgba(255,255,255,0.3)"}}>{(siteContent.home_meta_title||"").length}/60</span></label>
-                    <input style={{width:"100%"}} maxLength={60} value={siteContent.home_meta_title||""} onChange={e=>setSiteContent(s=>({...s,home_meta_title:e.target.value}))} placeholder="Firestick4UK — Best Streaming Service UK" />
+                    <input style={{width:"100%"}} maxLength={60} value={siteContent.home_meta_title||""} onChange={e=>setSiteContent(s=>({...s,home_meta_title:e.target.value}))} placeholder="Sandy — Best Streaming Service UK" />
                   </div>
                   <div className="modal-field">
                     <label>Meta Description <span style={{fontSize:11,color:(siteContent.home_meta_description||"").length>160?"#ff6666":(siteContent.home_meta_description||"").length>120?"#00c864":"rgba(255,255,255,0.3)"}}>{(siteContent.home_meta_description||"").length}/180</span></label>
-                    <textarea rows={3} style={{width:"100%",resize:"vertical"}} maxLength={180} value={siteContent.home_meta_description||""} onChange={e=>setSiteContent(s=>({...s,home_meta_description:e.target.value}))} placeholder="Premium Firestick subscriptions and streaming services in the UK..." />
+                    <textarea rows={3} style={{width:"100%",resize:"vertical"}} maxLength={180} value={siteContent.home_meta_description||""} onChange={e=>setSiteContent(s=>({...s,home_meta_description:e.target.value}))} placeholder="Handpicked quality, authentic products, fast delivery." />
                   </div>
 
                   <div style={{margin:"20px 0 12px",paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.08)",fontSize:13,fontWeight:700,color:"#5B21B6"}}>TOP HERO / SLIDER (title + subtitle above products)</div>
-                  <div className="modal-field"><label>Top Hero Title</label><input style={{width:"100%"}} value={siteContent.home_top_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_title:e.target.value}))} placeholder="Best Firestick Service in UK" /></div>
+                  <div className="modal-field"><label>Top Hero Title</label><input style={{width:"100%"}} value={siteContent.home_top_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_title:e.target.value}))} placeholder="Sandy — Quality products, delivered across Pakistan" /></div>
                   <div className="modal-field"><label>Top Hero Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.home_top_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_subtitle:e.target.value}))} placeholder="Premium Streaming Solutions for the UK" /></div>
 
                   <div style={{margin:"20px 0 12px",paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.08)",fontSize:13,fontWeight:700,color:"#5B21B6"}}>MAIN HERO (below products — title, buttons, features, stats)</div>
                   <div className="modal-field"><label>Main Hero Title</label><input style={{width:"100%"}} value={siteContent.home_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_hero_title:e.target.value}))} placeholder="Premium UK Streaming Service" /></div>
-                  <div className="modal-field"><label>Main Hero Subtitle</label><textarea rows={3} style={{width:"100%",resize:"vertical"}} value={siteContent.home_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_hero_subtitle:e.target.value}))} placeholder="Firestick4UK provides premium UK streaming services for Firestick and Android Box users." /></div>
+                  <div className="modal-field"><label>Main Hero Subtitle</label><textarea rows={3} style={{width:"100%",resize:"vertical"}} value={siteContent.home_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_hero_subtitle:e.target.value}))} placeholder="Sandy is your Pakistani online store for accessories, gadgets and everyday essentials." /></div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                     <div className="modal-field"><label>Primary Button Text</label><input style={{width:"100%"}} value={siteContent.home_hero_btn_text||""} onChange={e=>setSiteContent(s=>({...s,home_hero_btn_text:e.target.value}))} placeholder="Shop Now" /></div>
                     <div className="modal-field"><label>Primary Button Link</label><input style={{width:"100%"}} value={siteContent.home_hero_btn_link||""} onChange={e=>setSiteContent(s=>({...s,home_hero_btn_link:e.target.value}))} placeholder="/products" /></div>
@@ -2551,8 +2540,8 @@ export default function AdminPage() {
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                     <div className="modal-field"><label>Phone Number</label><input style={{width:"100%"}} value={siteContent.contact_phone||""} onChange={e=>setSiteContent(s=>({...s,contact_phone:e.target.value}))} /></div>
                     <div className="modal-field"><label>Email Address</label><input style={{width:"100%"}} value={siteContent.contact_email||""} onChange={e=>setSiteContent(s=>({...s,contact_email:e.target.value}))} /></div>
-                    <div className="modal-field"><label>WhatsApp (numbers only)</label><input style={{width:"100%"}} value={siteContent.contact_whatsapp||""} onChange={e=>setSiteContent(s=>({...s,contact_whatsapp:e.target.value,whatsapp_number:e.target.value}))} placeholder="447518787653" /></div>
-                    <div className="modal-field"><label>Telegram Handle</label><input style={{width:"100%"}} value={siteContent.contact_telegram||""} onChange={e=>setSiteContent(s=>({...s,contact_telegram:e.target.value}))} placeholder="@firestick44" /></div>
+                    <div className="modal-field"><label>WhatsApp (numbers only)</label><input style={{width:"100%"}} value={siteContent.contact_whatsapp||""} onChange={e=>setSiteContent(s=>({...s,contact_whatsapp:e.target.value,whatsapp_number:e.target.value}))} placeholder="923334800181" /></div>
+                    <div className="modal-field"><label>Telegram Handle</label><input style={{width:"100%"}} value={siteContent.contact_telegram||""} onChange={e=>setSiteContent(s=>({...s,contact_telegram:e.target.value}))} placeholder="optional" /></div>
                     <div className="modal-field"><label>Business Hours</label><input style={{width:"100%"}} value={siteContent.contact_hours||""} onChange={e=>setSiteContent(s=>({...s,contact_hours:e.target.value}))} /></div>
                     <div className="modal-field"><label>Address</label><input style={{width:"100%"}} value={siteContent.contact_address||""} onChange={e=>setSiteContent(s=>({...s,contact_address:e.target.value}))} /></div>
                   </div>

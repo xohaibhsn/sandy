@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
+import { FOOTER_COPY, SITE_NAME, formatPrice } from "@/lib/site";
 import { useContactConfig } from "@/hooks/useContactConfig";
 
 const styles = `
@@ -135,7 +136,7 @@ export default function CartSuccessPage() {
           <h1 className="title">Thank you for your order!</h1>
           <p className="subtitle">
             Your order has been received and is being processed.<br />
-            You&apos;ll receive confirmation once payment is verified. Subscription services are active within 1 hour of payment confirmation.
+            You&apos;ll receive confirmation on WhatsApp. We deliver across Pakistan.
           </p>
 
           {/* Order ID */}
@@ -160,9 +161,9 @@ export default function CartSuccessPage() {
                     <tr key={i}>
                       <td>
                         <div className="item-name">{item.name}</div>
-                        <div className="item-qty">Qty: {item.qty} &times; £{Number(item.price).toFixed(2)}</div>
+                        <div className="item-qty">Qty: {item.qty} &times; {formatPrice(item.price)}</div>
                       </td>
-                      <td>£{(Number(item.price) * Number(item.qty)).toFixed(2)}</td>
+                      <td>{formatPrice(Number(item.price) * Number(item.qty))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -176,36 +177,38 @@ export default function CartSuccessPage() {
             <div className="card-body">
               <div className="breakdown-row">
                 <span className="breakdown-label">Subtotal</span>
-                <span className="breakdown-value">£{Number(snap.subtotal).toFixed(2)}</span>
+                <span className="breakdown-value">{formatPrice(snap.subtotal)}</span>
               </div>
               <div className="breakdown-row">
                 <span className="breakdown-label">Shipping</span>
-                <span className="breakdown-value">{snap.shipping === 0 ? 'Free' : `£${Number(snap.shipping).toFixed(2)}`}</span>
+                <span className="breakdown-value">{snap.shipping === 0 ? 'Free' : formatPrice(snap.shipping)}</span>
               </div>
               <div className="breakdown-row">
-                <span className="breakdown-label">VAT (20%)</span>
-                <span className="breakdown-value">£{Number(snap.vatAmount).toFixed(2)}</span>
+                <span className="breakdown-label">GST (18%)</span>
+                <span className="breakdown-value">{formatPrice(snap.vatAmount)}</span>
               </div>
               {snap.couponApplied && snap.discountAmount > 0 && (
                 <div className="breakdown-row">
                   <span className="breakdown-label">Discount ({snap.couponApplied.code})</span>
-                  <span className="breakdown-value breakdown-discount">&minus;£{Number(snap.discountAmount).toFixed(2)}</span>
+                  <span className="breakdown-value breakdown-discount">&minus;{formatPrice(snap.discountAmount)}</span>
                 </div>
               )}
               <div className="breakdown-row breakdown-total">
                 <span className="breakdown-label">Grand Total</span>
-                <span className="breakdown-value">£{Number(snap.grandTotal).toFixed(2)}</span>
+                <span className="breakdown-value">{formatPrice(snap.grandTotal)}</span>
               </div>
             </div>
           </div>
 
           {/* Optional WhatsApp CTA */}
           <a href={waUrl} target="_blank" rel="noopener noreferrer" className="wa-btn">
-            💬 Need Instant Activation? Chat with Support via WhatsApp (Optional)
+            💬 Need help? Chat with Support via WhatsApp (Optional)
           </a>
+          {contact.telegramUrl ? (
           <a href={contact.telegramUrl} target="_blank" rel="noopener noreferrer" className="telegram-btn">
             ✈️ Message Telegram {contact.telegram}
           </a>
+          ) : null}
           <p className="wa-optional">
             This is completely optional — your order is already confirmed and being processed above.<br />
             Click only if you need immediate assistance.
@@ -217,8 +220,8 @@ export default function CartSuccessPage() {
       </div>
 
       <footer>
-        <div className="footer-logo">FIRESTICK4UK</div>
-        <div className="footer-copy">&copy; 2026 Firestick4UK. All rights reserved.</div>
+        <div className="footer-logo">{SITE_NAME.toUpperCase()}</div>
+        <div className="footer-copy">{FOOTER_COPY}</div>
       </footer>
     </>
   );

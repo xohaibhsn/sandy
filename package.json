@@ -1,11 +1,10 @@
 {
-  "name": "firestick44uk",
+  "name": "sandy",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node scripts/sync-hostinger-apks.js",
     "start": "next start",
     "lint": "eslint"
   },

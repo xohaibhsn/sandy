@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import { formatPrice } from "@/lib/site";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -225,12 +226,12 @@ export default function OrderTrackingPage() {
                   {result.items.map((item, i) => (
                     <div className="order-item-row" key={i}>
                       <span className="order-item-name">{item.name} × {item.qty}</span>
-                      <span className="order-item-price">£{(item.price * item.qty).toFixed(2)}</span>
+                      <span className="order-item-price">{formatPrice(item.price * item.qty)}</span>
                     </div>
                   ))}
                   <div className="order-total-row">
                     <span>Total</span>
-                    <span>£{result.total.toFixed(2)}</span>
+                    <span>{formatPrice(result.total)}</span>
                   </div>
                 </div>
 
@@ -283,26 +284,28 @@ export default function OrderTrackingPage() {
           <div className="help-card">
             <div className="help-text">
               <h4>Need Help?</h4>
-              <p>Can&apos;t find your order or have a question? Chat with us on WhatsApp or Telegram.</p>
+              <p>Can&apos;t find your order or have a question? Chat with us on WhatsApp.</p>
             </div>
             <a href={contact.whatsappUrl} className="wa-btn" target="_blank" rel="noopener noreferrer">
               💬 WhatsApp Us
             </a>
+            {contact.telegramUrl ? (
             <a href={contact.telegramUrl} className="wa-btn" target="_blank" rel="noopener noreferrer" style={{background:"#229ED9"}}>
               ✈️ Telegram {contact.telegram}
             </a>
+            ) : null}
           </div>
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">SANDY</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
         </footer>
       </div>
 

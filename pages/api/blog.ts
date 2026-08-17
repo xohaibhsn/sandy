@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
+import { SITE_URL } from '../../lib/site';
 
 function checkAdminAuth(req: any): boolean {
   const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
@@ -97,9 +98,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await pool.query(`
           INSERT INTO blog_posts (title, slug, excerpt, content, category, emoji, badge, badgeText, status)
           VALUES
-          ('How to Set Up Your Firestick in 5 Minutes', 'how-to-set-up-your-firestick', 'Getting started with your new Amazon Firestick is easier than you think. Follow these simple steps to be streaming in minutes.', '<h2>Getting Started</h2><p>Plug your Firestick into your TV HDMI port and connect the power cable. Follow the on-screen setup instructions.</p>', 'Guides', '🔥', 'guide', 'Guide', 'published'),
-          ('Best Streaming Subscriptions in the UK 2026', 'best-streaming-subscriptions-uk-2026', 'Looking for the best streaming service in the UK? We compare the top options so you can pick the right plan.', '<h2>Top Streaming Plans</h2><p>We offer 1 Month, 6 Month and 1 Year subscription plans to suit every budget.</p>', 'Tips', '📺', 'tips', 'Tips', 'published'),
-          ('Firestick4UK — What''s New This Month', 'firestick4uk-whats-new', 'We have added new subscription plans, improved order tracking, and launched faster delivery.', '<h2>New This Month</h2><p>Check out our improved order tracking and new product range.</p>', 'News', '🚀', 'news', 'News', 'published')
+          ('How to Shop on Sandy', 'how-to-shop-on-sandy', 'Getting started on Sandy is easy. Browse accessories and gadgets, add them to your cart, and checkout with COD or prepaid payment.', '<h2>Getting Started</h2><p>Browse products, add items to your cart, enter your delivery details, and place your order. We deliver across Pakistan.</p>', 'Guides', '🛒', 'guide', 'Guide', 'published'),
+          ('Paying on Sandy — COD, JazzCash and Bank Transfer', 'paying-on-sandy', 'Choose Cash on Delivery, JazzCash, Easypaisa or bank transfer at checkout. Account details for prepaid methods are shared after you order.', '<h2>Payment Options</h2><p>COD is the default. For JazzCash, Easypaisa or bank transfer, we share account details after you place the order.</p>', 'Tips', '💳', 'tips', 'Tips', 'published'),
+          ('What''s New at Sandy', 'whats-new-at-sandy', 'We have added new products, improved order tracking, and launched nationwide delivery.', '<h2>New This Month</h2><p>Check out our improved order tracking and new product range.</p>', 'News', '🚀', 'news', 'News', 'published')
         `);
         const [fresh] = await pool.query('SELECT * FROM blog_posts WHERE active = 1 ORDER BY created_at DESC');
         return res.status(200).json(Array.isArray(fresh) ? fresh : []);
@@ -109,7 +110,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'POST') {
       const { title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs } = req.body;
-      const finalCanonical = (canonical_url || '').trim() || `https://firestick4uk.com/blog/${slug || ''}`;
+      const finalCanonical = (canonical_url || '').trim() || `${SITE_URL}/blog/${slug || ''}`;
       const [result]: any = await pool.query(
         'INSERT INTO blog_posts (title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
         [title, slug || '', excerpt || '', content || '', category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', featured_image || '', meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null]
@@ -119,7 +120,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'PUT') {
       const { id, title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs } = req.body;
-      const finalCanonical = (canonical_url || '').trim() || `https://firestick4uk.com/blog/${slug || ''}`;
+      const finalCanonical = (canonical_url || '').trim() || `${SITE_URL}/blog/${slug || ''}`;
       await pool.query(
         'UPDATE blog_posts SET title=?, slug=?, excerpt=?, content=?, category=?, emoji=?, badge=?, badgeText=?, featured_image=?, meta_title=?, meta_description=?, focus_keyword=?, status=?, featured=?, canonical_url=?, faqs=? WHERE id=?',
         [title, slug || '', excerpt || '', content || '', category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', featured_image || '', meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null, id]

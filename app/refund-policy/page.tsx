@@ -128,14 +128,14 @@ export default function RefundPolicyPage() {
             <div className="policy-section" id="overview">
               <h2>1. Overview</h2>
               <div className="highlight-box">
-                <p>No free trials are offered. We provide a 7-day money back guarantee on 1 Year subscription plans and above only.</p>
+                <p>Faulty items are replaced or refunded. Unused items in original condition may be returned as described below.</p>
               </div>
-              <p>This Refund Policy applies to all purchases made on firestick4uk.com. By placing an order, you agree to the terms set out in this policy.</p>
+              <p>This Refund Policy applies to all purchases made on sandy.com.pk. By placing an order, you agree to the terms set out in this policy.</p>
             </div>
 
             <div className="policy-section" id="physical">
               <h2>2. Physical Products</h2>
-              <p>We accept returns on physical products (Firestick devices and Android Boxes) under the following conditions:</p>
+              <p>We accept returns on physical products under the following conditions:</p>
               <ul>
                 <li>Return request must be made within <strong>14 days</strong> of the delivery date.</li>
                 <li>The item must be <strong>unused</strong> and in its <strong>original packaging</strong>.</li>
@@ -146,18 +146,8 @@ export default function RefundPolicyPage() {
             </div>
 
             <div className="policy-section" id="subscriptions">
-              <h2>3. Subscription Plans</h2>
-              <div className="warning-box">
-                <p>⚠️ No free trials. A 7-day money back guarantee applies to <strong>1 Year plans and above only</strong>.</p>
-              </div>
-              <p>Subscription services are active within 1 hour of payment confirmation. Please check device compatibility before purchasing.</p>
-              <ul>
-                <li>Monthly and shorter plans are not covered by the 7-day money back guarantee.</li>
-                <li>Each subscription includes one connection at a time. For simultaneous use on 2 devices, you need 2 separate subscriptions.</li>
-                <li>Compatible devices include Firestick (all generations), Android box, Smart TV (Samsung/LG), iPhone, Android phone/tablet, Roku and Windows.</li>
-                <li>Service is available outside UK, but performance is not guaranteed due to regional restrictions.</li>
-                <li>If your service is buffering or not working, please try using a VPN or switching to mobile hotspot because some ISPs may affect streaming performance.</li>
-              </ul>
+              <h2>3. Digital / Non-returnable items</h2>
+              <p>Some items may be marked as non-returnable (for example opened hygiene products or digital goods). These will be stated on the product page.</p>
             </div>
 
             <div className="policy-section" id="faulty">
@@ -180,7 +170,7 @@ export default function RefundPolicyPage() {
               <h2>5. How to Return an Item</h2>
               <p>To initiate a return, please follow these steps:</p>
               <ul>
-                <li>Contact us via WhatsApp ({contact.phone}), Telegram ({contact.telegram}) or email ({contact.email}) with your Order ID and reason for return.</li>
+                <li>Contact us via WhatsApp ({contact.phone}) or email ({contact.email}) with your Order ID and reason for return.</li>
                 <li>Wait for our team to confirm your return request and provide return instructions.</li>
                 <li>Package the item securely in its original packaging.</li>
                 <li>Send the item to the address provided by our team.</li>
@@ -194,8 +184,8 @@ export default function RefundPolicyPage() {
               <p>Once your return has been received and approved:</p>
               <ul>
                 <li>Refunds are processed within <strong>5-7 working days</strong>.</li>
-                <li>Refunds will be made via UK bank transfer to the account you provide.</li>
-                <li>We will notify you by email, WhatsApp or Telegram once the refund has been processed.</li>
+                <li>Refunds will be made via the original payment method or a Pakistani bank / wallet transfer.</li>
+                <li>We will notify you by email or WhatsApp once the refund has been processed.</li>
               </ul>
             </div>
 
@@ -203,7 +193,7 @@ export default function RefundPolicyPage() {
               <h2>7. Exceptions</h2>
               <p>The following items and situations are not eligible for a refund:</p>
               <ul>
-                <li>Subscription plans below 1 Year.</li>
+                <li>Items marked as non-returnable on the product page.</li>
                 <li>Physical products returned after the 14-day window.</li>
                 <li>Items that have been used, damaged by the customer, or returned without original packaging.</li>
                 <li>Orders where the customer provided incorrect delivery details.</li>
@@ -217,8 +207,8 @@ export default function RefundPolicyPage() {
               <div className="highlight-box">
                 <p>📧 Email: {contact.email}<br />
                 💬 WhatsApp: {contact.phone}<br />
-                ✈️ Telegram: {contact.telegram}<br />
-                🌐 Website: firestick4uk.com</p>
+                {contact.telegram ? <>✈️ Telegram: {contact.telegram}<br /></> : null}
+                🌐 Website: sandy.com.pk</p>
               </div>
               <p>We aim to respond to all refund and return enquiries within 24 hours during business hours.</p>
             </div>
@@ -229,24 +219,26 @@ export default function RefundPolicyPage() {
         <div className="contact-cta">
           <div className="cta-box">
             <div className="cta-title">Need Help With a Return?</div>
-            <p className="cta-sub">Our team is here to help. Contact us via WhatsApp or Telegram for the fastest response.</p>
+            <p className="cta-sub">Our team is here to help. Contact us via WhatsApp for the fastest response.</p>
             <div className="cta-btns">
               <a href={contact.whatsappUrl} className="btn-wa" target="_blank" rel="noopener noreferrer">💬 WhatsApp Us</a>
+              {contact.telegramUrl ? (
               <a href={contact.telegramUrl} className="btn-contact" target="_blank" rel="noopener noreferrer">✈️ Telegram {contact.telegram}</a>
+              ) : null}
               <a href="/contact" className="btn-contact">📧 Email Us</a>
             </div>
           </div>
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">SANDY</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
         </footer>
       </div>
 

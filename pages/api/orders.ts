@@ -3,6 +3,7 @@ import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import nodemailer from 'nodemailer';
 import { getContactConfig } from '../../lib/contact-config';
+import { ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL, TAX_LABEL, formatPrice } from '../../lib/site';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -16,6 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       "ALTER TABLE orders ADD COLUMN discount_amount DECIMAL(10,2) DEFAULT 0",
       "ALTER TABLE orders ADD COLUMN vat_amount DECIMAL(10,2) DEFAULT 0",
       "ALTER TABLE orders ADD COLUMN payment_reference VARCHAR(255)",
+      "ALTER TABLE orders MODIFY COLUMN payment_method VARCHAR(50) DEFAULT 'cod'",
     ]) { try { await pool.query(col); } catch (_) {} }
 
     const { customer_name, customer_email, customer_phone, delivery_address, city, postcode, notes,
@@ -54,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         `<tr>
           <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:14px">${i.name}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:14px">${i.qty}</td>
-          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:14px;font-weight:600;color:#5B21B6">£${(Number(i.price) * Number(i.qty)).toFixed(2)}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:14px;font-weight:600;color:#5B21B6">${formatPrice(Number(i.price) * Number(i.qty))}</td>
         </tr>`
       ).join('');
 
@@ -62,7 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 <div style="max-width:620px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
   <div style="background:#5B21B6;padding:28px 32px">
     <h2 style="color:#fff;margin:0;font-size:22px;letter-spacing:1px">🛍️ New Order Received</h2>
-    <p style="color:rgba(255,255,255,0.7);margin:6px 0 0;font-size:13px">firestick4uk.com</p>
+    <p style="color:rgba(255,255,255,0.7);margin:6px 0 0;font-size:13px">${SITE_URL.replace(/^https?:\/\//, '')}</p>
   </div>
   <div style="padding:28px 32px">
     <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:14px 20px;margin-bottom:24px;display:inline-block">
@@ -75,7 +77,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       <tr><td style="padding:5px 0;color:#888;font-size:13px">Email</td><td style="color:#111;font-size:13px">${customer_email}</td></tr>
       <tr><td style="padding:5px 0;color:#888;font-size:13px">Phone</td><td style="color:#111;font-size:13px">${customer_phone}</td></tr>
       <tr><td style="padding:5px 0;color:#888;font-size:13px">Address</td><td style="color:#111;font-size:13px">${[delivery_address, city, postcode].filter(Boolean).join(', ')}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Payment</td><td style="color:#111;font-size:13px;font-weight:600">${payment_method === 'bank' ? '🏦 Bank Transfer' : '💵 Cash on Delivery'}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Payment</td><td style="color:#111;font-size:13px;font-weight:600">${
+        payment_method === 'cod' ? 'Cash on Delivery'
+        : payment_method === 'jazzcash' ? 'JazzCash'
+        : payment_method === 'easypaisa' ? 'Easypaisa'
+        : payment_method === 'bank' || payment_method === 'bank_transfer' ? 'Bank Transfer'
+        : String(payment_method || '')
+      }</td></tr>
       ${payment_reference ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Reference</td><td style="color:#111;font-size:13px">${payment_reference}</td></tr>` : ''}
       ${notes ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Notes</td><td style="color:#111;font-size:13px">${notes}</td></tr>` : ''}
     </table>
@@ -89,18 +97,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       <tbody>${itemRows}</tbody>
     </table>
     <div style="background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:16px 20px">
-      ${vat_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">VAT (20%)</span><span style="color:#111">£${Number(vat_amount).toFixed(2)}</span></div>` : ''}
-      ${discount_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#16A34A"><span>Discount${coupon_code ? ` (${coupon_code})` : ''}</span><span>−£${Number(discount_amount).toFixed(2)}</span></div>` : ''}
-      <div style="display:flex;justify-content:space-between;padding:10px 0 4px;font-size:18px;font-weight:700;border-top:1px solid #e5e5e5;margin-top:6px"><span style="color:#111">Grand Total</span><span style="color:#5B21B6">£${Number(total).toFixed(2)}</span></div>
+      ${vat_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">${TAX_LABEL}</span><span style="color:#111">${formatPrice(vat_amount)}</span></div>` : ''}
+      ${discount_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#16A34A"><span>Discount${coupon_code ? ` (${coupon_code})` : ''}</span><span>−${formatPrice(discount_amount)}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;padding:10px 0 4px;font-size:18px;font-weight:700;border-top:1px solid #e5e5e5;margin-top:6px"><span style="color:#111">Grand Total</span><span style="color:#5B21B6">${formatPrice(total)}</span></div>
     </div>
   </div>
   <div style="background:#f9f9f9;padding:14px 32px;border-top:1px solid #e5e5e5;text-align:center">
-    <p style="color:#aaa;font-size:12px;margin:0">Automated notification from firestick4uk.com</p>
+    <p style="color:#aaa;font-size:12px;margin:0">Automated notification from ${SITE_URL.replace(/^https?:\/\//, '')}</p>
   </div>
 </div></body></html>`;
 
       transporter.sendMail({
-        from: `"Firestick4UK Orders" <noreply@firestick4uk.com>`,
+        from: `"${SITE_NAME} Orders" <${ORDERS_FROM_EMAIL}>`,
         to: contact.email,
         subject: `🛍️ New Order ${order_id} — ${customer_name}`,
         html,

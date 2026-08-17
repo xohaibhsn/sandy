@@ -179,7 +179,7 @@ export default function BlogPostClient({ post }: { post: Post | null }) {
 
             <div className="cta-box">
               <div className="cta-title">Ready to Shop?</div>
-              <div className="cta-sub">Browse our full range of Firestick devices and Streaming Plans.</div>
+              <div className="cta-sub">Browse accessories, gadgets and everyday products delivered across Pakistan.</div>
               <a href="/products" className="btn-primary">View Products →</a>
             </div>
           </>
@@ -187,14 +187,14 @@ export default function BlogPostClient({ post }: { post: Post | null }) {
       </div>
 
       <footer>
-        <div className="footer-logo">FIRESTICK4UK</div>
+        <div className="footer-logo">SANDY</div>
         <ul className="footer-links">
           <li><a href="/privacy-policy">Privacy Policy</a></li>
           <li><a href="/terms">Terms & Conditions</a></li>
           <li><a href="/refund-policy">Refund Policy</a></li>
           <li><a href="/faq">FAQ</a></li>
         </ul>
-        <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+        <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
       </footer>
 
     </>

@@ -43,13 +43,13 @@ export default function Navbar({
     <a href="/" className="nav-logo nav-logo-img">
       <img
         src={logo}
-        alt="Firestick4UK"
+        alt="Sandy"
         style={{ height: 36, width: "auto", objectFit: "contain", display: "block" }}
       />
     </a>
   ) : (
     <a href="/" className="nav-logo nav-logo-text">
-      FIRESTICK4UK
+      SANDY
     </a>
   );
 

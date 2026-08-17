@@ -9,31 +9,26 @@ function checkAdminAuth(req: any): boolean {
 
 
 const DEFAULT_FAQS = [
-  ['How do I place an order?','Browse our products, add items to your cart, fill in your delivery details, choose your payment method (bank transfer or cash on delivery), and click Place Order. You\'ll receive an Order ID instantly.','Orders & Payment',1],
-  ['What payment methods do you accept?','We accept UK bank transfer and cash on delivery. For bank transfer, our account details are shown at checkout. Simply transfer the amount and upload your receipt. Subscription services are active within 1 hour of payment confirmation.','Orders & Payment',2],
-  ['How do I pay by bank transfer?','At checkout, select Bank Transfer. Our UK bank account details will be displayed. Transfer the exact amount using the Order ID as your reference, then upload a screenshot of your receipt. We\'ll verify and confirm your order shortly.','Orders & Payment',3],
-  ['Is cash on delivery available?','Yes! Cash on delivery is available for physical products (Firestick and Android Boxes) delivered across the UK. Simply select this option at checkout.','Orders & Payment',4],
-  ['Can I cancel my order?','You can cancel your order before it has been dispatched. Please contact us via WhatsApp (+447518787653) or Telegram (@firestick44) with your Order ID as soon as possible. Once dispatched, cancellations are not possible but you may be eligible for a return.','Orders & Payment',5],
-  ['How long does delivery take?','Physical items (Firestick and Android Boxes) are delivered within 2-3 working days across the UK. Subscription plans are active within 1 hour of payment confirmation.','Delivery & Shipping',1],
-  ['Do you deliver across the whole UK?','Yes, we deliver to all mainland UK addresses. For remote locations such as Scottish Highlands or islands, delivery may take an extra 1-2 days.','Delivery & Shipping',2],
-  ['How much does shipping cost?','Shipping is free on subscription plans. For physical products, a standard shipping fee of £3.99 applies unless otherwise stated at checkout.','Delivery & Shipping',3],
+  ['How do I place an order?','Browse our products, add items to your cart, fill in your delivery details, choose your payment method (Cash on Delivery, JazzCash, Easypaisa or bank transfer), and click Place Order. You\'ll receive an Order ID instantly.','Orders & Payment',1],
+  ['What payment methods do you accept?','We accept Cash on Delivery, JazzCash, Easypaisa and bank transfer. Account details for prepaid methods are shared after you place the order. You can upload a payment receipt at checkout.','Orders & Payment',2],
+  ['How do I pay by JazzCash, Easypaisa or bank transfer?','Select the method at checkout, place your order, then wait for our WhatsApp message with account details. Transfer the exact amount, enter your payment reference, and optionally upload a screenshot of the receipt.','Orders & Payment',3],
+  ['Is cash on delivery available?','Yes. Cash on delivery is available across Pakistan. Select COD at checkout and pay when your order arrives.','Orders & Payment',4],
+  ['Can I cancel my order?','You can cancel your order before it has been dispatched. Please contact us via WhatsApp (+923334800181) with your Order ID as soon as possible. Once dispatched, cancellations are not possible but you may be eligible for a return.','Orders & Payment',5],
+  ['How long does delivery take?','We deliver across Pakistan. Most orders arrive within 2–5 working days depending on your city.','Delivery & Shipping',1],
+  ['Do you deliver across Pakistan?','Yes, we deliver nationwide including Punjab, Sindh, KPK, Balochistan, Islamabad, Gilgit-Baltistan and AJK.','Delivery & Shipping',2],
+  ['How much does shipping cost?','Shipping is currently free on all orders.','Delivery & Shipping',3],
   ['How do I track my order?','Once your order is confirmed, use your Order ID on our Order Tracking page to check real-time status — from confirmation through to delivery.','Delivery & Shipping',4],
-  ['Do Firesticks come pre-configured?','Yes! Our Firestick devices are pre-configured and ready to use straight out of the box. Simply plug in, connect to your Wi-Fi, and you\'re good to go.','Products & Setup',1],
-  ['What is a subscription plan?','Our subscription plans give you access to premium content through compatible apps on your device. One connection is included per subscription.','Products & Setup',2],
-  ['Which devices are compatible with the subscription plans?','Works on Firestick (all generations), Android box, Smart TV (Samsung/LG), iPhone, Android phone/tablet, Roku and Windows.','Products & Setup',3],
-  ['What if my device stops working?','Please try using a VPN or switching to mobile hotspot. Some ISPs may affect streaming performance. If you still need help, contact us via WhatsApp (+447518787653) or Telegram (@firestick44).','Products & Setup',4],
-  ['What is your refund policy?','No free trials. We offer a 7-day money back guarantee on 1 Year plans and above only. Physical product returns are handled separately under our Refund Policy.','Returns & Refunds',1],
-  ['How do I return an item?','Contact us via WhatsApp (+447518787653), Telegram (@firestick44) or email with your Order ID and reason for return. We\'ll guide you through the process. Return postage costs are the responsibility of the customer unless the item is faulty.','Returns & Refunds',2],
-  ['What if I received a faulty item?','We\'re sorry to hear that! Please contact us immediately via WhatsApp (+447518787653) or Telegram (@firestick44) with photos of the fault. We\'ll arrange a replacement or full refund at no extra cost to you.','Returns & Refunds',3],
+  ['Are your products authentic?','Yes. We source carefully and stand behind every item we sell. If something is not as described, contact us on WhatsApp and we will make it right.','Products & Setup',1],
+  ['Do you sell accessories and gadgets?','Yes. Sandy is a Pakistani general store. We are launching with accessories first and will add more categories over time.','Products & Setup',2],
+  ['What if I received a faulty item?','Please contact us immediately via WhatsApp (+923334800181) with photos of the fault. We\'ll arrange a replacement or refund.','Returns & Refunds',3],
+  ['How do I return an item?','Contact us via WhatsApp (+923334800181) or email with your Order ID and reason for return. We\'ll guide you through the process.','Returns & Refunds',2],
+  ['What is your refund policy?','Please see our Refund Policy page for full details. Faulty items are replaced or refunded. Unused items in original condition may be returned as described in the policy.','Returns & Refunds',1],
 ];
 
 const REQUIRED_FAQS = [
-  ['Do you offer free trials?','No free trials. We offer a 7-day money back guarantee on 1 Year plans and above.','Policies',1],
-  ['What devices does it work on?','Works on Firestick, Android box, Smart TV (Samsung/LG), iPhone, Android phone, Roku and Windows.','Products & Setup',5],
-  ['How long to activate?','Your service will be active within 1 hour of payment confirmation.','Delivery & Shipping',5],
-  ['Can I use it on 2 devices simultaneously?','One connection at a time per subscription. For simultaneous use on 2 devices, you need 2 separate subscriptions.','Policies',2],
-  ['My service is buffering/not working?','Please try using a VPN or switching to mobile hotspot. Some ISPs may affect streaming performance.','Technical Support',1],
-  ['Does it work outside UK?','Yes, the service is available outside UK but we cannot guarantee performance due to regional restrictions.','Policies',3],
+  ['Do you offer Cash on Delivery?','Yes. COD is available across Pakistan and is selected by default at checkout.','Orders & Payment',6],
+  ['How do I contact support?','WhatsApp us on +923334800181 or email info@sandy.com.pk. We typically reply during business hours.','General',1],
+  ['Where are you based?','Sandy is based in Lahore, Pakistan, and delivers nationwide.','General',2],
 ];
 
 async function upsertFaq(question: string, answer: string, category: string, sortOrder: number) {
@@ -78,6 +73,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     for (const [q,a,cat,ord] of REQUIRED_FAQS) {
       await upsertFaq(q as string, a as string, cat as string, ord as number);
     }
+
+    const obsoleteQuestions = [
+      'Do you deliver across the whole UK?',
+      'Do Firesticks come pre-configured?',
+      'What is a subscription plan?',
+      'Which devices are compatible with the subscription plans?',
+      'What if my device stops working?',
+      'Do you offer free trials?',
+      'What devices does it work on?',
+      'How long to activate?',
+      'Can I use it on 2 devices simultaneously?',
+      'My service is buffering/not working?',
+      'Does it work outside UK?',
+      'How do I pay by bank transfer?',
+    ];
+    try {
+      await pool.query(
+        `DELETE FROM faqs WHERE question IN (${obsoleteQuestions.map(() => '?').join(',')})`,
+        obsoleteQuestions
+      );
+    } catch (_) {}
 
     if (req.method === 'GET') {
       const { admin } = req.query;

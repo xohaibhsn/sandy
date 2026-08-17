@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import pool from "@/lib/db";
 import HomeClient from "./HomeClient";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,22 +37,22 @@ export async function generateMetadata(): Promise<Metadata> {
   const content = await getHomeContent();
   const metaTitle =
     content.home_meta_title?.trim() ||
-    "Firestick4UK — Best Streaming Service UK";
+    `${SITE_NAME} — Quality products, delivered across Pakistan`;
   const metaDesc =
     content.home_meta_description?.trim() ||
-    "Premium Firestick subscriptions and streaming services in the UK. HD & 4K channels, live sports, movies and more.";
+    "Handpicked quality, authentic products, fast delivery. Shop accessories, gadgets and everyday essentials at Sandy.";
 
   return {
     title: { absolute: metaTitle },
     description: metaDesc,
     alternates: {
-      canonical: "https://firestick4uk.com",
+      canonical: SITE_URL,
     },
     openGraph: {
       title: metaTitle,
       description: metaDesc,
-      url: "https://firestick4uk.com",
-      siteName: "Firestick4UK",
+      url: SITE_URL,
+      siteName: SITE_NAME,
       type: "website",
     },
     twitter: {
@@ -68,22 +69,22 @@ export default async function HomePage() {
   return (
     <>
       <BreadcrumbSchema
-        items={[{ name: "Home", url: "https://firestick4uk.com" }]}
+        items={[{ name: "Home", url: SITE_URL }]}
       />
       <HomeClient
         topHeroTitle={
-          content.home_top_hero_title?.trim() || "Best Firestick Service in UK"
+          content.home_top_hero_title?.trim() || "Sandy — Quality products, delivered across Pakistan"
         }
         topHeroSubtitle={
           content.home_top_hero_subtitle?.trim() ||
-          "Premium Streaming Solutions for the UK"
+          "Handpicked quality, authentic products, fast delivery."
         }
         heroTitle={
-          content.home_hero_title?.trim() || "Premium UK Streaming Service"
+          content.home_hero_title?.trim() || "Quality products, delivered across Pakistan"
         }
         heroSubtitle={
           content.home_hero_subtitle?.trim() ||
-          "Firestick4UK provides premium UK streaming services for Firestick and Android Box users."
+          "Sandy is your Pakistani online store for accessories, gadgets and everyday essentials."
         }
       />
     </>

@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import pool from "../../lib/db";
+import { SITE_URL } from "@/lib/site";
 
 /**
  * Browser default request target: /favicon.ico → rewritten here.
@@ -21,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (!faviconUrl) {
-    faviconUrl = "https://firestick4uk.com/og-default.jpg";
+    faviconUrl = `${SITE_URL}/og-default.jpg`;
   }
 
   // Serve a small PNG via Cloudinary transforms when possible

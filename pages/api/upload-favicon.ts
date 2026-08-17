@@ -24,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Unique public_id so Cloudinary URL changes on each upload (busts CDN/browser cache)
     const stamp = Date.now();
     const result = await cloudinary.uploader.upload(file, {
-      folder: 'firestick4uk/favicon',
+      folder: 'sandy/favicon',
       public_id: `favicon-${stamp}`,
       overwrite: true,
       invalidate: true,

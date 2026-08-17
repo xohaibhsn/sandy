@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Products — Firestick4UK | Streaming Devices UK",
-  description: "Browse our full range of Firestick devices, Firestick Subscription plans, and Android boxes. Best prices in the UK.",
-  alternates: { canonical: "https://firestick4uk.com/products" },
+  title: `Products — ${SITE_NAME}`,
+  description: "Browse accessories, gadgets and everyday products at Sandy. Quality items delivered across Pakistan.",
+  alternates: { canonical: `${SITE_URL}/products` },
   openGraph: {
-    title: "Products — Firestick4UK | Streaming Devices UK",
-    description: "Browse our full range of Firestick devices, Firestick Subscription plans, and Android boxes. Best prices in the UK.",
-    url: "https://firestick4uk.com/products",
-    siteName: "Firestick4UK",
+    title: `Products — ${SITE_NAME}`,
+    description: "Browse accessories, gadgets and everyday products at Sandy. Quality items delivered across Pakistan.",
+    url: `${SITE_URL}/products`,
+    siteName: SITE_NAME,
     type: "website",
   },
 };

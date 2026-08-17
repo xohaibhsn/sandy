@@ -7,6 +7,7 @@ import { useCart } from "../lib/cartContext";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import { FOOTER_COPY, SITE_NAME_CAPS, SITE_URL, formatPrice } from "@/lib/site";
 
 const cardDescXss = {
   whiteList: {
@@ -102,8 +103,8 @@ export default function ProductsPage() {
     <>
       <BreadcrumbSchema
         items={[
-          { name: "Home", url: "https://firestick4uk.com" },
-          { name: "Products", url: "https://firestick4uk.com/products" },
+          { name: "Home", url: SITE_URL },
+          { name: "Products", url: `${SITE_URL}/products` },
         ]}
       />
       <style>{`
@@ -201,7 +202,7 @@ export default function ProductsPage() {
                   {r.image ? <img src={r.image} alt={r.name} style={{width:40,height:40,borderRadius:6,objectFit:"cover",border:"1px solid #E5E5E5"}} loading="lazy" /> : <div style={{width:40,height:40,borderRadius:6,background:"#F5F5F5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📦</div>}
                   <div style={{flex:1,overflow:"hidden"}}>
                     <div style={{fontSize:13,fontWeight:600,color:"#111",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</div>
-                    <div style={{fontSize:11,color:"#888"}}>{r.category} · £{Number(r.price).toFixed(2)}</div>
+                    <div style={{fontSize:11,color:"#888"}}>{r.category} · {formatPrice(r.price)}</div>
                   </div>
                 </a>
               ))}
@@ -222,7 +223,7 @@ export default function ProductsPage() {
 
         <div className="activation-banner">
           <div className="activation-banner-inner">
-            Subscription services are active within 1 hour of payment confirmation. Need help? WhatsApp {contact.phone} or Telegram {contact.telegram}.
+            Fast delivery across Pakistan. Need help? WhatsApp {contact.phone}.
           </div>
         </div>
 
@@ -234,9 +235,9 @@ export default function ProductsPage() {
             ))}
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-            <input type="number" style={{width:70,background:"rgba(139,0,255,0.08)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"6px 10px",color:"white",fontSize:13,outline:"none"}} placeholder="Min £" value={minPrice} onChange={e=>setMinPrice(e.target.value)} />
+            <input type="number" style={{width:70,background:"rgba(139,0,255,0.08)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"6px 10px",color:"white",fontSize:13,outline:"none"}} placeholder="Min Rs." value={minPrice} onChange={e=>setMinPrice(e.target.value)} />
             <span style={{color:"rgba(255,255,255,0.3)",fontSize:13}}>—</span>
-            <input type="number" style={{width:70,background:"rgba(139,0,255,0.08)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"6px 10px",color:"white",fontSize:13,outline:"none"}} placeholder="Max £" value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} />
+            <input type="number" style={{width:70,background:"rgba(139,0,255,0.08)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"6px 10px",color:"white",fontSize:13,outline:"none"}} placeholder="Max Rs." value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} />
             <button style={{background:"rgba(139,0,255,0.15)",border:"1px solid rgba(139,0,255,0.3)",color:"#5B21B6",padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}} onClick={applyPrice}>Apply</button>
             <select style={{background:"rgba(13,0,20,0.9)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"6px 10px",color:"white",fontSize:13,outline:"none",cursor:"pointer"}} value={sort} onChange={e=>applySort(e.target.value)}>
               <option value="featured">Featured</option>
@@ -254,7 +255,7 @@ export default function ProductsPage() {
             <div className="loading" style={{textAlign:"center",padding:"40px 0"}}>
               <div style={{fontSize:"32px",marginBottom:"12px"}}>⚠️</div>
               <div style={{color:"rgba(255,255,255,0.7)",marginBottom:"8px"}}>Could not load products right now.</div>
-              <div style={{color:"rgba(255,255,255,0.4)",fontSize:"13px",marginBottom:"20px"}}>Please try again in a moment or contact us via WhatsApp or Telegram {contact.telegram}.</div>
+              <div style={{color:"rgba(255,255,255,0.4)",fontSize:"13px",marginBottom:"20px"}}>Please try again in a moment or contact us via WhatsApp.</div>
               <button onClick={() => window.location.reload()} style={{background:"linear-gradient(135deg,#4a0080,#8b00ff)",color:"white",border:"none",padding:"10px 24px",borderRadius:"30px",cursor:"pointer",fontSize:"14px"}}>Try Again</button>
             </div>
           ) : filtered.length === 0 ? (
@@ -294,7 +295,7 @@ export default function ProductsPage() {
                     }}
                   />
                   <div className="product-footer">
-                    <div className="product-price">£{Number(p.price).toFixed(2)}</div>
+                    <div className="product-price">{formatPrice(p.price)}</div>
                     {(()=>{
                       const inCart=cart.some(i=>i.id===p.id);
                       const hovering=hoveringId===p.id;
@@ -318,14 +319,14 @@ export default function ProductsPage() {
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">{SITE_NAME_CAPS}</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">{FOOTER_COPY}</div>
         </footer>
       </div>
 

@@ -161,7 +161,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ['user', message]
     );
 
-    const system = `You are Berlin in Firestick4UK admin training mode. The admin is "Professor".
+    const system = `You are Berlin in Sandy admin training mode. The admin is "Professor".
 
 ROLEPLAY:
 - Speak as Berlin from Money Heist style: confident, witty, loyal to Professor, but concise.

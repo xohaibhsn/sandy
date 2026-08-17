@@ -104,8 +104,8 @@ export default function FAQPage() {
     <>
       <BreadcrumbSchema
         items={[
-          { name: "Home", url: "https://firestick4uk.com" },
-          { name: "FAQ", url: "https://firestick4uk.com/faq" },
+          { name: "Home", url: "https://sandy.com.pk" },
+          { name: "FAQ", url: "https://sandy.com.pk/faq" },
         ]}
       />
       <JsonLd data={faqLd} />
@@ -164,23 +164,25 @@ export default function FAQPage() {
               <a href={contact.whatsappUrl} className="btn-whatsapp" target="_blank" rel="noopener noreferrer">
                 💬 WhatsApp Us
               </a>
+              {contact.telegramUrl ? (
               <a href={contact.telegramUrl} className="btn-telegram" target="_blank" rel="noopener noreferrer">
                 ✈️ Telegram {contact.telegram}
               </a>
+              ) : null}
               <a href="/contact" className="btn-contact">📧 Contact Form</a>
             </div>
           </div>
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">SANDY</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
         </footer>
       </div>
 

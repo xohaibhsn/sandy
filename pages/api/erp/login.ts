@@ -23,12 +23,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ]) { try { await pool.query(sql); } catch (_) {} }
 
     const adminHash = hashPw('erp123');
-    const [existing]: any = await pool.query('SELECT id FROM erp_users WHERE email = ?', ['admin@firestick4uk.com']);
+    const [existing]: any = await pool.query('SELECT id FROM erp_users WHERE email = ?', ['admin@sandy.com.pk']);
     if (!existing.length) {
-      await pool.query(`INSERT INTO erp_users (name,email,password,role) VALUES ('Admin','admin@firestick4uk.com',?,'admin')`, [adminHash]);
+      const [legacy]: any = await pool.query('SELECT id FROM erp_users WHERE email = ?', ['admin@firestick4uk.com']);
+      if (Array.isArray(legacy) && legacy.length) {
+        await pool.query(`UPDATE erp_users SET email='admin@sandy.com.pk' WHERE email='admin@firestick4uk.com'`).catch(()=>{});
+      } else {
+        await pool.query(`INSERT INTO erp_users (name,email,password,role) VALUES ('Admin','admin@sandy.com.pk',?,'admin')`, [adminHash]);
+      }
     } else {
-      // Migrate legacy plain-text default password to hashed on first boot after this deploy
-      await pool.query(`UPDATE erp_users SET password=? WHERE email='admin@firestick4uk.com' AND password='erp123'`, [adminHash]).catch(()=>{});
+      await pool.query(`UPDATE erp_users SET password=? WHERE email='admin@sandy.com.pk' AND password='erp123'`, [adminHash]).catch(()=>{});
     }
 
     const { email, password } = req.body;

@@ -20,12 +20,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!file || !name) return res.status(400).json({ error: 'No file provided' });
 
     // Determine Cloudinary folder — caller can override, default to products
-    const cloudinaryFolder = (folder as string) || 'firestick4uk/products';
+    const cloudinaryFolder = (folder as string) || 'sandy/products';
     const isReceipt = cloudinaryFolder.includes('receipt');
     const isLogo = cloudinaryFolder.includes('logo');
     const isWhatsAppIcon = cloudinaryFolder.includes('whatsapp');
     const isHeroSlide = cloudinaryFolder.includes('hero-slides');
-    const isOg = cloudinaryFolder.includes('firestick4uk/og') || cloudinaryFolder.endsWith('/og');
+    const isOg = cloudinaryFolder.includes('sandy/og') || cloudinaryFolder.endsWith('/og');
     const preserveImage = isReceipt || isLogo || isWhatsAppIcon || isHeroSlide || isOg;
 
     // Use Cloudinary if credentials are configured

@@ -1,5 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
+import {
+  CONTACT_ADDRESS,
+  CONTACT_EMAIL,
+  FOOTER_COPY,
+  PHONE_DISPLAY,
+  SITE_NAME,
+  WHATSAPP_DIGITS,
+} from '../../lib/site';
 
 function checkAdminAuth(req: any): boolean {
   const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
@@ -9,21 +17,21 @@ function checkAdminAuth(req: any): boolean {
 
 
 const DEFAULTS = [
-  ['site_title','Firestick4UK','text','settings','Website Title'],
-  ['site_tagline','Best Firestick Service in UK','text','settings','Website Tagline'],
+  ['site_title', SITE_NAME,'text','settings','Website Title'],
+  ['site_tagline','Quality products, delivered across Pakistan','text','settings','Website Tagline'],
   ['site_logo_url','','image','settings','Site Logo'],
   ['favicon_url','/favicon.ico','image','settings','Favicon URL'],
   ['og_default_image','','image','settings','Default OG Share Image'],
-  ['whatsapp_number','447518787653','text','settings','WhatsApp Number'],
+  ['whatsapp_number', WHATSAPP_DIGITS,'text','settings','WhatsApp Number'],
   ['whatsapp_icon_url','','image','settings','WhatsApp Button Icon'],
-  ['contact_whatsapp','447518787653','text','settings','WhatsApp Number'],
-  ['contact_phone','+447518787653','text','settings','Phone Number'],
-  ['contact_email','firestick4uk@gmail.com','text','settings','Contact Email'],
-  ['contact_telegram','@firestick44','text','settings','Telegram Handle'],
-  ['home_top_hero_title','Best Firestick Service in UK','text','home','Top Hero Title'],
-  ['home_top_hero_subtitle','Premium Streaming Solutions for the UK','textarea','home','Top Hero Subtitle'],
-  ['home_hero_title','Premium UK Streaming Service','text','home','Main Hero Title'],
-  ['home_hero_subtitle','Firestick4UK provides premium UK streaming services for Firestick and Android Box users.','textarea','home','Main Hero Subtitle'],
+  ['contact_whatsapp', WHATSAPP_DIGITS,'text','settings','WhatsApp Number'],
+  ['contact_phone', PHONE_DISPLAY,'text','settings','Phone Number'],
+  ['contact_email', CONTACT_EMAIL,'text','settings','Contact Email'],
+  ['contact_telegram','','text','settings','Telegram Handle'],
+  ['home_top_hero_title','Sandy — Quality products, delivered across Pakistan','text','home','Top Hero Title'],
+  ['home_top_hero_subtitle','Handpicked quality, authentic products, fast delivery.','textarea','home','Top Hero Subtitle'],
+  ['home_hero_title','Quality products, delivered across Pakistan','text','home','Main Hero Title'],
+  ['home_hero_subtitle','Sandy is your Pakistani online store for accessories, gadgets and everyday essentials.','textarea','home','Main Hero Subtitle'],
   ['home_hero_btn_text','Shop Now','text','home','Main Hero Primary Button'],
   ['home_hero_btn_link','/products','text','home','Main Hero Primary Button Link'],
   ['home_hero_btn_show','1','text','home','Show Primary Button'],
@@ -32,25 +40,25 @@ const DEFAULTS = [
   ['home_hero_btn2_show','1','text','home','Show Secondary Button'],
   ['home_stat1_num','500+','text','home','Stat 1 Number'],
   ['home_stat1_label','Happy Customers','text','home','Stat 1 Label'],
-  ['home_stat2_num','4.9★','text','home','Stat 2 Number'],
-  ['home_stat2_label','Average Rating','text','home','Stat 2 Label'],
+  ['home_stat2_num','Nationwide','text','home','Stat 2 Number'],
+  ['home_stat2_label','Pakistan Delivery','text','home','Stat 2 Label'],
   ['home_stat3_num','24/7','text','home','Stat 3 Number'],
-  ['home_stat3_label','Support','text','home','Stat 3 Label'],
-  ['home_tagline','Fast. Reliable. Affordable.','text','home','Tagline'],
-  ['home_meta_title','Firestick4UK — Best Streaming Service UK','text','home','Meta Title'],
-  ['home_meta_description','Premium Firestick subscriptions and streaming services in the UK. HD & 4K channels, live sports, movies and more.','textarea','home','Meta Description'],
-  ['about_title','About Firestick4UK','text','about','Page Title'],
-  ['about_description','We started Firestick4UK with one goal — to make premium streaming devices and subscription plans accessible, affordable, and hassle-free for everyone in the UK.','textarea','about','Main Description'],
-  ['about_mission','Our mission is to deliver the best streaming experience at fair prices, with real human support that actually helps.','textarea','about','Mission Statement'],
+  ['home_stat3_label','WhatsApp Support','text','home','Stat 3 Label'],
+  ['home_tagline','Handpicked quality. Fast delivery.','text','home','Tagline'],
+  ['home_meta_title','Sandy — Quality products, delivered across Pakistan','text','home','Meta Title'],
+  ['home_meta_description','Handpicked quality, authentic products, fast delivery. Shop accessories, gadgets and everyday essentials at Sandy.','textarea','home','Meta Description'],
+  ['about_title','About Sandy','text','about','Page Title'],
+  ['about_description','Sandy is a Pakistani online store based in Lahore. We started with a simple idea — quality products, honest prices, and delivery you can rely on.','textarea','about','Main Description'],
+  ['about_mission','Our mission is to make everyday shopping easier across Pakistan — authentic products, fair prices, and real human support on WhatsApp.','textarea','about','Mission Statement'],
   ['contact_hours','9AM – 10PM, 7 days a week','text','contact','Business Hours'],
-  ['contact_address','United Kingdom','text','contact','Address'],
-  ['footer_text','© 2026 Firestick4UK. All rights reserved.','textarea','footer','Footer Text'],
-  ['footer_tagline','Premium Firestick Services UK','text','footer','Footer Tagline'],
+  ['contact_address', CONTACT_ADDRESS,'text','contact','Address'],
+  ['footer_text', FOOTER_COPY,'textarea','footer','Footer Text'],
+  ['footer_tagline','Quality products, delivered across Pakistan','text','footer','Footer Tagline'],
   ['hero_slide_1','','image','settings','Hero Slide 1'],
   ['hero_slide_2','','image','settings','Hero Slide 2'],
   ['hero_slide_3','','image','settings','Hero Slide 3'],
   ['hero_slide_4','','image','settings','Hero Slide 4'],
-  ['home_features_list','HD & 4K Streaming Quality\nLive Sports & Entertainment\nMovies & TV Series On Demand\nCatch-up TV Available\nCompatible with All Devices\nFast Setup & Activation\n24/7 Customer Support\nUK Based Service\nEasy Remote Setup Help\nNo Hidden Fees\nSame-Day Order Processing\nSecure Payment Options\nMulti-Device Compatibility\nRegular Channel Updates','textarea','home','Service Features Content'],
+  ['home_features_list','Authentic, carefully selected products\nNationwide delivery across Pakistan\nCash on Delivery available\nJazzCash, Easypaisa and bank transfer\nWhatsApp support\nEasy returns on faulty items\nNo hidden fees\nSecure checkout\nFast order processing\nQuality you can trust','textarea','home','Service Features Content'],
 ];
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -78,35 +86,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch (_) {}
     }
 
-    // Migrate old email addresses to new one
+    // Migrate Firestick / UK CMS rows to Sandy (Pakistan)
     try {
       await pool.query(
-        "UPDATE site_content SET content_value='firestick4uk@gmail.com' WHERE content_key='contact_email' AND content_value LIKE '%@firestick4uk.com%'"
-      );
-    } catch (_) {}
-
-    // Migrate old WhatsApp / phone number to new one (only when old number is still stored)
-    try {
-      await pool.query(
-        "UPDATE site_content SET content_value='447518787653', page_name='settings', label='WhatsApp Number' WHERE content_key IN ('whatsapp_number','contact_whatsapp') AND content_value LIKE '%447934519060%'"
+        `UPDATE site_content SET content_value=? WHERE content_key='contact_email' AND (content_value LIKE '%firestick%' OR content_value LIKE '%@firestick4uk.com%')`,
+        [CONTACT_EMAIL]
       );
       await pool.query(
-        "UPDATE site_content SET content_value=REPLACE(content_value,'447934519060','447518787653') WHERE content_value LIKE '%447934519060%'"
+        `UPDATE site_content SET content_value=? WHERE content_key IN ('whatsapp_number','contact_whatsapp') AND (content_value LIKE '%447%' OR content_value LIKE '%44%')`,
+        [WHATSAPP_DIGITS]
       );
       await pool.query(
-        "UPDATE site_content SET content_value=REPLACE(content_value,'+44 7934 519060','+447518787653') WHERE content_value LIKE '%7934 519060%'"
+        `UPDATE site_content SET content_value=? WHERE content_key='contact_phone' AND content_value LIKE '%44%'`,
+        [PHONE_DISPLAY]
       );
       await pool.query(
-        "UPDATE site_content SET content_value='+447518787653', page_name='settings', label='Phone Number' WHERE content_key='contact_phone' AND (content_value LIKE '%7934%519060%' OR content_value LIKE '%447934519060%')"
+        `UPDATE site_content SET content_value=? WHERE content_key='contact_address' AND (content_value LIKE '%United Kingdom%' OR content_value LIKE '%UK%')`,
+        [CONTACT_ADDRESS]
       );
       await pool.query(
-        "UPDATE site_content SET page_name='settings', label='WhatsApp Number' WHERE content_key='contact_whatsapp'"
+        `UPDATE site_content SET content_value='' WHERE content_key='contact_telegram' AND content_value LIKE '%firestick%'`
       );
       await pool.query(
-        "UPDATE site_content SET page_name='settings', label='Phone Number' WHERE content_key='contact_phone'"
+        `UPDATE site_content SET content_value=? WHERE content_key='site_title' AND content_value LIKE '%Firestick%'`,
+        [SITE_NAME]
       );
       await pool.query(
-        "UPDATE site_content SET page_name='settings', label='Contact Email' WHERE content_key='contact_email'"
+        `UPDATE site_content SET content_value='Quality products, delivered across Pakistan' WHERE content_key='site_tagline' AND (content_value LIKE '%Firestick%' OR content_value LIKE '%UK%')`
+      );
+      await pool.query(
+        `UPDATE site_content SET content_value=? WHERE content_key='footer_text' AND content_value LIKE '%Firestick%'`,
+        [FOOTER_COPY]
+      );
+      await pool.query(
+        `UPDATE site_content SET page_name='settings', label='WhatsApp Number' WHERE content_key='contact_whatsapp'`
+      );
+      await pool.query(
+        `UPDATE site_content SET page_name='settings', label='Phone Number' WHERE content_key='contact_phone'`
+      );
+      await pool.query(
+        `UPDATE site_content SET page_name='settings', label='Contact Email' WHERE content_key='contact_email'`
       );
     } catch (_) {}
 
@@ -123,7 +142,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Ensure telegram default exists
     try {
       await pool.query(
-        "INSERT IGNORE INTO site_content (content_key, content_value, content_type, page_name, label) VALUES ('contact_telegram','@firestick44','text','settings','Telegram Handle')"
+        "INSERT IGNORE INTO site_content (content_key, content_value, content_type, page_name, label) VALUES ('contact_telegram','','text','settings','Telegram Handle')"
       );
     } catch (_) {}
 

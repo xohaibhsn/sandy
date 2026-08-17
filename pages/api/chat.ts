@@ -4,63 +4,42 @@ import nodemailer from 'nodemailer';
 import pool from '@/lib/db';
 import { RL_GENERAL, getClientIp } from '@/lib/rateLimit';
 import { getContactConfig } from '@/lib/contact-config';
+import { CONTACT_EMAIL, ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL } from '@/lib/site';
 
-function buildSystemPrompt(whatsappDisplay: string, telegram: string) {
-  return `Your name is Berlin. You are a friendly sales and support assistant for Firestick4UK (firestick4uk.com) — a UK-based streaming service.
+function buildSystemPrompt(whatsappDisplay: string) {
+  return `Your name is Berlin. You are a friendly sales and support assistant for ${SITE_NAME} (${SITE_URL.replace(/^https?:\/\//, '')}) — a Pakistani online store selling accessories, gadgets and general products.
 
-PRODUCTS & PRICING:
-- 1 Month: £12
-- 3 Months: £20
-- 6 Months: £30
-- 1 Year: £50
-- 2 Years: £70
-- 4 Years: £100
-- Lifetime: £140
-All plans include HD & 4K channels, Live Sports, Movies, Series, Catch-up TV.
+STORE:
+- Based in Lahore, Pakistan
+- Delivers nationwide
+- Launching with accessories first; more categories over time
+- Do not invent prices. Direct customers to the website product pages for current prices.
 
 PAYMENT:
-- Chase Bank: Robert George Bennett, Sort 60-84-07, Acc 70745518
-- Revolut: revolut.me/robertalu6
-- Reference: Customer first name only
-- No PayPal. No COD.
+- Cash on Delivery (COD) is available and is the default at checkout
+- JazzCash, Easypaisa and bank transfer are also available
+- Account numbers are shared after the order is placed
+- Never share UK bank details, Revolut, or sort codes
 
 DELIVERY:
-- All digital. Active within 1 hour of payment.
-
-DEVICES & APPS:
-- Firestick 1st gen / Android box: A1 IPTV Player — Downloader code 8244908
-- Firestick 2nd gen: XCIPTV — code 649789
-- Firestick 3rd gen: IBO Player Pro (Amazon)
-- Samsung/LG Smart TV: IBO Player Pro (TV Store)
-- iPhone: IBO Player Pro or NEXT+ Player
-- Roku: IBO Player (Roku Store)
-- Android phone/tablet: firestick4uk.com/downloads/A1IPTVPlayer-latest.apk
-- Server URL: http://sticktv4k.com:80/ (HTTP only!)
-
-POLICIES:
-- No free trials
-- 7-day money back on 1 Year and above only
-- One connection per subscription
-- Outside UK: available but no guarantee
-- ISP blocking: use VPN or mobile hotspot
+- Physical products delivered across Pakistan
+- Typical delivery 2–5 working days depending on city
+- Shipping is currently free
 
 CONTACT:
 - WhatsApp: ${whatsappDisplay}
-- Telegram: ${telegram}
 
 BEHAVIOUR RULES:
-- Friendly British English
+- Plain, helpful English
 - Introduce yourself as Berlin
-- Always ask what device customer is using
-- Never share reseller pricing
+- Do not talk about Firestick, IPTV, streaming subscriptions, or UK services
 - Collect name + WhatsApp BEFORE sharing payment details
 - Say: 'Before I share payment details, could I get your name and WhatsApp number so we can confirm your order?'
-- Recommend 1 Year plan for unsure customers
 - Complex issues → WhatsApp: ${whatsappDisplay}
 
 LEAD CAPTURE:
 - Once you have customer name + WhatsApp: add [LEAD_CAPTURED:name:number:interest] at END of your response
-- Example: [LEAD_CAPTURED:John:07911234567:1 Year]`;
+- Example: [LEAD_CAPTURED:Ahmed:03334800181:phone accessories]`;
 }
 
 type ChatMessage = {
@@ -168,10 +147,10 @@ async function sendLeadEmail(params: {
   });
 
   await transporter.sendMail({
-    from: '"Berlin | Firestick4UK" <noreply@firestick4uk.com>',
-    to: 'firestick4uk@gmail.com',
-    subject: `🔔 New Lead — ${params.name} | Firestick4UK`,
-    text: `Hi Hassan,
+    from: `"Berlin | ${SITE_NAME}" <${ORDERS_FROM_EMAIL}>`,
+    to: CONTACT_EMAIL,
+    subject: `🔔 New Lead — ${params.name} | ${SITE_NAME}`,
+    text: `Hi,
 
 New lead from Berlin Chat!
 
@@ -183,7 +162,7 @@ New lead from Berlin Chat!
 Chat History:
 ${params.chatHistory}
 
-— Berlin | firestick4uk.com`,
+— Berlin | ${SITE_URL.replace(/^https?:\/\//, '')}`,
   });
 }
 
@@ -205,7 +184,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const trainingPrompt = await getBerlinTrainingPrompt();
     const contact = await getContactConfig();
     const whatsappDisplay = contact.phone.startsWith('+') ? contact.phone : `+${contact.whatsapp}`;
-    const systemPrompt = buildSystemPrompt(whatsappDisplay, contact.telegram);
+    const systemPrompt = buildSystemPrompt(whatsappDisplay);
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const completion = await client.messages.create({
@@ -222,7 +201,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .map((m) => `${m.role === 'user' ? 'Customer' : 'Berlin'}: ${m.content}`)
       .join('\n\n');
 
-    const timestamp = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' });
+    const timestamp = new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' });
     const leadName = lead?.name || 'Website visitor';
     const leadWhatsapp = lead?.whatsapp || 'Not provided';
     const leadInterest = lead?.interest || 'General chat enquiry';

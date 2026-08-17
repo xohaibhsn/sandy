@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { WHATSAPP_DIGITS } from "@/lib/site";
 
 export default function WhatsAppButton() {
   const [config, setConfig] = useState({
-    number: "447518787653",
+    number: WHATSAPP_DIGITS,
     iconUrl: "",
   });
 
@@ -13,7 +14,7 @@ export default function WhatsAppButton() {
       .then((r) => r.json())
       .then((data) => {
         setConfig({
-          number: data.contact_whatsapp || data.whatsapp_number || "447518787653",
+          number: data.contact_whatsapp || data.whatsapp_number || WHATSAPP_DIGITS,
           iconUrl: data.whatsapp_icon_url || "",
         });
       })

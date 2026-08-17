@@ -104,7 +104,7 @@ function MyLedgerContent({ user }: { user: any }) {
 
     {/* Print-only employee statement header */}
     <div className="print-header-emp" style={{marginBottom:20,paddingBottom:14,borderBottom:"2px solid #111"}}>
-      <div style={{fontSize:22,fontWeight:800,fontFamily:"serif"}}>FIRESTICK4UK — Personal Ledger Statement</div>
+      <div style={{fontSize:22,fontWeight:800,fontFamily:"serif"}}>SANDY — Personal Ledger Statement</div>
       <div style={{fontSize:13,color:"#444",marginTop:4}}>Employee: <strong>{user.name}</strong> · Generated: {new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
     </div>
 

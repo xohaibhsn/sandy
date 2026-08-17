@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Cart & Checkout — Firestick4UK",
-  description: "Complete your order for Firestick devices, Streaming Plans and Android boxes. Secure checkout with bank transfer or cash on delivery.",
+  title: `Cart & Checkout — ${SITE_NAME}`,
+  description: "Complete your order at Sandy. Cash on Delivery, JazzCash, Easypaisa or bank transfer.",
   openGraph: {
-    title: "Cart & Checkout — Firestick4UK",
-    description: "Complete your order for Firestick devices, Streaming Plans and Android boxes. Secure checkout.",
-    url: "https://firestick4uk.com/cart",
-    siteName: "Firestick4UK",
+    title: `Cart & Checkout — ${SITE_NAME}`,
+    description: "Complete your order at Sandy. Cash on Delivery, JazzCash, Easypaisa or bank transfer.",
+    url: `${SITE_URL}/cart`,
+    siteName: SITE_NAME,
     type: "website",
   },
 };

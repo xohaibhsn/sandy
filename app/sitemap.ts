@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next";
 import pool from "@/lib/db";
+import { SITE_URL } from "@/lib/site";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = "https://firestick4uk.com";
+  const baseUrl = SITE_URL;
   const now = new Date();
 
   const staticPages: MetadataRoute.Sitemap = [

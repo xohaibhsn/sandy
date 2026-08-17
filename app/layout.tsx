@@ -6,6 +6,7 @@ import { CartProvider } from "./lib/cartContext";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import JsonLd from "@/components/JsonLd";
 import { getContactConfig } from "@/lib/contact-config";
+import { PHONE_DISPLAY, SITE_NAME, SITE_URL } from "@/lib/site";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -76,8 +77,8 @@ function faviconSizeUrl(url: string, size: number): string {
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
-  const title = settings.site_title || "Firestick4UK";
-  const tagline = settings.site_tagline || "Best Firestick Service in UK";
+  const title = settings.site_title || SITE_NAME;
+  const tagline = settings.site_tagline || "Quality products, delivered across Pakistan";
 
   // EACH KEY SEPARATE — never reuse across roles
   const faviconUrl = (settings.favicon_url || "").trim();
@@ -95,16 +96,16 @@ export async function generateMetadata(): Promise<Metadata> {
   const icon180 = faviconUrl ? faviconSizeUrl(faviconUrl, 180) : "/api/favicon";
   const ogFinal = ogImageUrl
     ? withCacheBust(ogImageUrl)
-    : "https://firestick4uk.com/og-default.jpg";
+    : `${SITE_URL}/og-default.jpg`;
 
   const description =
-    "Buy Firestick, streaming subscriptions and Android boxes in the UK. Fast delivery, easy setup, real support.";
+    "Sandy — a Pakistani online store for accessories, gadgets and everyday products. Handpicked quality, authentic products, fast delivery across Pakistan.";
 
   return {
     title: `${title} — ${tagline}`,
     description,
     keywords:
-      "Firestick UK, Firestick subscription, Android box, streaming device, buy firestick UK",
+      "Sandy, online store Pakistan, accessories Pakistan, gadgets, buy online Lahore, sandy.com.pk",
     robots: {
       index: true,
       follow: true,
@@ -114,7 +115,7 @@ export async function generateMetadata(): Promise<Metadata> {
       },
     },
     alternates: {
-      canonical: "https://firestick4uk.com",
+      canonical: SITE_URL,
     },
     authors: [{ name: title }],
     icons: {
@@ -129,7 +130,7 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       title: `${title} — ${tagline}`,
       description,
-      url: "https://firestick4uk.com",
+      url: SITE_URL,
       siteName: title,
       type: "website",
       images: [{ url: ogFinal, width: 1200, height: 630, alt: title }],
@@ -140,7 +141,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description,
       images: [ogFinal],
     },
-    metadataBase: new URL("https://firestick4uk.com"),
+    metadataBase: new URL(SITE_URL),
   };
 }
 
@@ -149,21 +150,21 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const settings = await getSiteSettings();
   const contact = await getContactConfig();
-  const logoUrl = settings.site_logo_url || "https://firestick4uk.com/logo.png";
+  const logoUrl = settings.site_logo_url || `${SITE_URL}/logo.png`;
   const organizationLd = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "Firestick4UK",
-    url: "https://firestick4uk.com",
+    name: SITE_NAME,
+    url: SITE_URL,
     logo: logoUrl,
     contactPoint: {
       "@type": "ContactPoint",
-      telephone: contact.phone,
+      telephone: contact.phone || PHONE_DISPLAY,
       email: contact.email,
       contactType: "customer service",
       availableLanguage: "English",
     },
-    sameAs: [contact.telegramUrl],
+    sameAs: contact.telegramUrl ? [contact.telegramUrl] : [],
   };
 
   return (
@@ -171,26 +172,7 @@ export default async function RootLayout({
       lang="en"
       className={`${inter.variable} ${jakarta.variable} ${cinzel.variable} h-full antialiased`}
     >
-      <head>
-        <meta
-          name="google-site-verification"
-          content="bE3BpMEsptGDckTW4IX1nVwGibbaaiphTCCbQp9y-FY"
-        />
-        <script
-          async
-          src="https://www.googletagmanager.com/gtag/js?id=G-055GHH06KD"
-        />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', 'G-055GHH06KD');
-            `,
-          }}
-        />
-      </head>
+      <head />
       <body className="min-h-full flex flex-col">
         <JsonLd data={organizationLd} />
         <CartProvider>{children}</CartProvider>

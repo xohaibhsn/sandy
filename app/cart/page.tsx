@@ -4,6 +4,29 @@ import { useState } from "react";
 import { useCart } from "../lib/cartContext";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import {
+  CLOUDINARY_FOLDER,
+  FOOTER_COPY,
+  PAKISTAN_PROVINCES,
+  SITE_NAME_CAPS,
+  SITE_URL,
+  TAX_LABEL,
+  TAX_RATE,
+  formatPrice,
+} from "@/lib/site";
+
+type PaymentMethod = "cod" | "jazzcash" | "easypaisa" | "bank";
+
+const PAYMENT_OPTIONS: { val: PaymentMethod; label: string; sub: string }[] = [
+  { val: "cod", label: "Cash on Delivery (COD)", sub: "Pay in cash when your order arrives" },
+  { val: "jazzcash", label: "JazzCash", sub: "Pay via JazzCash and enter your payment reference" },
+  { val: "easypaisa", label: "Easypaisa", sub: "Pay via Easypaisa and enter your payment reference" },
+  { val: "bank", label: "Bank Transfer", sub: "Transfer to our bank and upload your receipt" },
+];
+
+function paymentLabel(method: string): string {
+  return PAYMENT_OPTIONS.find((p) => p.val === method)?.label || method;
+}
 
 const navStyles = `
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -81,8 +104,8 @@ const navStyles = `
   .form-section h3 { font-family:var(--font-display); font-size:17px; font-weight:700; color:#111111; margin-bottom:22px; padding-bottom:14px; border-bottom:1px solid #F0F0F0; }
   .form-group { margin-bottom:16px; }
   .form-group label { display:block; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#666666; margin-bottom:7px; font-weight:600; }
-  .form-group input, .form-group textarea { width:100%; background:#FFFFFF; border:1px solid #E5E5E5; border-radius:9px; padding:11px 14px; color:#111111; font-family:var(--font-body); font-size:14px; transition:all 0.2s; outline:none; }
-  .form-group input:focus, .form-group textarea:focus { border-color:#5B21B6; box-shadow:0 0 0 3px rgba(91,33,182,0.1); }
+  .form-group input, .form-group textarea, .form-group select { width:100%; background:#FFFFFF; border:1px solid #E5E5E5; border-radius:9px; padding:11px 14px; color:#111111; font-family:var(--font-body); font-size:14px; transition:all 0.2s; outline:none; }
+  .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color:#5B21B6; box-shadow:0 0 0 3px rgba(91,33,182,0.1); }
   .form-group input::placeholder, .form-group textarea::placeholder { color:#AAAAAA; }
   .form-group textarea { resize:vertical; min-height:80px; }
 
@@ -164,15 +187,14 @@ export default function CartPage() {
   const { cart, removeFromCart, updateQty, clearCart, total } = useCart();
   const contact = useContactConfig();
   const [step, setStep] = useState<Step>("cart");
-  const [paymentMethod, setPaymentMethod] = useState<"bank" | "cod">("bank");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [paymentReference, setPaymentReference] = useState("");
   const [placing, setPlacing] = useState(false);
-  const [orderId, setOrderId] = useState("");
   const [orderError, setOrderError] = useState("");
 
   const [form, setForm] = useState({
-    name: "", email: "", phone: "", address: "", city: "", postcode: "", notes: ""
+    name: "", email: "", phone: "", address: "", area: "", city: "", postcode: "", province: "", notes: ""
   });
 
   // Coupon state
@@ -181,11 +203,12 @@ export default function CartPage() {
   const [couponError, setCouponError] = useState("");
   const [couponChecking, setCouponChecking] = useState(false);
 
-  const shipping = cart.some(i => i.name.toLowerCase().includes("plan")) ? 0 : cart.length > 0 ? 3.99 : 0;
+  const shipping = 0;
   const subtotal = total;
-  const vatAmount = Math.round(subtotal * 0.20 * 100) / 100;
+  const vatAmount = Math.round(subtotal * TAX_RATE * 100) / 100;
   const discountAmount = couponApplied ? couponApplied.discount_amount : 0;
   const grandTotal = Math.round((subtotal + shipping + vatAmount - discountAmount) * 100) / 100;
+  const isPrepaid = paymentMethod !== "cod";
 
   const applyCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -213,7 +236,7 @@ export default function CartPage() {
         const uploadRes = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file: base64, name: receiptFile.name, folder: "firestick4uk/receipts" }),
+          body: JSON.stringify({ file: base64, name: receiptFile.name, folder: `${CLOUDINARY_FOLDER}/receipts` }),
         });
         const uploadData = await uploadRes.json();
         receiptPath = uploadData.path || "";
@@ -226,9 +249,9 @@ export default function CartPage() {
           customer_name: form.name,
           customer_email: form.email,
           customer_phone: form.phone,
-          delivery_address: form.address,
+          delivery_address: [form.address, form.area].filter(Boolean).join(", "),
           city: form.city,
-          postcode: form.postcode,
+          postcode: [form.province, form.postcode].filter(Boolean).join(" — "),
           notes: form.notes,
           payment_method: paymentMethod,
           receipt_path: receiptPath,
@@ -244,12 +267,12 @@ export default function CartPage() {
       const data = await res.json();
       if (data.order_id) {
         const oid = data.order_id;
-        setOrderId(oid);
 
-        const itemsList = cart.map(i => `• ${i.name} x${i.qty} — £${(i.price * i.qty).toFixed(2)}`).join('\n');
-        const fullAddress = [form.address, form.city, form.postcode].filter(Boolean).join(', ');
+        const host = SITE_URL.replace(/^https?:\/\//, "");
+        const itemsList = cart.map(i => `• ${i.name} x${i.qty} — ${formatPrice(i.price * i.qty)}`).join('\n');
+        const fullAddress = [form.address, form.area, form.city, form.province, form.postcode].filter(Boolean).join(', ');
         const waMessage = [
-          '🛍️ *NEW ORDER — firestick4uk.com*',
+          `🛍️ *NEW ORDER — ${host}*`,
           '',
           `📋 *Order ID:* ${oid}`,
           `👤 *Name:* ${form.name}`,
@@ -261,18 +284,18 @@ export default function CartPage() {
           '🛒 *Items:*',
           itemsList,
           '',
-          `💰 *Subtotal:* £${subtotal.toFixed(2)}`,
-          `🚚 *Shipping:* ${shipping === 0 ? 'Free' : '£' + shipping.toFixed(2)}`,
-          `🧾 *VAT (20%):* £${vatAmount.toFixed(2)}`,
-          couponApplied ? `🎟️ *Discount (${couponApplied.code}):* -£${discountAmount.toFixed(2)}` : null,
-          `💵 *Total: £${grandTotal.toFixed(2)}*`,
+          `💰 *Subtotal:* ${formatPrice(subtotal)}`,
+          `🚚 *Shipping:* ${shipping === 0 ? 'Free' : formatPrice(shipping)}`,
+          `🧾 *${TAX_LABEL}:* ${formatPrice(vatAmount)}`,
+          couponApplied ? `🎟️ *Discount (${couponApplied.code}):* -${formatPrice(discountAmount)}` : null,
+          `💵 *Total: ${formatPrice(grandTotal)}*`,
           '',
-          `💳 *Payment:* ${paymentMethod === 'bank' ? 'Bank Transfer' : 'Cash on Delivery'}`,
-          paymentMethod === 'bank' ? '✅ Payment receipt uploaded' : '',
-          paymentReference ? `🏷️ *Payment Reference:* ${paymentReference}` : '💳 *Payment Reference:* Not provided',
+          `💳 *Payment:* ${paymentLabel(paymentMethod)}`,
+          isPrepaid && receiptFile ? '✅ Payment receipt uploaded' : '',
+          paymentReference ? `🏷️ *Payment Reference:* ${paymentReference}` : isPrepaid ? '💳 *Payment Reference:* Not provided' : null,
           '',
           '📦 *Status:* Pending ⏳',
-          '— Sent from firestick4uk.com',
+          `— Sent from ${host}`,
         ].filter(Boolean).join('\n');
 
         sessionStorage.setItem('orderSuccess', JSON.stringify({
@@ -284,7 +307,7 @@ export default function CartPage() {
       } else {
         setOrderError(data.error?.includes("connect") || data.error?.includes("timeout")
           ? "Our system is temporarily unavailable. Please try again in a moment."
-          : "Order could not be placed. Please try again or contact us on WhatsApp or Telegram.");
+          : "Order could not be placed. Please try again or contact us on WhatsApp.");
       }
     } catch {
       setOrderError("Network error. Please check your connection and try again.");
@@ -320,7 +343,7 @@ export default function CartPage() {
                     <div className="cart-item-image">📦</div>
                     <div className="cart-item-details">
                       <div className="cart-item-name">{item.name}</div>
-                      <div className="cart-item-price">£{(item.price * item.qty).toFixed(2)}</div>
+                      <div className="cart-item-price">{formatPrice(item.price * item.qty)}</div>
                     </div>
                     <div className="cart-item-actions">
                       <div className="qty-control">
@@ -337,12 +360,12 @@ export default function CartPage() {
             <div className="order-summary">
               <div className="summary-header"><h3>Order Summary</h3></div>
               <div className="summary-body">
-                <div className="summary-row"><span>Subtotal</span><span>£{subtotal.toFixed(2)}</span></div>
-                <div className="summary-row"><span>Shipping</span><span>{shipping === 0 ? "Free" : `£${shipping.toFixed(2)}`}</span></div>
-                <div className="summary-row"><span>VAT (20%)</span><span>£{vatAmount.toFixed(2)}</span></div>
-                {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-£{discountAmount.toFixed(2)}</span></div>}
+                <div className="summary-row"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div>
+                <div className="summary-row"><span>Shipping</span><span>{shipping === 0 ? "Free" : formatPrice(shipping)}</span></div>
+                <div className="summary-row"><span>{TAX_LABEL}</span><span>{formatPrice(vatAmount)}</span></div>
+                {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                 <hr className="summary-divider" />
-                <div className="summary-row summary-total"><span>Total</span><span>£{grandTotal.toFixed(2)}</span></div>
+                <div className="summary-row summary-total"><span>Total</span><span>{formatPrice(grandTotal)}</span></div>
               </div>
               {/* Coupon input */}
               <div style={{padding:"0 20px 16px"}}>
@@ -350,7 +373,7 @@ export default function CartPage() {
                   <input style={{flex:1,background:"rgba(139,0,255,0.08)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"8px 12px",color:"white",fontSize:13,outline:"none"}} placeholder="Coupon code" value={couponCode} onChange={e=>setCouponCode(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&applyCoupon()} />
                   <button style={{background:"rgba(139,0,255,0.2)",border:"1px solid rgba(139,0,255,0.4)",color:"#5B21B6",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}} onClick={applyCoupon} disabled={couponChecking}>{couponChecking?"...":"Apply"}</button>
                 </div>
-                {couponApplied && <div style={{fontSize:12,color:"#00c864"}}>✅ {couponApplied.message} — Save £{discountAmount.toFixed(2)}</div>}
+                {couponApplied && <div style={{fontSize:12,color:"#00c864"}}>✅ {couponApplied.message} — Save {formatPrice(discountAmount)}</div>}
                 {couponError && <div style={{fontSize:12,color:"#ff6666"}}>❌ {couponError}</div>}
               </div>
               <button className="checkout-btn" disabled={cart.length === 0} onClick={() => setStep("checkout")}>
@@ -367,10 +390,11 @@ export default function CartPage() {
                 <div className="form-section">
                   <h3>Your Details</h3>
                   {[
-                    {label:"Full Name", key:"name", type:"text", placeholder:"John Smith"},
-                    {label:"Email Address", key:"email", type:"email", placeholder:"john@example.com"},
+                    {label:"Full Name", key:"name", type:"text", placeholder:"Ahmed Khan"},
+                    {label:"Email Address", key:"email", type:"email", placeholder:"ahmed@email.com"},
                     {label:"WhatsApp / Phone", key:"phone", type:"tel", placeholder:contact.phone},
-                    {label:"Delivery Address", key:"address", type:"text", placeholder:"123 High Street"},
+                    {label:"House / Street Address", key:"address", type:"text", placeholder:"House 12, Street 5"},
+                    {label:"Area / Locality", key:"area", type:"text", placeholder:"DHA Phase 5"},
                   ].map(f => (
                     <div className="form-group" key={f.key}>
                       <label>{f.label}</label>
@@ -379,14 +403,23 @@ export default function CartPage() {
                         onChange={e => setForm({...form, [f.key]: e.target.value})} />
                     </div>
                   ))}
+                  <div className="form-group">
+                    <label>Province</label>
+                    <select value={form.province} onChange={e => setForm({...form, province: e.target.value})}>
+                      <option value="">Select province</option>
+                      {PAKISTAN_PROVINCES.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px"}}>
                     <div className="form-group">
                       <label>City</label>
-                      <input type="text" placeholder="London" value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
+                      <input type="text" placeholder="Lahore" value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
                     </div>
                     <div className="form-group">
-                      <label>Postcode</label>
-                      <input type="text" placeholder="SW1A 1AA" value={form.postcode} onChange={e => setForm({...form, postcode: e.target.value})} />
+                      <label>Postal Code (optional)</label>
+                      <input type="text" placeholder="54000" value={form.postcode} onChange={e => setForm({...form, postcode: e.target.value})} />
                     </div>
                   </div>
                   <div className="form-group">
@@ -400,11 +433,8 @@ export default function CartPage() {
                 <div className="form-section">
                   <h3>Payment Method</h3>
                   <div className="payment-options">
-                    {[
-                      {val:"bank", label:"🏦 Bank Transfer", sub:"Transfer to our UK bank & upload receipt"},
-                      {val:"cod", label:"💵 Cash on Delivery", sub:"Pay when your order arrives"},
-                    ].map(p => (
-                      <div key={p.val} className={`payment-option ${paymentMethod === p.val ? "selected" : ""}`} onClick={() => setPaymentMethod(p.val as any)}>
+                    {PAYMENT_OPTIONS.map(p => (
+                      <div key={p.val} className={`payment-option ${paymentMethod === p.val ? "selected" : ""}`} onClick={() => setPaymentMethod(p.val)}>
                         <input type="radio" readOnly checked={paymentMethod === p.val} />
                         <div>
                           <div className="payment-option-label">{p.label}</div>
@@ -414,15 +444,21 @@ export default function CartPage() {
                     ))}
                   </div>
 
-                  {paymentMethod === "bank" && (
+                  {paymentMethod === "cod" && (
+                    <div className="bank-details">
+                      <h4>Cash on Delivery</h4>
+                      <div className="bank-row"><span>Amount Due</span><span>{formatPrice(grandTotal)}</span></div>
+                    </div>
+                  )}
+
+                  {isPrepaid && (
                     <>
                       <div className="bank-details">
-                        <h4>Bank Account Details</h4>
-                        <div className="bank-row"><span>Account Name</span><span>Robert George Bennett</span></div>
-                        <div className="bank-row"><span>Sort Code</span><span>60-84-07</span></div>
-                        <div className="bank-row"><span>Account No.</span><span>70745518</span></div>
-                        <div className="bank-row"><span>Reference</span><span>Your name only</span></div>
-                        <div className="bank-row"><span>Amount</span><span>£{grandTotal.toFixed(2)}</span></div>
+                        <h4>{paymentLabel(paymentMethod)} details</h4>
+                        <p style={{fontSize:13,color:"#555",lineHeight:1.6,marginBottom:10}}>
+                          Account details will be shared after your order. Enter your payment reference below if you have already paid, or wait for our WhatsApp message with the account number.
+                        </p>
+                        <div className="bank-row"><span>Amount</span><span>{formatPrice(grandTotal)}</span></div>
                       </div>
                       <div className="form-group">
                         <label>Upload Payment Receipt (Optional)</label>
@@ -438,34 +474,24 @@ export default function CartPage() {
                         <label>Payment Reference</label>
                         <input
                           type="text"
-                          placeholder="Enter your first name as payment reference"
+                          placeholder="JazzCash / Easypaisa / bank reference (optional)"
                           value={paymentReference}
                           onChange={e => setPaymentReference(e.target.value)}
                         />
-                        <div style={{fontSize:12,color:"#666666",marginTop:6,lineHeight:1.5}}>
-                          💡 Use your first name as the payment reference when making the bank transfer — this helps us identify your payment quickly!
-                        </div>
                       </div>
                     </>
                   )}
 
-                  {paymentMethod === "cod" && (
-                    <div className="bank-details">
-                      <h4>Cash on Delivery</h4>
-                      <div className="bank-row"><span>Amount Due</span><span>£{grandTotal.toFixed(2)}</span></div>
-                    </div>
-                  )}
-
                   <div className="summary-body" style={{background:"rgba(139,0,255,0.05)", borderRadius:"12px", marginBottom:"16px"}}>
-                    <div className="summary-row"><span>Subtotal</span><span>£{subtotal.toFixed(2)}</span></div>
-                    <div className="summary-row"><span>Shipping</span><span>{shipping === 0 ? "Free" : `£${shipping.toFixed(2)}`}</span></div>
-                    <div className="summary-row"><span>VAT (20%)</span><span>£{vatAmount.toFixed(2)}</span></div>
-                    {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-£{discountAmount.toFixed(2)}</span></div>}
+                    <div className="summary-row"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div>
+                    <div className="summary-row"><span>Shipping</span><span>{shipping === 0 ? "Free" : formatPrice(shipping)}</span></div>
+                    <div className="summary-row"><span>{TAX_LABEL}</span><span>{formatPrice(vatAmount)}</span></div>
+                    {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                     <hr className="summary-divider" />
-                    <div className="summary-row summary-total"><span>Total</span><span>£{grandTotal.toFixed(2)}</span></div>
+                    <div className="summary-row summary-total"><span>Total</span><span>{formatPrice(grandTotal)}</span></div>
                   </div>
                   <div style={{background:"rgba(91,33,182,0.08)",border:"1px solid rgba(91,33,182,0.2)",borderRadius:"12px",padding:"12px 14px",fontSize:"13px",lineHeight:1.6,color:"#444444",marginBottom:"16px"}}>
-                    Subscription services are active within 1 hour of payment confirmation.
+                    We deliver across Pakistan. You will receive order updates on WhatsApp.
                   </div>
 
                   <button className="place-order-btn"
@@ -483,9 +509,6 @@ export default function CartPage() {
                         <a href={contact.whatsappUrl} target="_blank" rel="noopener noreferrer" style={{background:"rgba(37,211,102,0.15)",border:"1px solid rgba(37,211,102,0.3)",color:"#25d366",padding:"7px 16px",borderRadius:"8px",fontSize:"12px",textDecoration:"none"}}>
                           💬 WhatsApp Us
                         </a>
-                        <a href={contact.telegramUrl} target="_blank" rel="noopener noreferrer" style={{background:"rgba(34,158,217,0.15)",border:"1px solid rgba(34,158,217,0.3)",color:"#229ED9",padding:"7px 16px",borderRadius:"8px",fontSize:"12px",textDecoration:"none"}}>
-                          ✈️ Telegram {contact.telegram}
-                        </a>
                       </div>
                     </div>
                   )}
@@ -499,8 +522,8 @@ export default function CartPage() {
         )}
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-logo">{SITE_NAME_CAPS}</div>
+          <div className="footer-copy">{FOOTER_COPY}</div>
         </footer>
       </div>
     </>

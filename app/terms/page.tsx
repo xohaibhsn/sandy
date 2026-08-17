@@ -89,20 +89,18 @@ export default function TermsPage() {
             <div className="policy-section" id="agreement">
               <h2>1. Agreement to Terms</h2>
               <div className="highlight-box">
-                <p>By accessing or placing an order on firestick4uk.com, you agree to be bound by these Terms & Conditions. Please read them carefully before making a purchase.</p>
+                <p>By accessing or placing an order on sandy.com.pk, you agree to be bound by these Terms & Conditions. Please read them carefully before making a purchase.</p>
               </div>
-              <p>These terms apply to all visitors, users, and customers of Firestick4UK. We reserve the right to update these terms at any time. Continued use of our website after changes constitutes acceptance of the new terms.</p>
+              <p>These terms apply to all visitors, users, and customers of Sandy. We reserve the right to update these terms at any time. Continued use of our website after changes constitutes acceptance of the new terms.</p>
             </div>
 
             <div className="policy-section" id="products">
               <h2>2. Products & Services</h2>
-              <p>Firestick4UK sells physical streaming devices (Firestick, Android Boxes) and digital subscription plans. All products are subject to availability.</p>
+              <p>Sandy sells accessories, gadgets and general products for customers in Pakistan. All products are subject to availability.</p>
               <ul>
                 <li>Product descriptions and images are for illustrative purposes. Actual products may vary slightly.</li>
-                <li>We reserve the right to modify or discontinue any product or service without prior notice.</li>
-                <li>Subscription plans are for personal, non-commercial use only.</li>
-                <li>Compatible devices include Firestick (all generations), Android box, Smart TV (Samsung/LG), iPhone, Android phone/tablet, Roku and Windows.</li>
-                <li>Reselling or redistributing our subscription plans is strictly prohibited.</li>
+                <li>We reserve the right to modify or discontinue any product without prior notice.</li>
+                <li>Prices are shown in Pakistani Rupees (PKR) and include GST where applicable at checkout.</li>
               </ul>
             </div>
 
@@ -112,30 +110,28 @@ export default function TermsPage() {
               <ul>
                 <li>You must provide accurate and complete information when placing an order.</li>
                 <li>An order is confirmed only after payment has been verified by our team.</li>
-                <li>We will notify you of order confirmation via email, WhatsApp or Telegram.</li>
+                <li>We will notify you of order confirmation via email or WhatsApp.</li>
                 <li>Orders cannot be modified once payment has been verified and fulfilment has begun.</li>
               </ul>
             </div>
 
             <div className="policy-section" id="payment">
               <h2>4. Payment</h2>
-              <p>We accept UK bank transfer and cash on delivery as payment methods.</p>
+              <p>We accept Cash on Delivery, JazzCash, Easypaisa and bank transfer.</p>
               <ul>
-                <li><strong>Bank Transfer:</strong> Payment must be made to the account details shown at checkout. Include your Order ID as the payment reference. Upload your receipt to complete the order.</li>
-                <li><strong>Cash on Delivery:</strong> Payment is due upon delivery of physical goods. Available for UK mainland addresses only.</li>
-                <li>We verify all bank transfer receipts manually. Subscription services are active within 1 hour of payment confirmation.</li>
-                <li>Orders will not be fulfilled until payment is verified.</li>
+                <li><strong>Cash on Delivery:</strong> Payment is due upon delivery. Available across Pakistan.</li>
+                <li><strong>JazzCash / Easypaisa / Bank Transfer:</strong> Account details are shared after you place the order. You may upload a receipt and payment reference at checkout.</li>
+                <li>Prepaid orders are fulfilled after payment is verified.</li>
+                <li>COD orders are dispatched and collected on delivery.</li>
               </ul>
             </div>
 
             <div className="policy-section" id="delivery">
               <h2>5. Delivery</h2>
               <ul>
-                <li>Physical products are delivered within 2-3 working days to UK mainland addresses.</li>
-                <li>Subscription plans are activated digitally and are active within 1 hour of payment confirmation.</li>
+                <li>Physical products are delivered within 2–5 working days across Pakistan, depending on your city.</li>
                 <li>Delivery times are estimates and not guaranteed. We are not liable for delays caused by couriers or circumstances beyond our control.</li>
                 <li>Risk of loss passes to you upon delivery.</li>
-                <li>Service is available outside UK, but performance is not guaranteed due to regional restrictions.</li>
               </ul>
             </div>
 
@@ -152,7 +148,7 @@ export default function TermsPage() {
 
             <div className="policy-section" id="intellectual">
               <h2>7. Intellectual Property</h2>
-              <p>All content on firestick4uk.com — including text, images, logos, and design — is the property of Firestick4UK and is protected by UK copyright law.</p>
+              <p>All content on sandy.com.pk — including text, images, logos, and design — is the property of Sandy and is protected by applicable copyright law.</p>
               <ul>
                 <li>You may not reproduce, distribute, or use our content without prior written permission.</li>
                 <li>Our brand name and logo may not be used without explicit consent.</li>
@@ -161,7 +157,7 @@ export default function TermsPage() {
 
             <div className="policy-section" id="liability">
               <h2>8. Limitation of Liability</h2>
-              <p>To the fullest extent permitted by law, Firestick4UK shall not be liable for:</p>
+              <p>To the fullest extent permitted by law, Sandy shall not be liable for:</p>
               <ul>
                 <li>Any indirect, incidental, or consequential damages arising from use of our products or website.</li>
                 <li>Loss of data, revenue, or profits.</li>
@@ -182,22 +178,22 @@ export default function TermsPage() {
               <div className="highlight-box">
                 <p>📧 Email: {contact.email}<br />
                 💬 WhatsApp: {contact.phone}<br />
-                ✈️ Telegram: {contact.telegram}<br />
-                🌐 Website: firestick4uk.com</p>
+                {contact.telegram ? <>✈️ Telegram: {contact.telegram}<br /></> : null}
+                🌐 Website: sandy.com.pk</p>
               </div>
             </div>
           </div>
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">SANDY</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
         </footer>
       </div>
 

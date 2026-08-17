@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
+import { formatPrice } from '../../lib/site';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { allowed } = RL_GENERAL(getClientIp(req));
@@ -40,7 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const c = rows[0];
       if (c.expires_at && new Date(c.expires_at) < new Date()) return res.status(200).json({ valid:false, message:"Coupon has expired" });
       if (c.usage_limit !== null && c.used_count >= c.usage_limit) return res.status(200).json({ valid:false, message:"Coupon usage limit reached" });
-      if (cart_total < Number(c.minimum_order)) return res.status(200).json({ valid:false, message:`Minimum order £${Number(c.minimum_order).toFixed(2)} required` });
+      if (cart_total < Number(c.minimum_order)) return res.status(200).json({ valid:false, message:`Minimum order ${formatPrice(c.minimum_order)} required` });
 
       const discount = c.type === 'percentage'
         ? Math.min(Number(cart_total) * Number(c.value) / 100, Number(cart_total))

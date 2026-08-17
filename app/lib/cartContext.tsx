@@ -35,7 +35,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // Load from localStorage FIRST, then mark mounted
     // This prevents a brief moment where mounted=true but cart=[] overwrites localStorage
     try {
-      const saved = localStorage.getItem('firestick_cart');
+      const saved = localStorage.getItem('sandy_cart');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) setCart(parsed);
@@ -47,7 +47,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!mounted) return;
     try {
-      localStorage.setItem('firestick_cart', JSON.stringify(cart));
+      localStorage.setItem('sandy_cart', JSON.stringify(cart));
     } catch {}
   }, [cart, mounted]);
 

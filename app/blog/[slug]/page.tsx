@@ -3,6 +3,7 @@ import BlogPostClient from "./BlogPostClient";
 import pool from "../../../lib/db";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import JsonLd from "@/components/JsonLd";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 interface Post {
   id: number; title: string; slug: string; content: string; excerpt: string;
@@ -27,11 +28,11 @@ async function getPost(slug: string): Promise<Post | null> {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const post = await getPost(slug);
-  if (!post) return { title: "Post Not Found | Firestick4UK Blog" };
+  if (!post) return { title: `Post Not Found | ${SITE_NAME} Blog` };
 
-  const title = `${post.meta_title || post.title} | Firestick4UK Blog`;
+  const title = `${post.meta_title || post.title} | ${SITE_NAME} Blog`;
   const description = post.meta_description || post.excerpt || "";
-  const canonical = post.canonical_url || `https://firestick4uk.com/blog/${slug}`;
+  const canonical = post.canonical_url || `${SITE_URL}/blog/${slug}`;
 
   return {
     title,
@@ -41,7 +42,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     openGraph: {
       title, description,
       url: canonical,
-      siteName: "Firestick4UK",
+      siteName: SITE_NAME,
       type: "article",
       publishedTime: post.created_at,
       images: post.featured_image ? [{ url: post.featured_image, width: 1200, height: 630 }] : [],
@@ -54,7 +55,7 @@ export default async function BlogSlugPage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const post = await getPost(slug);
 
-  const canonical = post?.canonical_url || `https://firestick4uk.com/blog/${slug}`;
+  const canonical = post?.canonical_url || `${SITE_URL}/blog/${slug}`;
   const faqsArr = post?.faqs
     ? (typeof post.faqs === "string" ? JSON.parse(post.faqs) : post.faqs) as Array<{question:string;answer:string}>
     : [];
@@ -70,15 +71,15 @@ export default async function BlogSlugPage({ params }: { params: Promise<{ slug:
         dateModified: post.updated_at || post.created_at,
         author: {
           "@type": "Organization",
-          name: "Firestick4UK",
-          url: "https://firestick4uk.com",
+          name: SITE_NAME,
+          url: SITE_URL,
         },
         publisher: {
           "@type": "Organization",
-          name: "Firestick4UK",
+          name: SITE_NAME,
           logo: {
             "@type": "ImageObject",
-            url: "https://firestick4uk.com/logo.png",
+            url: `${SITE_URL}/logo.png`,
           },
         },
         mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
@@ -102,8 +103,8 @@ export default async function BlogSlugPage({ params }: { params: Promise<{ slug:
     <>
       <BreadcrumbSchema
         items={[
-          { name: "Home", url: "https://firestick4uk.com" },
-          { name: "Blog", url: "https://firestick4uk.com/blog" },
+          { name: "Home", url: SITE_URL },
+          { name: "Blog", url: `${SITE_URL}/blog` },
           { name: post?.title || slug, url: canonical },
         ]}
       />

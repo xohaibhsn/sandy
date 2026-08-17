@@ -10,16 +10,15 @@ type ChatMessage = {
   createdAt: Date;
 };
 
-const FIRST_MESSAGE = `👋 Hi! I'm Berlin, your Firestick4UK support assistant!
+const FIRST_MESSAGE = `👋 Hi! I'm Berlin, your Sandy support assistant!
 
-What device are you using?
-- Firestick
-- Smart TV (Samsung/LG)
-- iPhone
-- Android phone
-- Roku
+How can I help today?
+- Finding a product
+- Placing an order
+- Delivery or tracking
+- Payments (COD, JazzCash, Easypaisa, bank transfer)
 
-I'll help you find the perfect plan! 🎯`;
+I'll point you in the right direction.`;
 
 function formatTime(date: Date) {
   return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -191,14 +190,14 @@ export default function ChatWidget() {
       `}</style>
 
       {open && (
-        <div className="berlin-window" role="dialog" aria-label="Berlin Firestick4UK support chat">
+        <div className="berlin-window" role="dialog" aria-label="Berlin Sandy support chat">
           <div className="berlin-header">
             <div>
               <div className="berlin-title-wrap">
-                <div className="berlin-icon">📺</div>
+                <div className="berlin-icon">💬</div>
                 <div>
                   <div className="berlin-title">Berlin</div>
-                  <div className="berlin-subtitle">Firestick4UK Support</div>
+                  <div className="berlin-subtitle">Sandy Support</div>
                 </div>
               </div>
               <div className="berlin-online"><span className="berlin-dot" /> Online</div>

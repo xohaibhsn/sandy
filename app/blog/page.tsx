@@ -127,44 +127,44 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
 
 const posts = [
   {
-    id: 1, featured: true, emoji: "🔥", badge: "guide", badgeText: "Guide",
-    title: "How to Set Up Your Firestick in 5 Minutes",
-    excerpt: "Just received your Firestick? This step-by-step guide walks you through the complete setup process — from plugging in to streaming your first show.",
+    id: 1, featured: true, emoji: "🛒", badge: "guide", badgeText: "Guide",
+    title: "How to Shop on Sandy — A Quick Guide",
+    excerpt: "New to Sandy? This step-by-step guide walks you through browsing products, adding them to your cart, and placing an order for delivery across Pakistan.",
     date: "28 May 2026", readTime: "5 min read", category: "Guides",
   },
   {
     id: 2, emoji: "📦", badge: "tips", badgeText: "Tips",
-    title: "Firestick vs Android Box — Which Should You Buy?",
-    excerpt: "Not sure whether to go for a Firestick or an Android Box? We break down the differences so you can make the right choice for your home.",
+    title: "COD, JazzCash or Bank Transfer — How to Pay",
+    excerpt: "Not sure which payment method to choose? We explain Cash on Delivery, JazzCash, Easypaisa and bank transfer so checkout is simple.",
     date: "25 May 2026", readTime: "4 min read", category: "Guides",
   },
   {
     id: 3, emoji: "💡", badge: "tips", badgeText: "Tips",
-    title: "5 Tips to Get the Most Out of Your Subscription Plan",
-    excerpt: "Make the most of your subscription with these simple tips — from managing profiles to optimising your internet connection for 4K streaming.",
+    title: "5 Tips for Buying Accessories Online in Pakistan",
+    excerpt: "From checking product photos to confirming your city and area, these simple tips help you order with confidence.",
     date: "22 May 2026", readTime: "3 min read", category: "Tips",
   },
   {
     id: 4, emoji: "🔒", badge: "guide", badgeText: "Guide",
-    title: "Is Your Streaming Setup Secure? Here's What to Check",
-    excerpt: "Online security matters. Here are the key things to check to make sure your devices and accounts are protected while you stream.",
+    title: "How to Track Your Sandy Order",
+    excerpt: "Once you have your Order ID, tracking is easy. Here is how to check status from confirmation through to delivery.",
     date: "18 May 2026", readTime: "4 min read", category: "Guides",
   },
   {
-    id: 5, emoji: "📶", badge: "tips", badgeText: "Tips",
-    title: "Slow Buffering? Here Are 6 Fixes That Actually Work",
-    excerpt: "Tired of your stream buffering at the worst moment? These 6 practical fixes will help you get smooth, uninterrupted playback every time.",
+    id: 5, emoji: "🚚", badge: "tips", badgeText: "Tips",
+    title: "Delivery Across Pakistan — What to Expect",
+    excerpt: "Most orders arrive within 2–5 working days depending on your city. Here is how shipping currently works at Sandy.",
     date: "14 May 2026", readTime: "5 min read", category: "Tips",
   },
   {
     id: 6, emoji: "📺", badge: "news", badgeText: "News",
-    title: "What's New at Firestick4UK — May 2026 Update",
+    title: "What's New at Sandy — May 2026 Update",
     excerpt: "We've added new products, improved our order tracking system, and launched our brand new website. Here's everything that's changed this month.",
     date: "10 May 2026", readTime: "2 min read", category: "News",
   },
   {
     id: 7, emoji: "🛒", badge: "guide", badgeText: "Guide",
-    title: "How to Place an Order on Firestick4UK",
+    title: "How to Place an Order on Sandy",
     excerpt: "New to our store? This quick guide walks you through exactly how to browse products, add them to your cart, and complete your order in minutes.",
     date: "5 May 2026", readTime: "3 min read", category: "Guides",
   },
@@ -210,8 +210,8 @@ export default function BlogPage() {
     <>
       <BreadcrumbSchema
         items={[
-          { name: "Home", url: "https://firestick4uk.com" },
-          { name: "Blog", url: "https://firestick4uk.com/blog" },
+          { name: "Home", url: "https://sandy.com.pk" },
+          { name: "Blog", url: "https://sandy.com.pk/blog" },
         ]}
       />
       <style>{styles}</style>
@@ -298,14 +298,14 @@ export default function BlogPage() {
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">SANDY</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
         </footer>
       </div>
 

@@ -6,6 +6,7 @@ import { looksLikeHtml, plainLinesToListHtml } from "@/lib/contentHtml";
 import { useCart } from "./lib/cartContext";
 import Navbar from "@/components/Navbar";
 import HeroSlider from "@/components/HeroSlider";
+import { FOOTER_COPY, SITE_NAME_CAPS, formatPrice } from "@/lib/site";
 
 const cardDescXss = {
   whiteList: {
@@ -66,10 +67,10 @@ function formatHeroTitle(title: string) {
 }
 
 export default function HomeClient({
-  topHeroTitle = "Best Firestick Service in UK",
-  topHeroSubtitle = "Premium Streaming Solutions for the UK",
-  heroTitle = "Premium UK Streaming Service",
-  heroSubtitle = "Firestick4UK provides premium UK streaming services for Firestick and Android Box users.",
+  topHeroTitle = "Sandy — Quality products, delivered across Pakistan",
+  topHeroSubtitle = "Handpicked quality, authentic products, fast delivery.",
+  heroTitle = "Quality products, delivered across Pakistan",
+  heroSubtitle = "Sandy is your Pakistani online store for accessories, gadgets and everyday essentials.",
 }: HomeClientProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,20 +79,16 @@ export default function HomeClient({
   const [hoveringId, setHoveringId] = useState<number | null>(null);
   const [slides, setSlides] = useState<string[]>([]);
   const [featureList, setFeatureList] = useState<string[]>([
-    "HD & 4K Streaming Quality",
-    "Live Sports & Entertainment",
-    "Movies & TV Series On Demand",
-    "Catch-up TV Available",
-    "Compatible with All Devices",
-    "Fast Setup & Activation",
-    "24/7 Customer Support",
-    "UK Based Service",
-    "Easy Remote Setup Help",
-    "No Hidden Fees",
-    "Same-Day Order Processing",
-    "Secure Payment Options",
-    "Multi-Device Compatibility",
-    "Regular Channel Updates",
+    "Authentic, carefully selected products",
+    "Nationwide delivery across Pakistan",
+    "Cash on Delivery available",
+    "JazzCash, Easypaisa and bank transfer",
+    "WhatsApp support",
+    "Easy returns on faulty items",
+    "No hidden fees",
+    "Secure checkout",
+    "Fast order processing",
+    "Quality you can trust",
   ]);
   const [featuresHtml, setFeaturesHtml] = useState("");
   const [heroBtns, setHeroBtns] = useState({
@@ -116,9 +113,9 @@ export default function HomeClient({
 
   // Section data from DB
   const [sec, setSec] = useState<Record<string,any>>({
-    home_hero: { title:"Premium UK Streaming Service", subtitle:"Firestick4UK provides premium UK streaming services for Firestick and Android Box users.", button_text:"Shop Now", button_link:"/products", secondary_button_text:"Learn More", secondary_button_link:"/about" },
-    home_features: { title:"Why Choose Us", items:[{icon:"⚡",title:"Fast Setup",description:"Ready in minutes"},{icon:"🔒",title:"Secure",description:"Safe & reliable"},{icon:"💬",title:"24/7 Support",description:"Always here for you"},{icon:"🚀",title:"Fast Delivery",description:"Quick & efficient"}] },
-    home_testimonials: { title:"What Our Customers Say", items:[{name:"John Smith",rating:5,text:"Amazing service!"},{name:"Sarah Jones",rating:5,text:"Best firestick service in UK!"}] },
+    home_hero: { title:"Quality products, delivered across Pakistan", subtitle:"Sandy is your Pakistani online store for accessories, gadgets and everyday essentials.", button_text:"Shop Now", button_link:"/products", secondary_button_text:"Learn More", secondary_button_link:"/about" },
+    home_features: { title:"Why Choose Us", items:[{icon:"⚡",title:"Fast Delivery",description:"Across Pakistan"},{icon:"🔒",title:"Authentic",description:"Quality you can trust"},{icon:"💬",title:"WhatsApp Support",description:"Always here for you"},{icon:"🚚",title:"Cash on Delivery",description:"Pay when it arrives"}] },
+    home_testimonials: { title:"What Our Customers Say", items:[{name:"Ahmed Khan",rating:5,text:"Amazing service!"},{name:"Sara Ali",rating:5,text:"Fast delivery and genuine products."}] },
     home_newsletter: { title:"Stay in the Loop", subtitle:"Get the latest guides, tips and offers", button_text:"Subscribe" },
   });
 
@@ -622,7 +619,7 @@ export default function HomeClient({
                     }}
                   />
                   <div className="product-footer">
-                    <div className="product-price">£{Number(p.price).toFixed(2)}</div>
+                    <div className="product-price">{formatPrice(p.price)}</div>
                     {(() => {
                       const inCart = cart.some(i => i.id === p.id);
                       const hovering = hoveringId === p.id;
@@ -656,7 +653,7 @@ export default function HomeClient({
             <div className="hero-combined">
               <div className="hero-combined-scroll">
                 <div className="hero-content">
-                  <span className="hero-tag">✦ UK&apos;s #1 Firestick Service</span>
+                  <span className="hero-tag">✦ Quality products, delivered across Pakistan</span>
                   <h2 className="hero-title">
                     {formatHeroTitle(heroTitle)}
                   </h2>
@@ -736,14 +733,14 @@ export default function HomeClient({
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">{SITE_NAME_CAPS}</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">{FOOTER_COPY}</div>
         </footer>
       </div>
 

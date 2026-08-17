@@ -120,9 +120,9 @@ export default function PrivacyPolicyPage() {
             <div className="policy-section" id="overview">
               <h2>1. Overview</h2>
               <div className="highlight-box">
-                <p>Firestick4UK (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard information when you use our website firestick4uk.com.</p>
+                <p>Sandy (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard information when you use our website sandy.com.pk.</p>
               </div>
-              <p>By placing an order or using our website, you agree to the collection and use of information as described in this policy. We comply with the UK General Data Protection Regulation (UK GDPR) and the Data Protection Act 2018.</p>
+              <p>By placing an order or using our website, you agree to the collection and use of information as described in this policy. We handle personal data in line with applicable Pakistani law.</p>
             </div>
 
             <div className="policy-section" id="data-collect">
@@ -131,8 +131,8 @@ export default function PrivacyPolicyPage() {
               <ul>
                 <li>Full name</li>
                 <li>Email address</li>
-                <li>Phone number / WhatsApp number / Telegram username if provided</li>
-                <li>Delivery address (street, city, postcode)</li>
+                <li>Phone number / WhatsApp number</li>
+                <li>Delivery address (house, area, city, province, postal code)</li>
                 <li>Order details and payment receipts</li>
                 <li>IP address and browser information (via cookies)</li>
                 <li>Any messages or communications you send us</li>
@@ -147,7 +147,7 @@ export default function PrivacyPolicyPage() {
                 <li>Processing and fulfilling your orders</li>
                 <li>Verifying bank transfer payments</li>
                 <li>Sending order confirmations and status updates</li>
-                <li>Providing customer support via WhatsApp, Telegram or email</li>
+                <li>Providing customer support via WhatsApp or email</li>
                 <li>Improving our website and services</li>
                 <li>Complying with legal obligations</li>
               </ul>
@@ -182,7 +182,7 @@ export default function PrivacyPolicyPage() {
 
             <div className="policy-section" id="rights">
               <h2>7. Your Rights</h2>
-              <p>Under UK GDPR, you have the following rights regarding your personal data:</p>
+              <p>You have the following rights regarding your personal data:</p>
               <ul>
                 <li><strong>Right to access</strong> — request a copy of the data we hold about you.</li>
                 <li><strong>Right to rectification</strong> — request correction of inaccurate data.</li>
@@ -196,7 +196,7 @@ export default function PrivacyPolicyPage() {
 
             <div className="policy-section" id="retention">
               <h2>8. Data Retention</h2>
-              <p>We retain your personal data for as long as necessary to fulfil the purposes outlined in this policy. Order data is typically retained for 6 years in accordance with UK tax and accounting requirements. You may request deletion of your data at any time, subject to legal obligations.</p>
+              <p>We retain your personal data for as long as necessary to fulfil the purposes outlined in this policy. You may request deletion of your data at any time, subject to legal obligations.</p>
             </div>
 
             <div className="policy-section" id="contact">
@@ -205,23 +205,23 @@ export default function PrivacyPolicyPage() {
               <div className="highlight-box">
                 <p>📧 Email: {contact.email}<br />
                 💬 WhatsApp: {contact.phone}<br />
-                ✈️ Telegram: {contact.telegram}<br />
-                🌐 Website: firestick4uk.com</p>
+                {contact.telegram ? <>✈️ Telegram: {contact.telegram}<br /></> : null}
+                🌐 Website: sandy.com.pk</p>
               </div>
-              <p>You also have the right to lodge a complaint with the Information Commissioner&apos;s Office (ICO) at ico.org.uk if you believe your data has been mishandled.</p>
+              <p>If you believe your data has been mishandled, please contact us and we will look into it.</p>
             </div>
           </div>
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">SANDY</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
         </footer>
       </div>
 

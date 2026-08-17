@@ -144,10 +144,10 @@ const styles = `
 `;
 
 const faqs = [
-  { q: "How do I place an order?", a: "Browse our products, add items to your cart, fill in your details, and complete payment via bank transfer or cash on delivery. You'll receive an Order ID to track your order." },
-  { q: "How long does delivery take?", a: "Physical items (Firestick, Android Boxes) are delivered within 2-3 working days across the UK. Subscription plans are active within 1 hour of payment confirmation." },
-  { q: "How do I pay via bank transfer?", a: "During checkout, our UK bank account details will be shown. Transfer the exact amount, take a screenshot of your receipt, and upload it during checkout." },
-  { q: "How can I track my order?", a: "Use your Order ID (e.g. FK44-12345) on our Order Tracking page to check your order status in real time." },
+  { q: "How do I place an order?", a: "Browse our products, add items to your cart, fill in your details, and complete checkout with Cash on Delivery, JazzCash, Easypaisa or bank transfer. You'll receive an Order ID to track your order." },
+  { q: "How long does delivery take?", a: "We deliver across Pakistan. Most orders arrive within 2–5 working days depending on your city." },
+  { q: "How do I pay by JazzCash, Easypaisa or bank transfer?", a: "Select the method at checkout and place your order. Account details are shared afterwards. Transfer the exact amount, enter your payment reference, and optionally upload a receipt." },
+  { q: "How can I track my order?", a: "Use your Order ID on our Order Tracking page to check your order status in real time." },
 ];
 
 export default function ContactPage() {
@@ -173,9 +173,9 @@ export default function ContactPage() {
       });
       const data = await res.json();
       if (data.success || res.ok) setSubmitted(true);
-      else alert('Failed to send message. Please try WhatsApp or Telegram instead.');
+      else alert('Failed to send message. Please try WhatsApp instead.');
     } catch {
-      alert('Failed to send message. Please try WhatsApp or Telegram instead.');
+      alert('Failed to send message. Please try WhatsApp instead.');
     }
     setSubmitting(false);
   };
@@ -201,12 +201,14 @@ export default function ContactPage() {
             <div className="contact-card-value">{contact.phone}</div>
             <div className="contact-card-sub">✦ Fastest response</div>
           </a>
+          {contact.telegramUrl ? (
           <a href={contact.telegramUrl} className="contact-card" target="_blank" rel="noopener noreferrer">
             <span className="contact-card-icon">✈️</span>
             <div className="contact-card-title">Telegram</div>
             <div className="contact-card-value">{contact.telegram}</div>
             <div className="contact-card-sub">Message us anytime</div>
           </a>
+          ) : null}
           <a href={`mailto:${contact.email}`} className="contact-card">
             <span className="contact-card-icon">📧</span>
             <div className="contact-card-title">Email</div>
@@ -222,8 +224,8 @@ export default function ContactPage() {
           <div className="contact-card">
             <span className="contact-card-icon">📍</span>
             <div className="contact-card-title">Based In</div>
-            <div className="contact-card-value">{sc.contact_address||"United Kingdom"}</div>
-            <div className="contact-card-sub">UK based support</div>
+            <div className="contact-card-value">{sc.contact_address||"Lahore, Pakistan"}</div>
+            <div className="contact-card-sub">Nationwide delivery</div>
           </div>
         </div>
 
@@ -235,7 +237,7 @@ export default function ContactPage() {
               <div className="form-success">
                 <span className="success-icon">✅</span>
                 <div className="success-title">Message Sent!</div>
-                <p className="success-sub">Thank you for reaching out. We&apos;ll get back to you within 24 hours. For urgent queries, please WhatsApp us or message us on Telegram directly.</p>
+                <p className="success-sub">Thank you for reaching out. We&apos;ll get back to you within 24 hours. For urgent queries, please WhatsApp us directly.</p>
               </div>
             ) : (
               <>
@@ -288,15 +290,19 @@ export default function ContactPage() {
               </div>
               <div className="info-card-body">
                 <strong>Fastest way to reach us</strong>
-                Send us a message on WhatsApp or Telegram for instant support. We typically reply within minutes during business hours.
+                Send us a message on WhatsApp for instant support. We typically reply within minutes during business hours.
               </div>
               <a href={contact.whatsappUrl} className="info-card-link" target="_blank" rel="noopener noreferrer">
                 Chat Now on WhatsApp →
               </a>
+              {contact.telegramUrl ? (
+              <>
               <br />
               <a href={contact.telegramUrl} className="info-card-link" target="_blank" rel="noopener noreferrer">
                 Message {contact.telegram} on Telegram →
               </a>
+              </>
+              ) : null}
             </div>
 
             <div className="info-card">
@@ -345,14 +351,14 @@ export default function ContactPage() {
         </div>
 
         <footer>
-          <div className="footer-logo">FIRESTICK4UK</div>
+          <div className="footer-logo">SANDY</div>
           <ul className="footer-links">
             <li><a href="/privacy-policy">Privacy Policy</a></li>
             <li><a href="/terms">Terms & Conditions</a></li>
             <li><a href="/refund-policy">Refund Policy</a></li>
             <li><a href="/faq">FAQ</a></li>
           </ul>
-          <div className="footer-copy">© 2026 Firestick4UK. All rights reserved.</div>
+          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
         </footer>
       </div>
 

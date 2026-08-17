@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "About Us — Firestick4UK | UK Streaming Specialists",
-  description: "Learn about Firestick4UK — a UK-based team dedicated to providing premium streaming devices and Firestick Subscriptions at fair prices.",
-  alternates: { canonical: "https://firestick4uk.com/about" },
-  openGraph: { title: "About Us — Firestick4UK", description: "UK-based streaming specialists.", url: "https://firestick4uk.com/about", siteName: "Firestick4UK", type: "website" },
+  title: `About Us — ${SITE_NAME}`,
+  description: "Sandy is a Pakistani online store based in Lahore. Quality products, honest prices, and delivery you can rely on.",
+  alternates: { canonical: `${SITE_URL}/about` },
+  openGraph: { title: `About Us — ${SITE_NAME}`, description: "A Pakistani online store for accessories, gadgets and everyday products.", url: `${SITE_URL}/about`, siteName: SITE_NAME, type: "website" },
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -13,8 +14,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <>
       <BreadcrumbSchema
         items={[
-          { name: "Home", url: "https://firestick4uk.com" },
-          { name: "About", url: "https://firestick4uk.com/about" },
+          { name: "Home", url: SITE_URL },
+          { name: "About", url: `${SITE_URL}/about` },
         ]}
       />
       {children}

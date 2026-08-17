@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
-  title: "Privacy Policy — Firestick4UK",
-  description: "Firestick4UK Privacy Policy. Learn how we collect, use, and protect your personal data in line with UK GDPR.",
-  openGraph: { title: "Privacy Policy — Firestick4UK", url: "https://firestick4uk.com/privacy-policy", siteName: "Firestick4UK", type: "website" },
+  title: `Privacy Policy — ${SITE_NAME}`,
+  description: `${SITE_NAME} Privacy Policy. Learn how we collect, use, and protect your personal data.`,
+  openGraph: { title: `Privacy Policy — ${SITE_NAME}`, url: `${SITE_URL}/privacy-policy`, siteName: SITE_NAME, type: "website" },
 };
 export default function Layout({ children }: { children: React.ReactNode }) { return <>{children}</>; }
