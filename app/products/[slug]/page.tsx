@@ -20,10 +20,8 @@ async function getProduct(slug: string): Promise<Product | null> {
     const s = slug.toLowerCase();
     const [rows]: any = await pool.query(
       `SELECT * FROM products
-       WHERE (active IS NULL OR active = 1) AND (
-         slug = ?
-         OR LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', '')) = ?
-       )
+       WHERE slug = ?
+          OR LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', '')) = ?
        LIMIT 1`,
       [s, s]
     );

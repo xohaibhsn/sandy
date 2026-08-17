@@ -3,6 +3,10 @@ import crypto from 'crypto';
 import { RL_AUTH, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 
+function setSessionCookie(res: NextApiResponse) {
+  res.setHeader('Set-Cookie', 'sAdminSession=1; Path=/; SameSite=Lax; Max-Age=604800');
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -31,6 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       [username, inputHash]
     );
     if (rows.length) {
+      setSessionCookie(res);
       return res.status(200).json({ success: true, role: rows[0].role, name: rows[0].name, staffUser: true });
     }
   } catch (_) { /* DB not ready yet — fall through to master admin check */ }
@@ -46,18 +51,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (sha256Env) {
     const inputHash = crypto.createHash('sha256').update(String(password)).digest('hex');
-    if (inputHash === sha256Env) return res.status(200).json({ success: true, role: 'super_admin', name: 'Admin' });
+    if (inputHash === sha256Env) {
+      setSessionCookie(res);
+      return res.status(200).json({ success: true, role: 'super_admin', name: 'Admin' });
+    }
   }
 
   if (hashEnv && hashEnv.startsWith('$2')) {
     try {
       const bcrypt = require('bcryptjs');
       const match = await bcrypt.compare(String(password), hashEnv);
-      if (match) return res.status(200).json({ success: true, role: 'super_admin', name: 'Admin' });
+      if (match) {
+        setSessionCookie(res);
+        return res.status(200).json({ success: true, role: 'super_admin', name: 'Admin' });
+      }
     } catch (_) {}
   }
 
   if (plainEnv && String(password) === plainEnv) {
+    setSessionCookie(res);
     return res.status(200).json({ success: true, role: 'super_admin', name: 'Admin' });
   }
 

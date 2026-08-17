@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import dynamic from "next/dynamic";
 import { toEditorHtml } from "@/lib/contentHtml";
-import { CLOUDINARY_FOLDER, SITE_NAME_CAPS, SITE_URL, formatPrice } from "@/lib/site";
+import { CLOUDINARY_FOLDER, SITE_NAME_CAPS, SITE_URL, formatPrice, parsePrice } from "@/lib/site";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
 const styles = `
@@ -188,11 +188,6 @@ const demoOrders = [
   { id:"SND-10002", customer:"Sara Ali", email:"sara@example.com", phone:"+923001112223", items:"Wireless Earbuds", total: formatPrice(4999), status:"pending", date:"17 Aug 2026", receipt:true },
 ];
 
-const demoProducts = [
-  { id:1, name:"Phone Case", category:"Accessories", price: formatPrice(999), stock:"24", emoji:"📦" },
-  { id:2, name:"Wireless Earbuds", category:"Gadgets", price: formatPrice(4999), stock:"12", emoji:"📦" },
-];
-
 const demoCustomers = [
   { name:"Ahmed Khan", email:"ahmed@example.com", phone:"+923334800181", orders:3, spent: formatPrice(7497), joined:"Jan 2026" },
   { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026" },
@@ -221,7 +216,7 @@ export default function AdminPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [adminDropOpen, setAdminDropOpen] = useState(false);
   const [orders, setOrders] = useState(demoOrders);
-  const [products, setProducts] = useState<any[]>(demoProducts);
+  const [products, setProducts] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [ordersPage, setOrdersPage] = useState(1);
   const ORDERS_PER_PAGE = 20;
@@ -288,6 +283,7 @@ export default function AdminPage() {
       setLoggedIn(true);
       setAdminRole((localStorage.getItem("sAdminRole") || "super_admin") as AdminRole);
       setAdminName(localStorage.getItem("sAdminName") || "Admin");
+      document.cookie = "sAdminSession=1; path=/; max-age=604800; SameSite=Lax";
     }
   }, []);
 
@@ -296,10 +292,10 @@ export default function AdminPage() {
     // Fix 2 — include session header for admin API auth
     const session = localStorage.getItem("sAdminSession") || "";
     const adminHeaders = { "x-admin-session": session };
-    fetch("/api/admin-products", { headers: adminHeaders })
+    fetch("/api/admin-products", { headers: adminHeaders, credentials: "same-origin" })
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setProducts(data); })
-      .catch(() => {});
+      .then(data => { setProducts(Array.isArray(data) ? data : []); })
+      .catch(() => { setProducts([]); });
     fetch("/api/admin-orders", { headers: adminHeaders })
       .then(r => r.json())
       .then(data => {
@@ -574,6 +570,7 @@ export default function AdminPage() {
         localStorage.setItem("sAdminSession", "true");
         localStorage.setItem("sAdminRole", res.role || "super_admin");
         localStorage.setItem("sAdminName", res.name || "Admin");
+        document.cookie = "sAdminSession=1; path=/; max-age=604800; SameSite=Lax";
         setAdminRole((res.role || "super_admin") as AdminRole);
         setAdminName(res.name || "Admin");
         setLoggedIn(true);
@@ -590,6 +587,7 @@ export default function AdminPage() {
     localStorage.removeItem("sAdminSession");
     localStorage.removeItem("sAdminRole");
     localStorage.removeItem("sAdminName");
+    document.cookie = "sAdminSession=; path=/; max-age=0";
     setLoggedIn(false);
     setAdminRole("super_admin");
   };
@@ -853,7 +851,6 @@ export default function AdminPage() {
   };
 
   const saveProduct = async () => {
-    const rawPrice = String(editProduct.price).replace(/[^0-9.]/g, "");
     const slug = (editProduct.slug || toSlug(editProduct.name)).trim();
     if (!editProduct.name.trim()) return;
     if (!slug) return;
@@ -861,7 +858,7 @@ export default function AdminPage() {
       name: editProduct.name,
       slug,
       description: editProduct.short_description || "",
-      price: rawPrice,
+      price: parsePrice(editProduct.price),
       category: editProduct.category,
       badge: null,
       image: editProduct.image || null,
@@ -896,7 +893,7 @@ export default function AdminPage() {
   };
 
   const openEditProduct = (p: any) => {
-    const rawPrice = p.price ? formatPrice(String(p.price).replace(/[^0-9.]/g,'')) : "";
+    const rawPrice = p.price != null && p.price !== "" ? String(parsePrice(p.price)) : "";
     setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||"Subscription", price:rawPrice, stock:p.stock||"Digital", image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"" });
     setProductModal(p);
   };
@@ -1461,12 +1458,21 @@ export default function AdminPage() {
                 <table>
                   <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Actions</th></tr></thead>
                   <tbody>
+                    {products.length === 0 && (
+                      <tr><td colSpan={6} style={{textAlign:"center",color:"#999",padding:"24px"}}>No products in the database yet. Click + Add Product.</td></tr>
+                    )}
                     {products.map(p => (
                       <tr key={p.id}>
-                        <td><div className="product-thumb">{p.emoji}</div></td>
+                        <td>
+                          <div className="product-thumb">
+                            {p.image
+                              ? <img src={p.image} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:8}} />
+                              : (p.emoji || "📦")}
+                          </div>
+                        </td>
                         <td style={{fontWeight:600}}>{p.name}</td>
                         <td><span style={{background:"rgba(139,0,255,0.1)",border:"1px solid rgba(139,0,255,0.2)",padding:"3px 10px",borderRadius:"10px",fontSize:"12px"}}>{p.category}</span></td>
-                        <td style={{fontWeight:700,color:"#5B21B6"}}>{formatPrice(String(p.price ?? "").replace(/[^0-9.]/g, "") || 0)}</td>
+                        <td style={{fontWeight:700,color:"#5B21B6"}}>{formatPrice(parsePrice(p.price))}</td>
                         <td>{p.stock}</td>
                         <td>
                           <button className="action-btn btn-edit" onClick={() => openEditProduct(p)}>Edit</button>

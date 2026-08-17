@@ -1,7 +1,9 @@
 import pool from './db';
 
-let ensured = false;
-let inFlight: Promise<void> | null = null;
+let productsReady = false;
+let shopReady = false;
+let productsInFlight: Promise<void> | null = null;
+let shopInFlight: Promise<void> | null = null;
 
 async function addColumn(sql: string) {
   try {
@@ -51,7 +53,49 @@ async function backfillProductSlugs() {
   await addColumn('ALTER TABLE products ADD UNIQUE KEY unique_slug (slug)');
 }
 
-async function ensureOnce() {
+async function activateAllProducts() {
+  try {
+    await pool.query('UPDATE products SET active=1 WHERE active IS NULL OR active=0');
+  } catch {
+    // ignore
+  }
+}
+
+async function seedCatalogIfEmpty() {
+  try {
+    const [countRows]: any = await pool.query('SELECT COUNT(*) AS c FROM products');
+    const count = Number(countRows?.[0]?.c || 0);
+    if (count > 0) return;
+
+    await pool.query(
+      `INSERT INTO products
+        (name, slug, description, short_description, price, category, stock, active)
+       VALUES
+        (?, ?, ?, ?, ?, ?, ?, 1),
+        (?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        'Phone Case',
+        'phone-case',
+        'Protective phone case.',
+        'Protective phone case.',
+        999,
+        'Accessories',
+        '24',
+        'Wireless Earbuds',
+        'wireless-earbuds',
+        'Wireless earbuds.',
+        'Wireless earbuds.',
+        4999,
+        'Gadgets',
+        '12',
+      ]
+    );
+  } catch {
+    // Unique slug / concurrent first-boot — ignore
+  }
+}
+
+async function ensureProductsOnce() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS products (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -90,18 +134,20 @@ async function ensureOnce() {
     'ALTER TABLE products ADD COLUMN badge VARCHAR(100)',
     'ALTER TABLE products ADD COLUMN image VARCHAR(500)',
     'ALTER TABLE products ADD COLUMN category VARCHAR(100)',
+    'ALTER TABLE products ADD COLUMN description TEXT',
+    'ALTER TABLE products ADD COLUMN price DECIMAL(10,2) DEFAULT 0',
+    'ALTER TABLE products ADD COLUMN name VARCHAR(255) NOT NULL',
   ]) {
     await addColumn(sql);
   }
 
-  try {
-    await pool.query('UPDATE products SET active=1 WHERE active IS NULL');
-  } catch {
-    // ignore
-  }
-
   await backfillProductSlugs();
+  await activateAllProducts();
+  await seedCatalogIfEmpty();
+  productsReady = true;
+}
 
+async function ensureOrdersOnce() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS orders (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -148,16 +194,32 @@ async function ensureOnce() {
     await addColumn(sql);
   }
 
-  ensured = true;
+  shopReady = true;
+}
+
+/** Products table only — public catalog must not depend on orders schema. */
+export async function ensureProductsTable(): Promise<void> {
+  if (productsReady) return;
+  if (!productsInFlight) {
+    productsInFlight = ensureProductsOnce().finally(() => {
+      productsInFlight = null;
+    });
+  }
+  await productsInFlight;
 }
 
 /** Creates shop tables/columns on first use. Safe to call on every request. */
 export async function ensureShopTables(): Promise<void> {
-  if (ensured) return;
-  if (!inFlight) {
-    inFlight = ensureOnce().finally(() => {
-      inFlight = null;
-    });
+  await ensureProductsTable();
+  if (shopReady) return;
+  if (!shopInFlight) {
+    shopInFlight = ensureOrdersOnce()
+      .catch((err) => {
+        console.error('[ensureShopTables] orders schema', err?.message || err);
+      })
+      .finally(() => {
+        shopInFlight = null;
+      });
   }
-  await inFlight;
+  await shopInFlight;
 }

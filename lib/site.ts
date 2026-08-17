@@ -25,8 +25,23 @@ export const PAKISTAN_PROVINCES = [
   "AJK",
 ] as const;
 
+/** Parse a PKR amount from DB numbers or strings like "Rs. 999" / "4,999". */
+export function parsePrice(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
+  const stripped = raw
+    .replace(/Rs\.?/gi, "")
+    .replace(/PKR/gi, "")
+    .replace(/,/g, "")
+    .replace(/[^\d.]/g, "")
+    .trim();
+  const n = Number(stripped);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function formatPrice(amount: number | string): string {
-  return `Rs. ${Number(amount).toLocaleString("en-PK")}`;
+  return `Rs. ${parsePrice(amount).toLocaleString("en-PK")}`;
 }
 
 export function absoluteUrl(path = ""): string {
