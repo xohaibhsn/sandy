@@ -28,14 +28,20 @@ export function rateLimit(ip: string, limit: number, windowMs: number): { allowe
 }
 
 // Presets
-export const RL_GENERAL = (ip: string) => rateLimit(ip, 100, 15 * 60 * 1000);
+export const RL_GENERAL = (ip: string) => rateLimit(`general:${ip}`, 100, 15 * 60 * 1000);
 export const RL_AUTH    = (ip: string) => rateLimit(`auth:${ip}`, 5, 15 * 60 * 1000);
 export const RL_SEARCH  = (ip: string) => rateLimit(`search:${ip}`, 60, 60 * 1000);
 
 export function getClientIp(req: { headers: any; socket?: any }): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const forwardedIp = Array.isArray(forwarded)
+    ? forwarded[0]
+    : String(forwarded || "").split(",")[0]?.trim();
   return (
-    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    forwardedIp ||
     req.headers["x-real-ip"] ||
+    req.headers["cf-connecting-ip"] ||
+    req.headers["true-client-ip"] ||
     req.socket?.remoteAddress ||
     "unknown"
   );

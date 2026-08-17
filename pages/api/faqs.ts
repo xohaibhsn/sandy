@@ -31,16 +31,9 @@ const REQUIRED_FAQS = [
   ['Where are you based?','Sandy is based in Lahore, Pakistan, and delivers nationwide.','General',2],
 ];
 
-async function upsertFaq(question: string, answer: string, category: string, sortOrder: number) {
+async function insertFaqIfMissing(question: string, answer: string, category: string, sortOrder: number) {
   const [rows]: any = await pool.query('SELECT id FROM faqs WHERE question=? LIMIT 1', [question]);
-  if (Array.isArray(rows) && rows.length > 0) {
-    await pool.query(
-      'UPDATE faqs SET answer=?,category=?,sort_order=?,is_visible=1 WHERE id=?',
-      [answer, category, sortOrder, rows[0].id]
-    );
-    return;
-  }
-
+  if (Array.isArray(rows) && rows.length > 0) return;
   await pool.query('INSERT INTO faqs (question,answer,category,sort_order) VALUES (?,?,?,?)', [question, answer, category, sortOrder]);
 }
 
@@ -67,11 +60,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    for (const [q,a,cat,ord] of DEFAULT_FAQS) {
-      await upsertFaq(q as string, a as string, cat as string, ord as number);
-    }
-    for (const [q,a,cat,ord] of REQUIRED_FAQS) {
-      await upsertFaq(q as string, a as string, cat as string, ord as number);
+    for (const [q, a, cat, ord] of REQUIRED_FAQS) {
+      await insertFaqIfMissing(q as string, a as string, cat as string, ord as number);
     }
 
     const obsoleteQuestions = [
@@ -98,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') {
       const { admin } = req.query;
       let query = 'SELECT * FROM faqs';
-      if (!admin) query += ' WHERE is_visible=1';
+      if (!(admin && checkAdminAuth(req))) query += ' WHERE is_visible=1';
       query += ' ORDER BY category, sort_order ASC';
       const [rows] = await pool.query(query);
       return res.status(200).json(Array.isArray(rows)?rows:[]);

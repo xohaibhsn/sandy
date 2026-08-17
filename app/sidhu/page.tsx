@@ -298,12 +298,12 @@ export default function AdminPage() {
     const adminHeaders = { "x-admin-session": session };
     fetch("/api/admin-products", { headers: adminHeaders })
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data) && data.length > 0) setProducts(data); })
+      .then(data => { if (Array.isArray(data)) setProducts(data); })
       .catch(() => {});
     fetch("/api/admin-orders", { headers: adminHeaders })
       .then(r => r.json())
       .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setOrders(data.map((o: any) => ({
             id: o.order_id,
             customer: o.customer_name,
@@ -322,14 +322,14 @@ export default function AdminPage() {
         }
       })
       .catch(() => {});
-    fetch("/api/blog")
+    fetch("/api/blog", { headers: adminHeaders })
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setBlogPosts(data); })
       .catch(() => {});
     fetch("/api/admin-orders?customers=1", { headers: adminHeaders })
       .then(r => r.json())
       .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setCustomers(data.map((c: any) => ({
             name: c.customer_name || "",
             email: c.customer_email || "",
@@ -341,13 +341,13 @@ export default function AdminPage() {
         }
       })
       .catch(() => {});
-    fetch("/api/coupons").then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setCoupons(d); }).catch(()=>{});
+    fetch("/api/coupons", { headers: adminHeaders }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setCoupons(d); }).catch(()=>{});
     fetch("/api/site-content?page=all")
       .then(r => r.json())
       .then(d => { if (d && typeof d === "object") setSiteContent(d); })
       .catch(() => {});
     fetch("/api/sections?page=home&all=1").then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setSections(d); }).catch(()=>{});
-    fetch("/api/faqs?admin=true").then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setFaqs(d); }).catch(()=>{});
+    fetch("/api/faqs?admin=true", { headers: adminHeaders }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setFaqs(d); }).catch(()=>{});
     fetch("/api/admin/leads", { headers: adminHeaders })
       .then(r => r.json())
       .then(d => {
@@ -665,7 +665,7 @@ export default function AdminPage() {
   }, []);
 
   const fetchBlogs = () => {
-    fetch("/api/blog").then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setBlogPosts(d); }).catch(()=>{});
+    fetch("/api/blog", { headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"" } }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setBlogPosts(d); }).catch(()=>{});
   };
 
   const saveBlog = async () => {
@@ -1466,7 +1466,7 @@ export default function AdminPage() {
                         <td><div className="product-thumb">{p.emoji}</div></td>
                         <td style={{fontWeight:600}}>{p.name}</td>
                         <td><span style={{background:"rgba(139,0,255,0.1)",border:"1px solid rgba(139,0,255,0.2)",padding:"3px 10px",borderRadius:"10px",fontSize:"12px"}}>{p.category}</span></td>
-                        <td style={{fontWeight:700,color:"#5B21B6"}}>{p.price}</td>
+                        <td style={{fontWeight:700,color:"#5B21B6"}}>{formatPrice(String(p.price ?? "").replace(/[^0-9.]/g, "") || 0)}</td>
                         <td>{p.stock}</td>
                         <td>
                           <button className="action-btn btn-edit" onClick={() => openEditProduct(p)}>Edit</button>
@@ -1778,8 +1778,9 @@ export default function AdminPage() {
                 </div>
                 <button className="btn-primary" style={{marginTop:8}} onClick={async()=>{
                   if(!couponForm.code||!couponForm.value){setCouponMsg("❌ Code and value required");return;}
-                  const r=await fetch("/api/coupons",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(couponForm)}).then(x=>x.json()).catch(()=>({}));
-                  if(r.success){setCouponMsg("✅ Coupon created!");setCouponForm({code:"",type:"percentage",value:"",minimum_order:"0",usage_limit:"",expires_at:""});fetch("/api/coupons").then(x=>x.json()).then(d=>Array.isArray(d)&&setCoupons(d));}
+                  const sess=localStorage.getItem("sAdminSession")||"";
+                  const r=await fetch("/api/coupons",{method:"POST",headers:{"Content-Type":"application/json","x-admin-session":sess},body:JSON.stringify(couponForm)}).then(x=>x.json()).catch(()=>({}));
+                  if(r.success){setCouponMsg("✅ Coupon created!");setCouponForm({code:"",type:"percentage",value:"",minimum_order:"0",usage_limit:"",expires_at:""});fetch("/api/coupons",{headers:{"x-admin-session":sess}}).then(x=>x.json()).then(d=>Array.isArray(d)&&setCoupons(d));}
                   else setCouponMsg(`❌ ${r.error||"Failed"}`);
                   setTimeout(()=>setCouponMsg(""),3000);
                 }}>+ Create Coupon</button>
@@ -1800,11 +1801,11 @@ export default function AdminPage() {
                           <td>{c.used_count}{c.usage_limit?`/${c.usage_limit}`:" / ∞"}</td>
                           <td style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{c.expires_at?new Date(c.expires_at).toLocaleDateString("en-GB"):"Never"}</td>
                           <td>
-                            <span className={`status-badge ${c.is_active?"status-confirmed":"status-pending"}`} style={{cursor:"pointer"}} onClick={async()=>{await fetch("/api/coupons",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...c,is_active:!c.is_active})});fetch("/api/coupons").then(r=>r.json()).then(d=>Array.isArray(d)&&setCoupons(d));}}>
+                            <span className={`status-badge ${c.is_active?"status-confirmed":"status-pending"}`} style={{cursor:"pointer"}} onClick={async()=>{const sess=localStorage.getItem("sAdminSession")||"";await fetch("/api/coupons",{method:"PUT",headers:{"Content-Type":"application/json","x-admin-session":sess},body:JSON.stringify({...c,is_active:!c.is_active})});fetch("/api/coupons",{headers:{"x-admin-session":sess}}).then(r=>r.json()).then(d=>Array.isArray(d)&&setCoupons(d));}}>
                               {c.is_active?"Active":"Inactive"}
                             </span>
                           </td>
-                          <td><button className="action-btn btn-delete" onClick={async()=>{if(!confirm("Delete?"))return;await fetch(`/api/coupons?id=${c.id}`,{method:"DELETE"});setCoupons(prev=>prev.filter(x=>x.id!==c.id));}}>Delete</button></td>
+                          <td><button className="action-btn btn-delete" onClick={async()=>{if(!confirm("Delete?"))return;await fetch(`/api/coupons?id=${c.id}`,{method:"DELETE",headers:{"x-admin-session":localStorage.getItem("sAdminSession")||""}});setCoupons(prev=>prev.filter(x=>x.id!==c.id));}}>Delete</button></td>
                         </tr>
                       ))}
                     </tbody>

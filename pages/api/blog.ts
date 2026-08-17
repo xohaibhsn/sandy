@@ -93,8 +93,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const [rows]: any = await pool.query('SELECT * FROM blog_posts WHERE id = ? LIMIT 1', [id]);
         return res.status(200).json(rows[0] || null);
       }
-      const [rows]: any = await pool.query('SELECT * FROM blog_posts WHERE active = 1 ORDER BY created_at DESC');
-      if (Array.isArray(rows) && rows.length === 0) {
+      const isAdmin = checkAdminAuth(req);
+      const listSql = isAdmin
+        ? 'SELECT * FROM blog_posts ORDER BY created_at DESC'
+        : 'SELECT * FROM blog_posts WHERE active = 1 AND (status = "published" OR status IS NULL) ORDER BY created_at DESC';
+      const [rows]: any = await pool.query(listSql);
+      if (!isAdmin && Array.isArray(rows) && rows.length === 0) {
         await pool.query(`
           INSERT INTO blog_posts (title, slug, excerpt, content, category, emoji, badge, badgeText, status)
           VALUES
@@ -102,7 +106,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ('Paying on Sandy — COD, JazzCash and Bank Transfer', 'paying-on-sandy', 'Choose Cash on Delivery, JazzCash, Easypaisa or bank transfer at checkout. Account details for prepaid methods are shared after you order.', '<h2>Payment Options</h2><p>COD is the default. For JazzCash, Easypaisa or bank transfer, we share account details after you place the order.</p>', 'Tips', '💳', 'tips', 'Tips', 'published'),
           ('What''s New at Sandy', 'whats-new-at-sandy', 'We have added new products, improved order tracking, and launched nationwide delivery.', '<h2>New This Month</h2><p>Check out our improved order tracking and new product range.</p>', 'News', '🚀', 'news', 'News', 'published')
         `);
-        const [fresh] = await pool.query('SELECT * FROM blog_posts WHERE active = 1 ORDER BY created_at DESC');
+        const [fresh] = await pool.query(listSql);
         return res.status(200).json(Array.isArray(fresh) ? fresh : []);
       }
       return res.status(200).json(Array.isArray(rows) ? rows : []);

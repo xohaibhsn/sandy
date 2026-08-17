@@ -3,9 +3,19 @@ import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import { formatPrice } from '../../lib/site';
 
+function checkAdminAuth(req: NextApiRequest): boolean {
+  const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
+  return !!session;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { allowed } = RL_GENERAL(getClientIp(req));
   if (!allowed) return res.status(429).json({ error: 'Too many requests' });
+
+  const isValidate = req.method === 'POST' && req.query.action === 'validate';
+  if (!isValidate && !checkAdminAuth(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   try {
     await pool.query(`

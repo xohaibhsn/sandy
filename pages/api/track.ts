@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
+import { ensureShopTables } from '../../lib/ensureShopTables';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -8,6 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!order_id) return res.status(400).json({ error: 'Order ID required' });
 
   try {
+    await ensureShopTables();
     const [rows]: any = await pool.query('SELECT * FROM orders WHERE order_id = ?', [order_id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Order not found' });
 

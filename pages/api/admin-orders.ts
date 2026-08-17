@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
+import { ensureShopTables } from '../../lib/ensureShopTables';
 
 function checkAdminAuth(req: NextApiRequest): boolean {
   const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
@@ -9,6 +10,7 @@ function checkAdminAuth(req: NextApiRequest): boolean {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
+    await ensureShopTables();
     if (req.method === 'GET') {
       if (req.query.customers === '1') {
         const [rows] = await pool.query(`
