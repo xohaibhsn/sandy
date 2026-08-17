@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
-import pool from "@/lib/db";
+import pool, { isDatabaseConfigured } from "@/lib/db";
 import HomeClient from "./HomeClient";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
@@ -10,6 +10,7 @@ export const revalidate = 0;
 
 async function getHomeContent(): Promise<Record<string, string>> {
   await connection();
+  if (!isDatabaseConfigured()) return {};
   try {
     const [rows]: any = await pool.query(
       `SELECT content_key, content_value

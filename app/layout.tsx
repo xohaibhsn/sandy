@@ -34,7 +34,8 @@ const cinzel = Cinzel({
 
 async function getSiteSettings(): Promise<Record<string, string>> {
   try {
-    const pool = (await import("../lib/db")).default;
+    const { default: pool, isDatabaseConfigured } = await import("../lib/db");
+    if (!isDatabaseConfigured()) return {};
     // Fetch settings page + asset keys explicitly (never mix keys)
     const [rows]: any = await pool.query(
       `SELECT content_key, content_value FROM site_content

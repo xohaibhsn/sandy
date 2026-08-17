@@ -1,4 +1,4 @@
-import pool from "@/lib/db";
+import pool, { isDatabaseConfigured } from "@/lib/db";
 import {
   CONTACT_EMAIL,
   PHONE_DISPLAY,
@@ -25,6 +25,7 @@ const FALLBACK: ContactConfig = {
 };
 
 export async function getContactConfig(): Promise<ContactConfig> {
+  if (!isDatabaseConfigured()) return { ...FALLBACK };
   try {
     const [rows]: any = await pool.query(
       `SELECT content_key, content_value

@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
-import pool from "@/lib/db";
+import pool, { isDatabaseConfigured } from "@/lib/db";
 import { SITE_URL } from "@/lib/site";
+
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = SITE_URL;
@@ -23,49 +25,51 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let productPages: MetadataRoute.Sitemap = [];
   let blogPages: MetadataRoute.Sitemap = [];
 
-  try {
-    // Prefer stored slug column; fall back to name-derived slug for older rows
-    const [products]: any = await pool.query(
-      `SELECT
-         COALESCE(
-           NULLIF(slug, ''),
-           LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', ''))
-         ) AS slug,
-         created_at
-       FROM products
-       WHERE active = 1 AND name IS NOT NULL AND name != ''`
-    );
+  if (isDatabaseConfigured()) {
+    try {
+      // Prefer stored slug column; fall back to name-derived slug for older rows
+      const [products]: any = await pool.query(
+        `SELECT
+           COALESCE(
+             NULLIF(slug, ''),
+             LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', ''))
+           ) AS slug,
+           created_at
+         FROM products
+         WHERE active = 1 AND name IS NOT NULL AND name != ''`
+      );
 
-    productPages = (Array.isArray(products) ? products : [])
-      .filter((p: { slug?: string }) => !!p.slug)
-      .map((p: { slug: string; created_at?: string | Date }) => ({
-        url: `${baseUrl}/products/${p.slug}`,
-        lastModified: p.created_at ? new Date(p.created_at) : now,
-        changeFrequency: "weekly" as const,
-        priority: 0.8,
-      }));
-  } catch {
-    // Keep static pages if DB is unavailable
-  }
+      productPages = (Array.isArray(products) ? products : [])
+        .filter((p: { slug?: string }) => !!p.slug)
+        .map((p: { slug: string; created_at?: string | Date }) => ({
+          url: `${baseUrl}/products/${p.slug}`,
+          lastModified: p.created_at ? new Date(p.created_at) : now,
+          changeFrequency: "weekly" as const,
+          priority: 0.8,
+        }));
+    } catch {
+      // Keep static pages if DB is unavailable
+    }
 
-  try {
-    const [posts]: any = await pool.query(
-      `SELECT slug, created_at
-       FROM blog_posts
-       WHERE status = 'published' AND active = 1
-         AND slug IS NOT NULL AND slug != ''`
-    );
+    try {
+      const [posts]: any = await pool.query(
+        `SELECT slug, created_at
+         FROM blog_posts
+         WHERE status = 'published' AND active = 1
+           AND slug IS NOT NULL AND slug != ''`
+      );
 
-    blogPages = (Array.isArray(posts) ? posts : []).map(
-      (p: { slug: string; created_at?: string | Date }) => ({
-        url: `${baseUrl}/blog/${p.slug}`,
-        lastModified: p.created_at ? new Date(p.created_at) : now,
-        changeFrequency: "weekly" as const,
-        priority: 0.7,
-      })
-    );
-  } catch {
-    // Keep static pages if DB is unavailable
+      blogPages = (Array.isArray(posts) ? posts : []).map(
+        (p: { slug: string; created_at?: string | Date }) => ({
+          url: `${baseUrl}/blog/${p.slug}`,
+          lastModified: p.created_at ? new Date(p.created_at) : now,
+          changeFrequency: "weekly" as const,
+          priority: 0.7,
+        })
+      );
+    } catch {
+      // Keep static pages if DB is unavailable
+    }
   }
 
   return [...staticPages, ...productPages, ...blogPages];

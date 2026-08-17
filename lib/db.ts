@@ -5,30 +5,56 @@ declare global {
   var _mysqlPool: mysql.Pool | undefined;
 }
 
-// Fail loudly if DB env vars are missing — never use hardcoded fallbacks
-if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
-  throw new Error(
-    'CRITICAL: Missing required DB environment variables. ' +
-    'Set DB_HOST, DB_USER, DB_PASSWORD, DB_NAME in .env.local'
+export function isDatabaseConfigured(): boolean {
+  return !!(
+    process.env.DB_HOST &&
+    process.env.DB_USER &&
+    process.env.DB_PASSWORD &&
+    process.env.DB_NAME
   );
 }
 
-const poolConfig: mysql.PoolOptions = {
-  host:            process.env.DB_HOST,
-  user:            process.env.DB_USER,
-  password:        process.env.DB_PASSWORD,
-  database:        process.env.DB_NAME,
-  port:            Number(process.env.DB_PORT) || 3306,
-  connectionLimit: 3,
-  waitForConnections: true,
-  queueLimit:      5,
-  connectTimeout:  8000,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-};
+function createPool(): mysql.Pool {
+  if (!isDatabaseConfigured()) {
+    throw new Error(
+      'CRITICAL: Missing required DB environment variables. ' +
+      'Set DB_HOST, DB_USER, DB_PASSWORD, DB_NAME in the host environment (or .env.local).'
+    );
+  }
 
-// In dev, reuse pool across hot-reloads to prevent connection leaks
-const pool = global._mysqlPool ?? mysql.createPool(poolConfig);
-if (process.env.NODE_ENV !== 'production') global._mysqlPool = pool;
+  return mysql.createPool({
+    host:            process.env.DB_HOST,
+    user:            process.env.DB_USER,
+    password:        process.env.DB_PASSWORD,
+    database:        process.env.DB_NAME,
+    port:            Number(process.env.DB_PORT) || 3306,
+    connectionLimit: 3,
+    waitForConnections: true,
+    queueLimit:      5,
+    connectTimeout:  8000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+  });
+}
+
+function getPool(): mysql.Pool {
+  if (!global._mysqlPool) {
+    global._mysqlPool = createPool();
+  }
+  return global._mysqlPool;
+}
+
+/**
+ * Lazy pool: importing this module must not throw.
+ * Hostinger (and similar) collect page data at build time without DB env vars.
+ * The real connection is created on first query at runtime, after env is set.
+ */
+const pool = new Proxy({} as mysql.Pool, {
+  get(_target, prop) {
+    const real = getPool() as unknown as Record<PropertyKey, unknown>;
+    const value = real[prop];
+    return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(real) : value;
+  },
+});
 
 export default pool;
