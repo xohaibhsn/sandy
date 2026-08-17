@@ -1,6 +1,9 @@
 "use client";
 import Navbar from "@/components/Navbar";
+import SiteFooter from "@/components/SiteFooter";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import xss from "xss";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -55,6 +58,8 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
 
 export default function TermsPage() {
   const contact = useContactConfig();
+  const sc = useSiteContent();
+  const cmsBody = cmsText(sc, "terms_content", "");
 
   return (
     <>
@@ -64,8 +69,8 @@ export default function TermsPage() {
       <div className="page-wrapper">
         <div className="page-header">
           <div className="section-tag">✦ Legal</div>
-          <h1 className="page-title">Terms & <span>Conditions</span></h1>
-          <p className="last-updated">Last updated: 30 May 2026</p>
+          <h1 className="page-title">{cmsText(sc, "terms_title", "Terms & Conditions")}</h1>
+          <p className="last-updated">{cmsText(sc, "terms_updated", "Last updated: 30 May 2026")}</p>
         </div>
 
         <div className="content-layout">
@@ -85,6 +90,9 @@ export default function TermsPage() {
             </ul>
           </aside>
 
+          {cmsBody ? (
+            <div className="policy-content cms-legal" dangerouslySetInnerHTML={{ __html: xss(cmsBody) }} />
+          ) : (
           <div className="policy-content">
             <div className="policy-section" id="agreement">
               <h2>1. Agreement to Terms</h2>
@@ -183,18 +191,10 @@ export default function TermsPage() {
               </div>
             </div>
           </div>
+          )}
         </div>
 
-        <footer>
-          <div className="footer-logo">SANDY</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
-        </footer>
+        <SiteFooter />
       </div>
 
     </>

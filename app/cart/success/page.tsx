@@ -2,8 +2,9 @@
 export const dynamic = 'force-dynamic';
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
-import { FOOTER_COPY, SITE_NAME, formatPrice } from "@/lib/site";
+import { formatPrice } from "@/lib/site";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import SiteFooter from "@/components/SiteFooter";
 
 const styles = `
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -219,10 +220,7 @@ export default function CartSuccessPage() {
         </div>
       </div>
 
-      <footer>
-        <div className="footer-logo">{SITE_NAME.toUpperCase()}</div>
-        <div className="footer-copy">{FOOTER_COPY}</div>
-      </footer>
+      <SiteFooter />
     </>
   );
 }

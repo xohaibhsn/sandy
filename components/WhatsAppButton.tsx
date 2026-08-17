@@ -1,25 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 import { WHATSAPP_DIGITS } from "@/lib/site";
 
 export default function WhatsAppButton() {
-  const [config, setConfig] = useState({
-    number: WHATSAPP_DIGITS,
-    iconUrl: "",
-  });
-
-  useEffect(() => {
-    fetch("/api/site-content?page=all")
-      .then((r) => r.json())
-      .then((data) => {
-        setConfig({
-          number: data.contact_whatsapp || data.whatsapp_number || WHATSAPP_DIGITS,
-          iconUrl: data.whatsapp_icon_url || "",
-        });
-      })
-      .catch(() => {});
-  }, []);
+  const sc = useSiteContent();
+  const config = {
+    number: cmsText(sc, "contact_whatsapp", cmsText(sc, "whatsapp_number", WHATSAPP_DIGITS)),
+    iconUrl: cmsText(sc, "whatsapp_icon_url", ""),
+  };
 
   const whatsappUrl = `https://wa.me/${config.number}`;
 

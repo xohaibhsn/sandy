@@ -6,7 +6,9 @@ import { looksLikeHtml, plainLinesToListHtml } from "@/lib/contentHtml";
 import { useCart } from "./lib/cartContext";
 import Navbar from "@/components/Navbar";
 import HeroSlider from "@/components/HeroSlider";
-import { FOOTER_COPY, SITE_NAME_CAPS, formatPrice } from "@/lib/site";
+import SiteFooter from "@/components/SiteFooter";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import { formatPrice } from "@/lib/site";
 
 const cardDescXss = {
   whiteList: {
@@ -104,7 +106,17 @@ export default function HomeClient({
     { num: "4.9★", label: "Average Rating" },
     { num: "24/7", label: "Support" },
   ]);
+  const [trustItems, setTrustItems] = useState([
+    { title: "Cash on Delivery", sub: "Pay when it arrives" },
+    { title: "Free Delivery", sub: "Across Pakistan" },
+    { title: "Authentic Goods", sub: "Handpicked quality" },
+    { title: "Easy Returns", sub: "Faulty items replaced" },
+  ]);
+  const [heroTag, setHeroTag] = useState("Sandy · Pakistan");
+  const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [newsletterDone, setNewsletterDone] = useState(false);
   const { addToCart, removeFromCart, cart } = useCart();
+  const sc = useSiteContent();
 
   const handleSearch = () => {
     const q = searchTerm.trim();
@@ -112,11 +124,13 @@ export default function HomeClient({
   };
 
   // Section data from DB
-  const [sec, setSec] = useState<Record<string,any>>({
-    home_hero: { title:"Quality products, delivered across Pakistan", subtitle:"Sandy is your Pakistani online store for accessories, gadgets and everyday essentials.", button_text:"Shop Now", button_link:"/products", secondary_button_text:"Learn More", secondary_button_link:"/about" },
+  const [sec, setSec] = useState<Record<string, any>>({
     home_features: { title:"Why Choose Us", items:[{icon:"⚡",title:"Fast Delivery",description:"Across Pakistan"},{icon:"🔒",title:"Authentic",description:"Quality you can trust"},{icon:"💬",title:"WhatsApp Support",description:"Always here for you"},{icon:"🚚",title:"Cash on Delivery",description:"Pay when it arrives"}] },
     home_testimonials: { title:"What Our Customers Say", items:[{name:"Ahmed Khan",rating:5,text:"Amazing service!"},{name:"Sara Ali",rating:5,text:"Fast delivery and genuine products."}] },
-    home_newsletter: { title:"Stay in the Loop", subtitle:"Get the latest guides, tips and offers", button_text:"Subscribe" },
+  });
+  const [sectionOn, setSectionOn] = useState<Record<string, boolean>>({
+    home_features: true,
+    home_testimonials: true,
   });
 
   useEffect(() => {
@@ -128,9 +142,14 @@ export default function HomeClient({
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
-          const map: Record<string,any> = {};
-          data.forEach(s => { map[s.key] = s.data; });
-          setSec(prev => ({ ...prev, ...map }));
+          const map: Record<string, any> = {};
+          const on: Record<string, boolean> = {};
+          data.forEach((s: any) => {
+            map[s.key] = s.data;
+            on[s.key] = true;
+          });
+          setSec((prev) => ({ ...prev, ...map }));
+          setSectionOn(on);
         }
       })
       .catch(() => {});
@@ -183,6 +202,13 @@ export default function HomeClient({
             label: (data.home_stat3_label || "").trim() || "Support",
           },
         ]);
+        setTrustItems([
+          { title: (data.home_trust_1_title || "").trim() || "Cash on Delivery", sub: (data.home_trust_1_sub || "").trim() || "Pay when it arrives" },
+          { title: (data.home_trust_2_title || "").trim() || "Free Delivery", sub: (data.home_trust_2_sub || "").trim() || "Across Pakistan" },
+          { title: (data.home_trust_3_title || "").trim() || "Authentic Goods", sub: (data.home_trust_3_sub || "").trim() || "Handpicked quality" },
+          { title: (data.home_trust_4_title || "").trim() || "Easy Returns", sub: (data.home_trust_4_sub || "").trim() || "Faulty items replaced" },
+        ]);
+        setHeroTag((data.home_hero_tag || "").trim() || (data.home_tagline || "").trim() || "Sandy · Pakistan");
       })
       .catch(() => {});
     return () => {};
@@ -192,6 +218,30 @@ export default function HomeClient({
     addToCart({ id: p.id, name: p.name, price: Number(p.price), qty: 1 });
     setAdded(p.id);
     setTimeout(() => setAdded(null), 1500);
+  };
+
+  const pbHero = sectionOn.home_hero ? sec.home_hero : null;
+  const mainHeroTitle = (pbHero?.title || "").trim() || heroTitle;
+  const mainHeroSubtitle = (pbHero?.subtitle || "").trim() || heroSubtitle;
+  const featured = sectionOn.home_featured_products ? (sec.home_featured_products || {}) : {};
+  const featuredTitle = (featured.title || "").trim() || "Featured products";
+  const featuredTag = (featured.subtitle || "").trim() || "The Collection";
+  const showCount = Number(featured.show_count) > 0 ? Number(featured.show_count) : 8;
+  const news = sectionOn.home_newsletter ? sec.home_newsletter : null;
+
+  const submitNewsletter = async () => {
+    const email = newsletterEmail.trim();
+    if (!email) return;
+    try {
+      await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Newsletter", email, subject: "Newsletter", message: "Please add me to the Sandy newsletter." }),
+      });
+    } catch {
+      // still show thanks — list capture is best-effort
+    }
+    setNewsletterDone(true);
   };
 
   return (
@@ -470,6 +520,17 @@ export default function HomeClient({
         .footer-links a { color:rgba(255,255,255,0.6); text-decoration:none; font-size:13px; transition:color 0.2s; }
         .footer-links a:hover { color:#FFFFFF; }
         .footer-copy { font-size:12px; color:rgba(255,255,255,0.4); }
+        .home-newsletter { max-width:1300px; margin:0 auto; padding:0 60px 70px; }
+        .home-newsletter-box { background:#111; color:#fff; padding:48px 40px; text-align:center; }
+        .home-newsletter-title { font-family:var(--font-display); font-size:clamp(1.4rem,3vw,2rem); font-weight:700; margin-bottom:10px; }
+        .home-newsletter-sub { color:rgba(255,255,255,0.7); font-size:15px; margin-bottom:24px; }
+        .home-newsletter-form { display:flex; gap:10px; max-width:480px; margin:0 auto; }
+        .home-newsletter-form input { flex:1; padding:12px 16px; border:none; font-size:14px; }
+        .home-newsletter-form button { background:#fff; color:#111; border:none; padding:12px 20px; font-weight:700; cursor:pointer; letter-spacing:0.06em; text-transform:uppercase; font-size:12px; }
+        @media(max-width:768px){
+          .home-newsletter { padding:0 16px 50px; }
+          .home-newsletter-form { flex-direction:column; }
+        }
         .whatsapp-btn { position:fixed; bottom:30px; right:30px; z-index:999; width:58px; height:58px; border-radius:50%; background:linear-gradient(135deg,#25d366,#128c7e); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 25px rgba(37,211,102,0.5); text-decoration:none; font-size:26px; transition:all 0.3s; }
         .whatsapp-btn:hover { transform:scale(1.1); }
         @media (max-width: 1024px) and (min-width: 641px) {
@@ -569,17 +630,19 @@ export default function HomeClient({
         </HeroSlider>
 
         <div className="trust-bar">
-          <div className="trust-item"><strong>Cash on Delivery</strong><span>Pay when it arrives</span></div>
-          <div className="trust-item"><strong>Free Delivery</strong><span>Across Pakistan</span></div>
-          <div className="trust-item"><strong>Authentic Goods</strong><span>Handpicked quality</span></div>
-          <div className="trust-item"><strong>Easy Returns</strong><span>Faulty items replaced</span></div>
+          {trustItems.map((item) => (
+            <div className="trust-item" key={item.title}>
+              <strong>{item.title}</strong>
+              <span>{item.sub}</span>
+            </div>
+          ))}
         </div>
 
         {/* PRODUCTS GRID */}
         <div className="products-header">
           <div className="products-header-left">
-            <span className="section-tag">The Collection</span>
-            <h2 className="section-title">Featured products</h2>
+            <span className="section-tag">{featuredTag}</span>
+            <h2 className="section-title">{featuredTitle}</h2>
           </div>
           <a href="/products" className="view-all-link">View All Products →</a>
         </div>
@@ -604,7 +667,7 @@ export default function HomeClient({
           ) : products.length === 0 ? (
             <div className="loading">No products found.</div>
           ) : (
-            products.slice(0, 8).map((p) => (
+            products.slice(0, showCount).map((p) => (
               <div className="product-card" key={p.id} style={{cursor:"pointer"}} onClick={()=>window.location.href=`/products/${p.slug || p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`}>
                 <div className="product-image">
                   {p.badge && (
@@ -672,11 +735,11 @@ export default function HomeClient({
             <div className="hero-combined">
               <div className="hero-combined-scroll">
                 <div className="hero-content">
-                  <span className="hero-tag">Sandy · Pakistan</span>
+                  <span className="hero-tag">{heroTag || cmsText(sc, "home_hero_tag", "Sandy · Pakistan")}</span>
                   <h2 className="hero-title">
-                    {formatHeroTitle(heroTitle)}
+                    {formatHeroTitle(mainHeroTitle)}
                   </h2>
-                  <p className="hero-subtitle">{heroSubtitle}</p>
+                  <p className="hero-subtitle">{mainHeroSubtitle}</p>
                   {(heroBtns.primaryShow || heroBtns.secondaryShow) && (
                     <div className="hero-btns">
                       {heroBtns.primaryShow && (
@@ -720,7 +783,7 @@ export default function HomeClient({
           </div>
         </div>
 
-        {/* Features + Testimonials — LIGHT section */}
+        {sectionOn.home_features && (
         <div className="features-outer">
           <div className="features-section">
             <div className="section-tag">✦ Why Choose Us</div>
@@ -735,7 +798,7 @@ export default function HomeClient({
               ))}
             </div>
           </div>
-          {sec.home_testimonials?.items?.length > 0 && (
+          {sectionOn.home_testimonials && sec.home_testimonials?.items?.length > 0 && (
             <div className="features-section" style={{paddingTop:0}}>
               <h2 className="section-title" style={{marginBottom:32}}>{sec.home_testimonials.title || "What Our Customers Say"}</h2>
               <div className="features-grid">
@@ -750,17 +813,31 @@ export default function HomeClient({
             </div>
           )}
         </div>
+        )}
 
-        <footer>
-          <div className="footer-logo">{SITE_NAME_CAPS}</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">{FOOTER_COPY}</div>
-        </footer>
+        {news && (
+          <div className="home-newsletter">
+            <div className="home-newsletter-box">
+              <div className="home-newsletter-title">{news.title || "Stay in the Loop"}</div>
+              <p className="home-newsletter-sub">{news.subtitle || "Get the latest products, tips and offers delivered to your inbox"}</p>
+              {newsletterDone ? (
+                <p style={{ color: "#fff", fontWeight: 600 }}>Thank you — we will be in touch.</p>
+              ) : (
+                <div className="home-newsletter-form">
+                  <input
+                    type="email"
+                    placeholder="your@email.com"
+                    value={newsletterEmail}
+                    onChange={(e) => setNewsletterEmail(e.target.value)}
+                  />
+                  <button type="button" onClick={submitNewsletter}>{news.button_text || "Subscribe"}</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <SiteFooter />
       </div>
 
     </>

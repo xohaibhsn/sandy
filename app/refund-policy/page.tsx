@@ -1,6 +1,9 @@
 "use client";
 import Navbar from "@/components/Navbar";
+import SiteFooter from "@/components/SiteFooter";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import xss from "xss";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -80,6 +83,8 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
 
 export default function RefundPolicyPage() {
   const contact = useContactConfig();
+  const sc = useSiteContent();
+  const cmsBody = cmsText(sc, "refund_content", "");
 
   return (
     <>
@@ -89,15 +94,15 @@ export default function RefundPolicyPage() {
       <div className="page-wrapper">
         <div className="page-header">
           <div className="section-tag">✦ Legal</div>
-          <h1 className="page-title">Refund <span>Policy</span></h1>
-          <p className="last-updated">Last updated: 30 May 2026</p>
+          <h1 className="page-title">{cmsText(sc, "refund_title", "Refund Policy")}</h1>
+          <p className="last-updated">{cmsText(sc, "refund_updated", "Last updated: 30 May 2026")}</p>
         </div>
 
         {/* SUMMARY CARDS */}
         <div className="summary-cards">
           {[
             { icon: "📦", title: "Physical Products", text: "14-day return window from delivery date" },
-            { icon: "💻", title: "Subscription Plans", text: "7-day money back on 1 Year plans and above only" },
+            { icon: "💳", title: "Prepaid Orders", text: "Refunds after we confirm the return" },
             { icon: "⚠️", title: "Faulty Items", text: "Full refund or replacement at no cost" },
             { icon: "🚚", title: "Return Postage", text: "Customer's responsibility unless item is faulty" },
           ].map((c, i) => (
@@ -124,6 +129,9 @@ export default function RefundPolicyPage() {
             </ul>
           </aside>
 
+          {cmsBody ? (
+            <div className="policy-content cms-legal" dangerouslySetInnerHTML={{ __html: xss(cmsBody) }} />
+          ) : (
           <div className="policy-content">
             <div className="policy-section" id="overview">
               <h2>1. Overview</h2>
@@ -213,6 +221,7 @@ export default function RefundPolicyPage() {
               <p>We aim to respond to all refund and return enquiries within 24 hours during business hours.</p>
             </div>
           </div>
+          )}
         </div>
 
         {/* CTA */}
@@ -230,16 +239,7 @@ export default function RefundPolicyPage() {
           </div>
         </div>
 
-        <footer>
-          <div className="footer-logo">SANDY</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
-        </footer>
+        <SiteFooter />
       </div>
 
     </>

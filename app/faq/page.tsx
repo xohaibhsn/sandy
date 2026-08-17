@@ -4,6 +4,8 @@ import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import JsonLd from "@/components/JsonLd";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import SiteFooter from "@/components/SiteFooter";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -75,6 +77,7 @@ export default function FAQPage() {
   const [faqData, setFaqData] = useState<FaqItem[]>([]);
   const [loadingFaqs, setLoadingFaqs] = useState(true);
   const contact = useContactConfig();
+  const sc = useSiteContent();
 
   useEffect(() => {
     fetch("/api/faqs")
@@ -116,8 +119,8 @@ export default function FAQPage() {
       <div className="page-wrapper">
         <div className="page-header">
           <div className="section-tag">✦ Help Centre</div>
-          <h1 className="page-title">Frequently Asked <span>Questions</span></h1>
-          <p className="page-sub">Find answers to the most common questions about our products and services.</p>
+          <h1 className="page-title">{cmsText(sc, "faq_title", "Frequently Asked Questions")}</h1>
+          <p className="page-sub">{cmsText(sc, "faq_subtitle", "Find answers to the most common questions about our products and services.")}</p>
         </div>
 
         {/* Category filters */}
@@ -158,8 +161,8 @@ export default function FAQPage() {
 
         <div className="help-section">
           <div className="help-box">
-            <h2 className="help-title">Still Need Help?</h2>
-            <p className="help-sub">Can&apos;t find the answer you&apos;re looking for? Our team is happy to help.</p>
+            <h2 className="help-title">{cmsText(sc, "faq_help_title", "Still Need Help?")}</h2>
+            <p className="help-sub">{cmsText(sc, "faq_help_sub", "Can't find the answer you're looking for? Our team is happy to help.")}</p>
             <div className="help-btns">
               <a href={contact.whatsappUrl} className="btn-whatsapp" target="_blank" rel="noopener noreferrer">
                 💬 WhatsApp Us
@@ -174,16 +177,7 @@ export default function FAQPage() {
           </div>
         </div>
 
-        <footer>
-          <div className="footer-logo">SANDY</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
-        </footer>
+        <SiteFooter />
       </div>
 
     </>

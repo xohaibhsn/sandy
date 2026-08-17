@@ -7,7 +7,8 @@ import { useCart } from "../lib/cartContext";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
-import { FOOTER_COPY, SITE_NAME_CAPS, SITE_URL, formatPrice } from "@/lib/site";
+import { SITE_URL, formatPrice } from "@/lib/site";
+import SiteFooter from "@/components/SiteFooter";
 
 const cardDescXss = {
   whiteList: {
@@ -318,16 +319,7 @@ export default function ProductsPage() {
           )}
         </div>
 
-        <footer>
-          <div className="footer-logo">{SITE_NAME_CAPS}</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">{FOOTER_COPY}</div>
-        </footer>
+        <SiteFooter />
       </div>
 
     </>

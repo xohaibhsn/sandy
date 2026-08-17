@@ -4,7 +4,8 @@ import xss from "xss";
 import { fixContentLinkRels } from "@/lib/seoLinks";
 import { looksLikeHtml } from "@/lib/contentHtml";
 import Navbar from "@/components/Navbar";
-import { FOOTER_COPY, SITE_NAME_CAPS } from "@/lib/site";
+import SiteFooter from "@/components/SiteFooter";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 const richXss = {
   whiteList: {
@@ -160,11 +161,44 @@ const styles = `
 `;
 
 export default function AboutPage() {
-  const [sc, setSc] = useState<Record<string,string>>({});
+  const sc = useSiteContent();
+  const [sec, setSec] = useState<Record<string, any>>({});
 
   useEffect(() => {
-    fetch("/api/site-content?page=about").then(r=>r.json()).then(d=>{ if(d&&typeof d==="object") setSc(d); }).catch(()=>{});
+    fetch("/api/sections?page=about")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!Array.isArray(d)) return;
+        const map: Record<string, any> = {};
+        d.forEach((s: any) => { map[s.key] = s.data; });
+        setSec(map);
+      })
+      .catch(() => {});
   }, []);
+
+  const hero = sec.about_hero || {};
+  const missionSec = sec.about_mission || {};
+  const valuesSec = sec.about_values;
+  const pageTitle = (hero.title || "").trim() || cmsText(sc, "about_title", "Your Pakistani Online Store");
+  const pageSub = (hero.subtitle || "").trim();
+  const extraStory = cmsText(sc, "about_story_extra", "Today we serve customers nationwide, starting with accessories and growing into a multi-category general store — all backed by WhatsApp support from our team in Lahore.\n\nEvery order is personally handled. No bots. No long waits. Just real people who care about getting your order to you quickly and correctly.");
+  const stats = [
+    { number: cmsText(sc, "about_stat1_num", "500+"), label: cmsText(sc, "about_stat1_label", "Happy Customers") },
+    { number: cmsText(sc, "about_stat2_num", "99%"), label: cmsText(sc, "about_stat2_label", "Satisfaction Rate") },
+    { number: cmsText(sc, "about_stat3_num", "24/7"), label: cmsText(sc, "about_stat3_label", "Support Available") },
+    { number: cmsText(sc, "about_stat4_num", "2+"), label: cmsText(sc, "about_stat4_label", "Years in Business") },
+    { number: cmsText(sc, "about_stat5_num", "1000+"), label: cmsText(sc, "about_stat5_label", "Orders Fulfilled") },
+  ];
+  const valueItems = Array.isArray(valuesSec?.items) && valuesSec.items.length
+    ? valuesSec.items
+    : [
+        { icon: "🔒", title: "Transparency", desc: "No hidden charges, no confusing terms. We tell you exactly what you're getting before you buy." },
+        { icon: "⚡", title: "Speed", desc: "Fast order processing, quick delivery, and instant support responses — we value your time." },
+        { icon: "💬", title: "Real Support", desc: "Our WhatsApp team is staffed by real humans who know our products." },
+        { icon: "✅", title: "Quality", desc: "We only sell products we trust." },
+        { icon: "🤝", title: "Reliability", desc: "We follow through on every promise — from delivery times to after-sales support." },
+        { icon: "💰", title: "Value", desc: "Premium products at fair prices. We believe quality shouldn't cost a fortune." },
+      ];
 
   return (
     <>
@@ -177,7 +211,8 @@ export default function AboutPage() {
         {/* HERO */}
         <div className="about-hero">
           <div className="section-tag">✦ Our Story</div>
-          <h1 className="page-title">Your Pakistani<br /><span>Online Store</span></h1>
+          <h1 className="page-title">{pageTitle}</h1>
+          {pageSub ? <p className="hero-text" style={{marginBottom:16}}>{pageSub}</p> : null}
           <div
             className="hero-text"
             dangerouslySetInnerHTML={renderRichOrPlain(
@@ -189,13 +224,7 @@ export default function AboutPage() {
 
         {/* STATS */}
         <div className="stats-bar">
-          {[
-            { number: "500+", label: "Happy Customers" },
-            { number: "99%", label: "Satisfaction Rate" },
-            { number: "24/7", label: "Support Available" },
-            { number: "2+", label: "Years in Business" },
-            { number: "1000+", label: "Orders Fulfilled" },
-          ].map((s, i) => (
+          {stats.map((s, i) => (
             <div className="stat-card" key={i}>
               <div className="stat-number">{s.number}</div>
               <div className="stat-label">{s.label}</div>
@@ -211,16 +240,13 @@ export default function AboutPage() {
             <div
               className="story-para"
               dangerouslySetInnerHTML={renderRichOrPlain(
-                sc.about_mission || "",
+                sc.about_mission || missionSec.text || "",
                 "Sandy was founded to make everyday shopping easier across Pakistan — authentic products, fair prices, and real human support."
             )}
             />
-            <p className="story-para">
-              Today we serve customers nationwide, starting with accessories and growing into a multi-category general store — all backed by WhatsApp support from our team in Lahore.
-            </p>
-            <p className="story-para">
-              Every order is personally handled. No bots. No long waits. Just real people who care about getting your order to you quickly and correctly.
-            </p>
+            {extraStory.split(/\n\n+/).map((para, i) => (
+              <p className="story-para" key={i}>{para}</p>
+            ))}
           </div>
           <div className="story-visual">
             {[
@@ -245,21 +271,14 @@ export default function AboutPage() {
           <div className="values-inner">
           <div className="section-header">
             <div className="section-tag">✦ What We Stand For</div>
-            <h2 className="section-title">Our <span>Values</span></h2>
+            <h2 className="section-title">{valuesSec?.title || "Our Values"}</h2>
           </div>
           <div className="values-grid">
-            {[
-              { icon: "🔒", title: "Transparency", desc: "No hidden charges, no confusing terms. We tell you exactly what you're getting before you buy." },
-              { icon: "⚡", title: "Speed", desc: "Fast order processing, quick delivery, and instant support responses — we value your time." },
-              { icon: "💬", title: "Real Support", desc: "Our WhatsApp team is staffed by real humans who know our products." },
-              { icon: "✅", title: "Quality", desc: "We only sell products we trust." },
-              { icon: "🤝", title: "Reliability", desc: "We follow through on every promise — from delivery times to after-sales support." },
-              { icon: "💰", title: "Value", desc: "Premium products at fair prices. We believe quality shouldn't cost a fortune." },
-            ].map((v, i) => (
+            {valueItems.map((v: any, i: number) => (
               <div className="value-card" key={i}>
                 <span className="value-icon">{v.icon}</span>
                 <div className="value-title">{v.title}</div>
-                <div className="value-desc">{v.desc}</div>
+                <div className="value-desc">{v.desc || v.description}</div>
               </div>
             ))}
           </div>
@@ -296,8 +315,8 @@ export default function AboutPage() {
         {/* CTA */}
         <div className="cta-section">
           <div className="cta-box">
-            <h2 className="cta-title">Ready to Shop With Us?</h2>
-            <p className="cta-sub">Join customers across Pakistan. Fast delivery. Real support.</p>
+            <h2 className="cta-title">{cmsText(sc, "about_cta_title", "Ready to Shop With Us?")}</h2>
+            <p className="cta-sub">{cmsText(sc, "about_cta_sub", "Join customers across Pakistan. Fast delivery. Real support.")}</p>
             <div className="cta-btns">
               <a href="/products" className="btn-primary">Browse Products</a>
               <a href="/contact" className="btn-secondary">Get In Touch</a>
@@ -305,16 +324,7 @@ export default function AboutPage() {
           </div>
         </div>
 
-        <footer>
-          <div className="footer-logo">{SITE_NAME_CAPS}</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">{FOOTER_COPY}</div>
-        </footer>
+        <SiteFooter />
       </div>
 
     </>

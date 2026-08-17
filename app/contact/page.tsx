@@ -1,7 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
+import SiteFooter from "@/components/SiteFooter";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 const styles = `
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -155,11 +157,18 @@ export default function ContactPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "" });
   const [submitting, setSubmitting] = useState(false);
-  const [sc, setSc] = useState<Record<string,string>>({});
+  const sc = useSiteContent();
   const contact = useContactConfig();
+  const [liveFaqs, setLiveFaqs] = useState<{ q: string; a: string }[]>(faqs);
 
   useEffect(() => {
-    fetch("/api/site-content?page=contact").then(r=>r.json()).then(d=>{ if(d&&typeof d==="object") setSc(d); }).catch(()=>{});
+    fetch("/api/faqs")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!Array.isArray(d) || d.length === 0) return;
+        setLiveFaqs(d.slice(0, 5).map((f: any) => ({ q: f.question, a: f.answer })));
+      })
+      .catch(() => {});
   }, []);
 
   const handleSubmit = async () => {
@@ -189,8 +198,8 @@ export default function ContactPage() {
       <div className="page-wrapper">
         <div className="page-header">
           <div className="section-tag">✦ Get In Touch</div>
-          <h1 className="page-title">Contact <span>Us</span></h1>
-          <p className="page-sub">Have a question or need help? We&apos;re here for you — reach out anytime.</p>
+          <h1 className="page-title">{cmsText(sc, "contact_title", "Contact Us")}</h1>
+          <p className="page-sub">{cmsText(sc, "contact_subtitle", "Have a question or need help? We're here for you — reach out anytime.")}</p>
         </div>
 
         {/* CONTACT CARDS */}
@@ -218,13 +227,13 @@ export default function ContactPage() {
           <div className="contact-card">
             <span className="contact-card-icon">🕐</span>
             <div className="contact-card-title">Support Hours</div>
-            <div className="contact-card-value">{sc.contact_hours||"9AM – 10PM"}</div>
+            <div className="contact-card-value">{cmsText(sc, "contact_hours", "9AM – 10PM")}</div>
             <div className="contact-card-sub">7 days a week</div>
           </div>
           <div className="contact-card">
             <span className="contact-card-icon">📍</span>
             <div className="contact-card-title">Based In</div>
-            <div className="contact-card-value">{sc.contact_address||"Lahore, Pakistan"}</div>
+            <div className="contact-card-value">{cmsText(sc, "contact_address", "Lahore, Pakistan")}</div>
             <div className="contact-card-sub">Nationwide delivery</div>
           </div>
         </div>
@@ -338,7 +347,7 @@ export default function ContactPage() {
           <div className="section-tag">✦ Quick Answers</div>
           <h2 className="faq-title">Frequently Asked <span>Questions</span></h2>
           <div className="faq-list">
-            {faqs.map((faq, i) => (
+            {liveFaqs.map((faq, i) => (
               <div className="faq-item" key={i}>
                 <div className="faq-question" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
                   <span>{faq.q}</span>
@@ -350,16 +359,7 @@ export default function ContactPage() {
           </div>
         </div>
 
-        <footer>
-          <div className="footer-logo">SANDY</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
-        </footer>
+        <SiteFooter />
       </div>
 
     </>

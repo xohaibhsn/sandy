@@ -6,14 +6,13 @@ import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import {
   CLOUDINARY_FOLDER,
-  FOOTER_COPY,
   PAKISTAN_PROVINCES,
-  SITE_NAME_CAPS,
   SITE_URL,
   TAX_LABEL,
   TAX_RATE,
   formatPrice,
 } from "@/lib/site";
+import SiteFooter from "@/components/SiteFooter";
 
 type PaymentMethod = "cod" | "jazzcash" | "easypaisa" | "bank";
 
@@ -521,10 +520,7 @@ export default function CartPage() {
           </div>
         )}
 
-        <footer>
-          <div className="footer-logo">{SITE_NAME_CAPS}</div>
-          <div className="footer-copy">{FOOTER_COPY}</div>
-        </footer>
+        <SiteFooter />
       </div>
     </>
   );

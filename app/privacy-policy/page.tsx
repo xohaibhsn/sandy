@@ -1,6 +1,9 @@
 "use client";
 import Navbar from "@/components/Navbar";
+import SiteFooter from "@/components/SiteFooter";
 import { useContactConfig } from "@/hooks/useContactConfig";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import xss from "xss";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -56,6 +59,9 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
   .policy-section ul { padding-left:20px; margin-bottom:14px; }
   .policy-section ul li { font-size:14px; color:#333333; line-height:1.9; margin-bottom:6px; }
   .policy-section ul li::marker { color:#5B21B6; }
+  .cms-legal h2 { font-family:var(--font-display); font-size:20px; font-weight:700; color:#111111; margin:24px 0 12px; }
+  .cms-legal p { font-size:14px; color:#333; line-height:1.9; margin-bottom:14px; }
+  .cms-legal ul { padding-left:20px; margin-bottom:14px; }
   .highlight-box { background:rgba(139,0,255,0.08); border:1px solid rgba(139,0,255,0.2);
     border-radius:12px; padding:18px 20px; margin-bottom:16px; }
   .highlight-box p { margin-bottom:0; color:#444444; }
@@ -84,6 +90,8 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
 
 export default function PrivacyPolicyPage() {
   const contact = useContactConfig();
+  const sc = useSiteContent();
+  const cmsBody = cmsText(sc, "privacy_content", "");
 
   return (
     <>
@@ -94,8 +102,8 @@ export default function PrivacyPolicyPage() {
       <div className="page-wrapper">
         <div className="page-header">
           <div className="section-tag">✦ Legal</div>
-          <h1 className="page-title">Privacy <span>Policy</span></h1>
-          <p className="last-updated">Last updated: 30 May 2026</p>
+          <h1 className="page-title">{cmsText(sc, "privacy_title", "Privacy Policy")}</h1>
+          <p className="last-updated">{cmsText(sc, "privacy_updated", "Last updated: 30 May 2026")}</p>
         </div>
 
         <div className="content-layout">
@@ -116,6 +124,12 @@ export default function PrivacyPolicyPage() {
           </aside>
 
           {/* CONTENT */}
+          {cmsBody ? (
+            <div
+              className="policy-content cms-legal"
+              dangerouslySetInnerHTML={{ __html: xss(cmsBody) }}
+            />
+          ) : (
           <div className="policy-content">
             <div className="policy-section" id="overview">
               <h2>1. Overview</h2>
@@ -211,18 +225,10 @@ export default function PrivacyPolicyPage() {
               <p>If you believe your data has been mishandled, please contact us and we will look into it.</p>
             </div>
           </div>
+          )}
         </div>
 
-        <footer>
-          <div className="footer-logo">SANDY</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
-        </footer>
+        <SiteFooter />
       </div>
 
     </>

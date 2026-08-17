@@ -5,7 +5,8 @@ import { fixContentLinkRels } from "@/lib/seoLinks";
 import { useCart } from "../../lib/cartContext";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
-import { FOOTER_COPY, SITE_NAME_CAPS, formatPrice } from "@/lib/site";
+import { formatPrice } from "@/lib/site";
+import SiteFooter from "@/components/SiteFooter";
 
 const xssOptions = {
   whiteList: {
@@ -211,10 +212,7 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
         </div>
       )}
 
-      <footer>
-        <div className="footer-logo">{SITE_NAME_CAPS}</div>
-        <div className="footer-copy">{FOOTER_COPY}</div>
-      </footer>
+      <SiteFooter />
 
     </>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import { SITE_NAME, SITE_NAME_CAPS } from "@/lib/site";
 
 export interface NavbarProps {
   logoUrl?: string;
@@ -20,22 +22,18 @@ export default function Navbar({
   children,
 }: NavbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const sc = useSiteContent();
   const [logo, setLogo] = useState(logoUrl || "");
+  const brand = cmsText(sc, "site_title", SITE_NAME).toUpperCase() || SITE_NAME_CAPS;
 
   useEffect(() => {
     if (logoUrl !== undefined) {
       setLogo(logoUrl || "");
       return;
     }
-    fetch("/api/site-content?page=all")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d && typeof d === "object" && d.site_logo_url) {
-          setLogo(String(d.site_logo_url));
-        }
-      })
-      .catch(() => {});
-  }, [logoUrl]);
+    const fromCms = cmsText(sc, "site_logo_url", "");
+    if (fromCms) setLogo(fromCms);
+  }, [logoUrl, sc]);
 
   const close = () => setMenuOpen(false);
 
@@ -43,13 +41,13 @@ export default function Navbar({
     <a href="/" className="nav-logo nav-logo-img">
       <img
         src={logo}
-        alt="Sandy"
+        alt={brand}
         style={{ height: 36, width: "auto", objectFit: "contain", display: "block" }}
       />
     </a>
   ) : (
     <a href="/" className="nav-logo nav-logo-text">
-      SANDY
+      {brand}
     </a>
   );
 

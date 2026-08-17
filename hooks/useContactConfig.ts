@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 import {
   CONTACT_EMAIL,
   PHONE_DISPLAY,
@@ -17,37 +17,17 @@ export type ContactConfigClient = {
   telegramUrl: string;
 };
 
-const FALLBACK: ContactConfigClient = {
-  whatsapp: WHATSAPP_DIGITS,
-  email: CONTACT_EMAIL,
-  telegram: "",
-  phone: PHONE_DISPLAY,
-  whatsappUrl: WHATSAPP_URL,
-  telegramUrl: "",
-};
-
 export function useContactConfig(): ContactConfigClient {
-  const [config, setConfig] = useState<ContactConfigClient>(FALLBACK);
-
-  useEffect(() => {
-    fetch("/api/site-content?page=all")
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data || typeof data !== "object") return;
-        const wa = data.contact_whatsapp || data.whatsapp_number || FALLBACK.whatsapp;
-        const rawTg = String(data.contact_telegram || "").trim();
-        const tgHandle = rawTg.replace(/^@/, "");
-        setConfig({
-          whatsapp: wa,
-          email: data.contact_email || FALLBACK.email,
-          telegram: rawTg ? (rawTg.startsWith("@") ? rawTg : `@${tgHandle}`) : "",
-          phone: data.contact_phone || FALLBACK.phone,
-          whatsappUrl: `https://wa.me/${wa}`,
-          telegramUrl: tgHandle ? `https://t.me/${tgHandle}` : "",
-        });
-      })
-      .catch(() => {});
-  }, []);
-
-  return config;
+  const sc = useSiteContent();
+  const wa = cmsText(sc, "contact_whatsapp", cmsText(sc, "whatsapp_number", WHATSAPP_DIGITS));
+  const rawTg = cmsText(sc, "contact_telegram", "");
+  const tgHandle = rawTg.replace(/^@/, "");
+  return {
+    whatsapp: wa,
+    email: cmsText(sc, "contact_email", CONTACT_EMAIL),
+    telegram: rawTg ? (rawTg.startsWith("@") ? rawTg : `@${tgHandle}`) : "",
+    phone: cmsText(sc, "contact_phone", PHONE_DISPLAY),
+    whatsappUrl: wa ? `https://wa.me/${wa}` : WHATSAPP_URL,
+    telegramUrl: tgHandle ? `https://t.me/${tgHandle}` : "",
+  };
 }

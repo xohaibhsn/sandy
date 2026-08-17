@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import dynamic from "next/dynamic";
 import { toEditorHtml } from "@/lib/contentHtml";
 import { CLOUDINARY_FOLDER, SITE_NAME_CAPS, SITE_URL, formatPrice } from "@/lib/site";
@@ -2419,11 +2419,11 @@ export default function AdminPage() {
               <div style={{marginBottom:18,padding:"14px 16px",background:"#F5F3FF",border:"1px solid #DDD6FE",borderRadius:12,fontSize:13,color:"#4C1D95",lineHeight:1.55}}>
                 <strong>Yahan se website ka saara text update hota hai</strong> (Products jaisa rich editor — bold, headings, links, lists).
                 <br />Left menu → <strong>Content Editor</strong> → Home / About / Contact / Footer → Save.
-                <br /><span style={{opacity:0.85}}>Page Builder alag hai — sirf “Why Choose Us” cards / Testimonials icons ke liye. Service info, features, buttons, stats yahan Content Editor mein likhein.</span>
+                <br /><span style={{opacity:0.85}}>Page Builder drives homepage featured-products header, Why Choose Us cards, testimonials, newsletter, and (if visible) the main hero title. Content Editor drives slider hero, buttons, stats, trust bar, service list, about/contact/footer/legal text.</span>
               </div>
 
               <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
-                {[["home","🏠 Home"],["about","ℹ️ About"],["contact","📞 Contact"],["footer","🔻 Footer"]].map(([k,l])=>(
+                {[["home","🏠 Home"],["about","ℹ️ About"],["contact","📞 Contact"],["faq","❓ FAQ"],["blog","📝 Blog"],["footer","🔻 Footer"],["legal","⚖️ Legal"]].map(([k,l])=>(
                   <button key={k} className={`action-btn ${activePage===k?"btn-verify":"btn-view"}`} style={{padding:"10px 20px",fontSize:13}} onClick={()=>setActivePage(k)}>{l}</button>
                 ))}
               </div>
@@ -2446,6 +2446,7 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Top Hero Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.home_top_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_subtitle:e.target.value}))} placeholder="Premium Streaming Solutions for the UK" /></div>
 
                   <div style={{margin:"20px 0 12px",paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.08)",fontSize:13,fontWeight:700,color:"#5B21B6"}}>MAIN HERO (below products — title, buttons, features, stats)</div>
+                  <div className="modal-field"><label>Main Hero Tag (small label above title)</label><input style={{width:"100%"}} value={siteContent.home_hero_tag||""} onChange={e=>setSiteContent(s=>({...s,home_hero_tag:e.target.value}))} placeholder="Sandy · Pakistan" /></div>
                   <div className="modal-field"><label>Main Hero Title</label><input style={{width:"100%"}} value={siteContent.home_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_hero_title:e.target.value}))} placeholder="Premium UK Streaming Service" /></div>
                   <div className="modal-field"><label>Main Hero Subtitle</label><textarea rows={3} style={{width:"100%",resize:"vertical"}} value={siteContent.home_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_hero_subtitle:e.target.value}))} placeholder="Sandy is your Pakistani online store for accessories, gadgets and everyday essentials." /></div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
@@ -2496,14 +2497,27 @@ export default function AdminPage() {
                     <div className="modal-field"><label>Stat 3 Label</label><input style={{width:"100%"}} value={siteContent.home_stat3_label||""} onChange={e=>setSiteContent(s=>({...s,home_stat3_label:e.target.value}))} placeholder="Support" /></div>
                   </div>
 
+                  <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>TRUST BAR (4 items under the slider)</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <div className="modal-field"><label>Trust 1 Title</label><input style={{width:"100%"}} value={siteContent.home_trust_1_title||""} onChange={e=>setSiteContent(s=>({...s,home_trust_1_title:e.target.value}))} /></div>
+                    <div className="modal-field"><label>Trust 1 Subtitle</label><input style={{width:"100%"}} value={siteContent.home_trust_1_sub||""} onChange={e=>setSiteContent(s=>({...s,home_trust_1_sub:e.target.value}))} /></div>
+                    <div className="modal-field"><label>Trust 2 Title</label><input style={{width:"100%"}} value={siteContent.home_trust_2_title||""} onChange={e=>setSiteContent(s=>({...s,home_trust_2_title:e.target.value}))} /></div>
+                    <div className="modal-field"><label>Trust 2 Subtitle</label><input style={{width:"100%"}} value={siteContent.home_trust_2_sub||""} onChange={e=>setSiteContent(s=>({...s,home_trust_2_sub:e.target.value}))} /></div>
+                    <div className="modal-field"><label>Trust 3 Title</label><input style={{width:"100%"}} value={siteContent.home_trust_3_title||""} onChange={e=>setSiteContent(s=>({...s,home_trust_3_title:e.target.value}))} /></div>
+                    <div className="modal-field"><label>Trust 3 Subtitle</label><input style={{width:"100%"}} value={siteContent.home_trust_3_sub||""} onChange={e=>setSiteContent(s=>({...s,home_trust_3_sub:e.target.value}))} /></div>
+                    <div className="modal-field"><label>Trust 4 Title</label><input style={{width:"100%"}} value={siteContent.home_trust_4_title||""} onChange={e=>setSiteContent(s=>({...s,home_trust_4_title:e.target.value}))} /></div>
+                    <div className="modal-field"><label>Trust 4 Subtitle</label><input style={{width:"100%"}} value={siteContent.home_trust_4_sub||""} onChange={e=>setSiteContent(s=>({...s,home_trust_4_sub:e.target.value}))} /></div>
+                  </div>
+
                   <div className="modal-field"><label>Tagline</label><input style={{width:"100%"}} value={siteContent.home_tagline||""} onChange={e=>setSiteContent(s=>({...s,home_tagline:e.target.value}))} placeholder="Fast. Reliable. Affordable." /></div>
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent([
                     "home_meta_title","home_meta_description",
                     "home_top_hero_title","home_top_hero_subtitle",
-                    "home_hero_title","home_hero_subtitle",
+                    "home_hero_tag","home_hero_title","home_hero_subtitle",
                     "home_hero_btn_text","home_hero_btn_link","home_hero_btn_show","home_hero_btn2_text","home_hero_btn2_link","home_hero_btn2_show",
                     "home_features_list",
                     "home_stat1_num","home_stat1_label","home_stat2_num","home_stat2_label","home_stat3_num","home_stat3_label",
+                    "home_trust_1_title","home_trust_1_sub","home_trust_2_title","home_trust_2_sub","home_trust_3_title","home_trust_3_sub","home_trust_4_title","home_trust_4_sub",
                     "home_tagline",
                   ])}>{contentSaving?"Saving...":"💾 Save Home"}</button>
                 </div>
@@ -2530,7 +2544,23 @@ export default function AdminPage() {
                       placeholder="Mission text with headings, bold, links..."
                     />
                   </div>
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["about_title","about_description","about_mission"])}>{contentSaving?"Saving...":"💾 Save About"}</button>
+                  <div className="modal-field">
+                    <label>Extra Story Paragraphs</label>
+                    <textarea rows={4} style={{width:"100%",resize:"vertical"}} value={siteContent.about_story_extra||""} onChange={e=>setSiteContent(s=>({...s,about_story_extra:e.target.value}))} placeholder="Additional paragraphs under the mission..." />
+                  </div>
+                  <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>ABOUT STATS</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    {[1,2,3,4,5].map((n)=>(
+                      <Fragment key={n}>
+                        <div className="modal-field"><label>Stat {n} Number</label><input style={{width:"100%"}} value={siteContent[`about_stat${n}_num`]||""} onChange={e=>setSiteContent(s=>({...s,[`about_stat${n}_num`]:e.target.value}))} /></div>
+                        <div className="modal-field"><label>Stat {n} Label</label><input style={{width:"100%"}} value={siteContent[`about_stat${n}_label`]||""} onChange={e=>setSiteContent(s=>({...s,[`about_stat${n}_label`]:e.target.value}))} /></div>
+                      </Fragment>
+                    ))}
+                  </div>
+                  <div className="modal-field"><label>CTA Title</label><input style={{width:"100%"}} value={siteContent.about_cta_title||""} onChange={e=>setSiteContent(s=>({...s,about_cta_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>CTA Subtitle</label><input style={{width:"100%"}} value={siteContent.about_cta_sub||""} onChange={e=>setSiteContent(s=>({...s,about_cta_sub:e.target.value}))} /></div>
+                  <p style={{fontSize:12,color:"#888",margin:"8px 0 16px"}}>Values / mission cards: edit in <strong>Page Builder → About</strong>.</p>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["about_title","about_description","about_mission","about_story_extra","about_cta_title","about_cta_sub","about_stat1_num","about_stat1_label","about_stat2_num","about_stat2_label","about_stat3_num","about_stat3_label","about_stat4_num","about_stat4_label","about_stat5_num","about_stat5_label"])}>{contentSaving?"Saving...":"💾 Save About"}</button>
                 </div>
               )}
 
@@ -2538,7 +2568,9 @@ export default function AdminPage() {
               {activePage==="contact" && (
                 <div className="section-card" style={{padding:24}}>
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">📞 Contact Page Content</div></div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
+                    <div className="modal-field"><label>Page Title</label><input style={{width:"100%"}} value={siteContent.contact_title||""} onChange={e=>setSiteContent(s=>({...s,contact_title:e.target.value}))} /></div>
+                    <div className="modal-field"><label>Page Subtitle</label><input style={{width:"100%"}} value={siteContent.contact_subtitle||""} onChange={e=>setSiteContent(s=>({...s,contact_subtitle:e.target.value}))} /></div>
                     <div className="modal-field"><label>Phone Number</label><input style={{width:"100%"}} value={siteContent.contact_phone||""} onChange={e=>setSiteContent(s=>({...s,contact_phone:e.target.value}))} /></div>
                     <div className="modal-field"><label>Email Address</label><input style={{width:"100%"}} value={siteContent.contact_email||""} onChange={e=>setSiteContent(s=>({...s,contact_email:e.target.value}))} /></div>
                     <div className="modal-field"><label>WhatsApp (numbers only)</label><input style={{width:"100%"}} value={siteContent.contact_whatsapp||""} onChange={e=>setSiteContent(s=>({...s,contact_whatsapp:e.target.value,whatsapp_number:e.target.value}))} placeholder="923334800181" /></div>
@@ -2546,7 +2578,7 @@ export default function AdminPage() {
                     <div className="modal-field"><label>Business Hours</label><input style={{width:"100%"}} value={siteContent.contact_hours||""} onChange={e=>setSiteContent(s=>({...s,contact_hours:e.target.value}))} /></div>
                     <div className="modal-field"><label>Address</label><input style={{width:"100%"}} value={siteContent.contact_address||""} onChange={e=>setSiteContent(s=>({...s,contact_address:e.target.value}))} /></div>
                   </div>
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["contact_phone","contact_email","contact_whatsapp","whatsapp_number","contact_telegram","contact_hours","contact_address"])}>{contentSaving?"Saving...":"💾 Save Contact"}</button>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["contact_title","contact_subtitle","contact_phone","contact_email","contact_whatsapp","whatsapp_number","contact_telegram","contact_hours","contact_address"])}>{contentSaving?"Saving...":"💾 Save Contact"}</button>
                 </div>
               )}
 
@@ -2557,6 +2589,47 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Footer Text (copyright)</label><input style={{width:"100%"}} value={siteContent.footer_text||""} onChange={e=>setSiteContent(s=>({...s,footer_text:e.target.value}))} /></div>
                   <div className="modal-field"><label>Footer Tagline</label><input style={{width:"100%"}} value={siteContent.footer_tagline||""} onChange={e=>setSiteContent(s=>({...s,footer_tagline:e.target.value}))} /></div>
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["footer_text","footer_tagline"])}>{contentSaving?"Saving...":"💾 Save Footer"}</button>
+                </div>
+              )}
+
+              {activePage==="faq" && (
+                <div className="section-card" style={{padding:24}}>
+                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">❓ FAQ Page Copy</div></div>
+                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>Questions themselves are edited in the <strong>FAQs</strong> tab. These fields are the page title and help box.</p>
+                  <div className="modal-field"><label>Page Title</label><input style={{width:"100%"}} value={siteContent.faq_title||""} onChange={e=>setSiteContent(s=>({...s,faq_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Page Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.faq_subtitle||""} onChange={e=>setSiteContent(s=>({...s,faq_subtitle:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Help Box Title</label><input style={{width:"100%"}} value={siteContent.faq_help_title||""} onChange={e=>setSiteContent(s=>({...s,faq_help_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Help Box Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.faq_help_sub||""} onChange={e=>setSiteContent(s=>({...s,faq_help_sub:e.target.value}))} /></div>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["faq_title","faq_subtitle","faq_help_title","faq_help_sub"])}>{contentSaving?"Saving...":"💾 Save FAQ Copy"}</button>
+                </div>
+              )}
+
+              {activePage==="blog" && (
+                <div className="section-card" style={{padding:24}}>
+                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">📝 Blog Page Copy</div></div>
+                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>Posts are edited in the <strong>Blog</strong> tab. These fields are the listing page header and newsletter box.</p>
+                  <div className="modal-field"><label>Page Title</label><input style={{width:"100%"}} value={siteContent.blog_title||""} onChange={e=>setSiteContent(s=>({...s,blog_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Page Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.blog_subtitle||""} onChange={e=>setSiteContent(s=>({...s,blog_subtitle:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Newsletter Title</label><input style={{width:"100%"}} value={siteContent.blog_newsletter_title||""} onChange={e=>setSiteContent(s=>({...s,blog_newsletter_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Newsletter Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.blog_newsletter_sub||""} onChange={e=>setSiteContent(s=>({...s,blog_newsletter_sub:e.target.value}))} /></div>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["blog_title","blog_subtitle","blog_newsletter_title","blog_newsletter_sub"])}>{contentSaving?"Saving...":"💾 Save Blog Copy"}</button>
+                </div>
+              )}
+
+              {activePage==="legal" && (
+                <div className="section-card" style={{padding:24}}>
+                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">⚖️ Legal Pages</div></div>
+                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>Leave a body empty to keep the default structured policy on the public site. Fill it to replace the whole policy body.</p>
+                  <div className="modal-field"><label>Privacy Title</label><input style={{width:"100%"}} value={siteContent.privacy_title||""} onChange={e=>setSiteContent(s=>({...s,privacy_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Privacy Last Updated</label><input style={{width:"100%"}} value={siteContent.privacy_updated||""} onChange={e=>setSiteContent(s=>({...s,privacy_updated:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Privacy Body</label><TipTapEditor content={toEditorHtml(siteContent.privacy_content || "")} onChange={(html)=>setSiteContent(s=>({...s,privacy_content:html}))} placeholder="Leave empty to use the default privacy policy..." /></div>
+                  <div className="modal-field"><label>Terms Title</label><input style={{width:"100%"}} value={siteContent.terms_title||""} onChange={e=>setSiteContent(s=>({...s,terms_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Terms Last Updated</label><input style={{width:"100%"}} value={siteContent.terms_updated||""} onChange={e=>setSiteContent(s=>({...s,terms_updated:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Terms Body</label><TipTapEditor content={toEditorHtml(siteContent.terms_content || "")} onChange={(html)=>setSiteContent(s=>({...s,terms_content:html}))} placeholder="Leave empty to use the default terms..." /></div>
+                  <div className="modal-field"><label>Refund Title</label><input style={{width:"100%"}} value={siteContent.refund_title||""} onChange={e=>setSiteContent(s=>({...s,refund_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Refund Last Updated</label><input style={{width:"100%"}} value={siteContent.refund_updated||""} onChange={e=>setSiteContent(s=>({...s,refund_updated:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Refund Body</label><TipTapEditor content={toEditorHtml(siteContent.refund_content || "")} onChange={(html)=>setSiteContent(s=>({...s,refund_content:html}))} placeholder="Leave empty to use the default refund policy..." /></div>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["privacy_title","privacy_updated","privacy_content","terms_title","terms_updated","terms_content","refund_title","refund_updated","refund_content"])}>{contentSaving?"Saving...":"💾 Save Legal"}</button>
                 </div>
               )}
             </div>

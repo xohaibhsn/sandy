@@ -3,6 +3,7 @@ import { useState } from "react";
 import xss from "xss";
 import { fixContentLinkRels } from "@/lib/seoLinks";
 import Navbar from "@/components/Navbar";
+import SiteFooter from "@/components/SiteFooter";
 
 // Allowed HTML tags from TipTap editor output
 const xssOptions = {
@@ -186,16 +187,7 @@ export default function BlogPostClient({ post }: { post: Post | null }) {
         )}
       </div>
 
-      <footer>
-        <div className="footer-logo">SANDY</div>
-        <ul className="footer-links">
-          <li><a href="/privacy-policy">Privacy Policy</a></li>
-          <li><a href="/terms">Terms & Conditions</a></li>
-          <li><a href="/refund-policy">Refund Policy</a></li>
-          <li><a href="/faq">FAQ</a></li>
-        </ul>
-        <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
-      </footer>
+      <SiteFooter />
 
     </>
   );

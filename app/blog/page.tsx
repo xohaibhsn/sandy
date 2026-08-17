@@ -2,6 +2,8 @@
 import { useState, useEffect } from "react";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import Navbar from "@/components/Navbar";
+import SiteFooter from "@/components/SiteFooter";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -177,6 +179,7 @@ export default function BlogPage() {
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
   const [allPosts, setAllPosts] = useState(posts);
+  const sc = useSiteContent();
 
   useEffect(() => {
     fetch("/api/blog")
@@ -221,8 +224,8 @@ export default function BlogPage() {
       <div className="page-wrapper">
         <div className="page-header">
           <div className="section-tag">✦ Our Blog</div>
-          <h1 className="page-title">Tips, Guides & <span>Updates</span></h1>
-          <p className="page-sub">Everything you need to get the most out of your devices and subscription plans.</p>
+          <h1 className="page-title">{cmsText(sc, "blog_title", "Tips, Guides & Updates")}</h1>
+          <p className="page-sub">{cmsText(sc, "blog_subtitle", "Everything you need to get the most out of your products.")}</p>
         </div>
 
         {/* CATEGORIES */}
@@ -283,8 +286,8 @@ export default function BlogPage() {
         {/* NEWSLETTER */}
         <div className="newsletter">
           <div className="newsletter-box">
-            <div className="newsletter-title">Stay in the Loop</div>
-            <p className="newsletter-sub">Get the latest guides, tips and offers delivered to your inbox.</p>
+            <div className="newsletter-title">{cmsText(sc, "blog_newsletter_title", cmsText(sc, "footer_tagline", "Stay in the Loop"))}</div>
+            <p className="newsletter-sub">{cmsText(sc, "blog_newsletter_sub", "Get the latest guides, tips and offers delivered to your inbox.")}</p>
             {subscribed ? (
               <p style={{ color: "#5B21B6", fontWeight: 600, fontSize: "15px" }}>✅ You&apos;re subscribed! Thank you.</p>
             ) : (
@@ -297,16 +300,7 @@ export default function BlogPage() {
           </div>
         </div>
 
-        <footer>
-          <div className="footer-logo">SANDY</div>
-          <ul className="footer-links">
-            <li><a href="/privacy-policy">Privacy Policy</a></li>
-            <li><a href="/terms">Terms & Conditions</a></li>
-            <li><a href="/refund-policy">Refund Policy</a></li>
-            <li><a href="/faq">FAQ</a></li>
-          </ul>
-          <div className="footer-copy">© 2026 Sandy. All rights reserved.</div>
-        </footer>
+        <SiteFooter />
       </div>
 
     </>
