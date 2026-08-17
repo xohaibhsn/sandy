@@ -55,9 +55,9 @@ export default function HeroSlider({ slides, children }: HeroSliderProps) {
         .hero-slider-stage {
           position: relative;
           width: 100%;
-          height: 600px;
+          height: 640px;
           overflow: hidden;
-          background: linear-gradient(135deg, #1a0533 0%, #2d1b69 50%, #1a0533 100%);
+          background: #1a1917;
         }
         .hero-slider-slide {
           position: absolute;
@@ -79,10 +79,9 @@ export default function HeroSlider({ slides, children }: HeroSliderProps) {
           z-index: 1;
           background: linear-gradient(
             to right,
-            rgba(0,0,0,0.85) 0%,
-            rgba(0,0,0,0.75) 40%,
-            rgba(0,0,0,0.3) 70%,
-            rgba(0,0,0,0.1) 100%
+            rgba(0,0,0,0.55) 0%,
+            rgba(0,0,0,0.28) 42%,
+            rgba(0,0,0,0.08) 100%
           );
           pointer-events: none;
         }
@@ -106,9 +105,8 @@ export default function HeroSlider({ slides, children }: HeroSliderProps) {
           -webkit-text-fill-color: #FFFFFF !important;
         }
         .hero-slider .hero-slider-content h1 span {
-          color: #c4b5fd !important;
-          -webkit-text-fill-color: #c4b5fd !important;
-          text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+          color: #FFFFFF !important;
+          -webkit-text-fill-color: #FFFFFF !important;
         }
         .hero-slider .hero-slider-content p,
         .hero-slider .hero-slider-content p * {
@@ -174,7 +172,7 @@ export default function HeroSlider({ slides, children }: HeroSliderProps) {
             display: flex;
             justify-content: center;
             padding: 12px 0;
-            background: #0a0010;
+            background: #111111;
             gap: 12px;
           }
           .hero-slider-dot {

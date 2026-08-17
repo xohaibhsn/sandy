@@ -120,38 +120,38 @@ export default function ProductsPage() {
         .hamburger span { display:block; width:25px; height:2px; background:#111111; border-radius:2px; }
         .page-wrapper { position:relative; z-index:1; padding-top:100px; background:#FFFFFF; }
         .page-header { max-width:1300px; margin:0 auto; padding:60px 60px 30px; }
-        .section-tag { font-family:var(--font-body); font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#5B21B6; margin-bottom:12px; font-weight:700; }
-        .page-title { font-family:var(--font-display); font-size:clamp(1.8rem,3vw,2.5rem); font-weight:800; letter-spacing:-0.03em; color:#111111; }
-        .page-title span { color:#5B21B6; }
-        .activation-banner { max-width:1300px; margin:0 auto 24px; padding:0 60px; }
-        .activation-banner-inner { background:#F5F3FF; border:1px solid #DDD6FE; border-radius:14px; padding:14px 18px; color:#444444; font-size:14px; line-height:1.6; }
-        .filters { max-width:1300px; margin:0 auto; padding:0 60px 30px; display:flex; gap:10px; flex-wrap:wrap; }
-        .filter-btn { padding:8px 20px; border-radius:30px; border:1px solid #E5E5E5; background:#F5F5F5; color:#111111; font-size:13px; cursor:pointer; transition:all 0.2s; }
-        .filter-btn:hover { border-color:#5B21B6; color:#5B21B6; }
-        .filter-btn.active { background:#5B21B6; color:#FFFFFF; border-color:transparent; }
-        .products-grid { max-width:1300px; margin:0 auto; padding:0 60px 80px; display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:22px; }
-        .product-card { background:#FFFFFF; border:1px solid #E5E5E5; border-radius:12px; overflow:hidden; transition:all 0.3s; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.06); min-width:0; }
+        .section-tag { font-family:var(--font-body); font-size:11px; letter-spacing:0.18em; text-transform:uppercase; color:#6B6560; margin-bottom:12px; font-weight:600; }
+        .page-title { font-family:var(--font-display); font-size:clamp(1.8rem,3vw,2.5rem); font-weight:700; letter-spacing:-0.03em; color:#111111; }
+        .page-title span { color:#111111; }
+        .activation-banner { max-width:1300px; margin:0 auto 24px; padding:0 48px; }
+        .activation-banner-inner { background:#F7F5F2; border:none; border-radius:0; padding:14px 0; color:#6B6560; font-size:14px; line-height:1.6; border-bottom:1px solid #E8E4DF; }
+        .filters { max-width:1300px; margin:0 auto; padding:0 48px 30px; display:flex; gap:8px; flex-wrap:wrap; }
+        .filter-btn { padding:8px 16px; border-radius:2px; border:1px solid #E8E4DF; background:#FFFFFF; color:#111111; font-size:12px; letter-spacing:0.06em; cursor:pointer; transition:all 0.2s; }
+        .filter-btn:hover { border-color:#111; }
+        .filter-btn.active { background:#111111; color:#FFFFFF; border-color:#111; }
+        .products-grid { max-width:1300px; margin:0 auto; padding:0 48px 80px; display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:28px; }
+        .product-card { background:#FFFFFF; border:none; border-radius:0; overflow:hidden; transition:opacity 0.3s; position:relative; box-shadow:none; min-width:0; }
         @keyframes fadeInUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        .product-card:hover { transform:translateY(-4px); border-color:#5B21B6; box-shadow:0 8px 24px rgba(0,0,0,0.12); }
-        .product-image { width:100%; aspect-ratio:1/1; background:#F5F5F5; border-bottom:1px solid #E5E5E5; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+        .product-card:hover { transform:none; border-color:transparent; box-shadow:none; opacity:0.88; }
+        .product-image { width:100%; aspect-ratio:1/1; background:#F7F5F2; border-bottom:none; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
         .product-image img { width:100%; height:100%; object-fit:cover; }
         .image-placeholder { display:flex; flex-direction:column; align-items:center; gap:10px; color:#CCCCCC; }
         .image-placeholder svg { width:48px; height:48px; opacity:0.4; }
         .image-placeholder span { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#AAAAAA; }
-        .badge { position:absolute; top:10px; right:10px; z-index:2; background:#5B21B6; color:#FFFFFF; font-size:10px; font-weight:700; padding:4px 10px; border-radius:20px; }
+        .badge { position:absolute; top:12px; left:12px; z-index:2; background:#111111; color:#FFFFFF; font-size:10px; font-weight:600; padding:5px 10px; border-radius:0; letter-spacing:0.08em; }
         .badge.gold { background:#111111; color:#FFFFFF; }
-        .badge.new { background:#16A34A; color:#FFFFFF; }
-        .badge.bundle { background:#EA580C; color:#FFFFFF; }
-        .product-info { padding:16px 18px; }
-        .product-name { font-family:var(--font-display); font-size:15px; font-weight:700; letter-spacing:-0.01em; color:#111111; margin-bottom:6px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word; }
-        .product-desc,.product-short-desc { font-size:14px; color:#555555; line-height:1.6; margin-bottom:14px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
-        .product-short-desc p { margin:0; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:14px; color:#555555; }
+        .badge.new { background:#111111; color:#FFFFFF; }
+        .badge.bundle { background:#111111; color:#FFFFFF; }
+        .product-info { padding:16px 4px 8px; }
+        .product-name { font-family:var(--font-display); font-size:15px; font-weight:600; letter-spacing:-0.01em; color:#111111; margin-bottom:6px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word; }
+        .product-desc,.product-short-desc { font-size:13px; color:#6B6560; line-height:1.6; margin-bottom:12px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; }
+        .product-short-desc p { margin:0; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; font-size:13px; color:#6B6560; }
         .product-short-desc strong,.product-desc strong { font-weight:700; color:#333333; }
-        .product-short-desc a,.product-desc a { color:#5B21B6; text-decoration:none; }
+        .product-short-desc a,.product-desc a { color:#111; text-decoration:underline; }
         .product-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-        .product-price { font-size:1.3rem; font-weight:800; letter-spacing:-0.02em; color:#111111; font-family:var(--font-display); white-space:nowrap; }
-        .add-btn { font-family:var(--font-body); background:#5B21B6; color:#FFFFFF; border:none; padding:9px 18px; border-radius:8px; font-size:13px; font-weight:600; letter-spacing:0.01em; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
-        .add-btn:hover { background:#4C1D95; transform:translateY(-1px); }
+        .product-price { font-size:1.05rem; font-weight:600; letter-spacing:-0.02em; color:#111111; font-family:var(--font-display); white-space:nowrap; }
+        .add-btn { font-family:var(--font-body); background:#111111; color:#FFFFFF; border:none; padding:9px 16px; border-radius:2px; font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
+        .add-btn:hover { background:#333; }
         .add-btn.added { background:#16A34A; }
         .loading { text-align:center; padding:60px; color:#666666; font-size:18px; }
         footer { background:#111111; padding:50px 60px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px; }
@@ -217,8 +217,8 @@ export default function ProductsPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ Our Store</div>
-          <h1 className="page-title">All <span>Products</span></h1>
+          <div className="section-tag">The Collection</div>
+          <h1 className="page-title">All products</h1>
         </div>
 
         <div className="activation-banner">
@@ -228,18 +228,18 @@ export default function ProductsPage() {
         </div>
 
         {/* Filters + Sort */}
-        <div style={{maxWidth:1300,margin:"0 auto",padding:"0 60px 20px",display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>
+        <div style={{maxWidth:1300,margin:"0 auto",padding:"0 48px 20px",display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>
           <div className="filters" style={{margin:0,padding:0,flex:1,minWidth:200}}>
-            {["All","Subscription","Device","Bundle"].map(cat => (
+            {categories.map(cat => (
               <button key={cat} className={`filter-btn ${filter===cat?"active":""}`} onClick={()=>applyFilter(cat)}>{cat}</button>
             ))}
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-            <input type="number" style={{width:70,background:"rgba(139,0,255,0.08)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"6px 10px",color:"white",fontSize:13,outline:"none"}} placeholder="Min Rs." value={minPrice} onChange={e=>setMinPrice(e.target.value)} />
-            <span style={{color:"rgba(255,255,255,0.3)",fontSize:13}}>—</span>
-            <input type="number" style={{width:70,background:"rgba(139,0,255,0.08)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"6px 10px",color:"white",fontSize:13,outline:"none"}} placeholder="Max Rs." value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} />
-            <button style={{background:"rgba(139,0,255,0.15)",border:"1px solid rgba(139,0,255,0.3)",color:"#5B21B6",padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}} onClick={applyPrice}>Apply</button>
-            <select style={{background:"rgba(13,0,20,0.9)",border:"1px solid rgba(139,0,255,0.25)",borderRadius:8,padding:"6px 10px",color:"white",fontSize:13,outline:"none",cursor:"pointer"}} value={sort} onChange={e=>applySort(e.target.value)}>
+            <input type="number" style={{width:80,background:"#FFFFFF",border:"1px solid #E8E4DF",borderRadius:2,padding:"7px 10px",color:"#111",fontSize:13,outline:"none"}} placeholder="Min Rs." value={minPrice} onChange={e=>setMinPrice(e.target.value)} />
+            <span style={{color:"#6B6560",fontSize:13}}>—</span>
+            <input type="number" style={{width:80,background:"#FFFFFF",border:"1px solid #E8E4DF",borderRadius:2,padding:"7px 10px",color:"#111",fontSize:13,outline:"none"}} placeholder="Max Rs." value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} />
+            <button style={{background:"#111",border:"none",color:"#fff",padding:"7px 14px",borderRadius:2,cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:"0.06em"}} onClick={applyPrice}>Apply</button>
+            <select style={{background:"#FFFFFF",border:"1px solid #E8E4DF",borderRadius:2,padding:"7px 10px",color:"#111",fontSize:13,outline:"none",cursor:"pointer"}} value={sort} onChange={e=>applySort(e.target.value)}>
               <option value="featured">Featured</option>
               <option value="price_asc">Price: Low → High</option>
               <option value="price_desc">Price: High → Low</option>
@@ -254,9 +254,9 @@ export default function ProductsPage() {
           ) : loadError ? (
             <div className="loading" style={{textAlign:"center",padding:"40px 0"}}>
               <div style={{fontSize:"32px",marginBottom:"12px"}}>⚠️</div>
-              <div style={{color:"rgba(255,255,255,0.7)",marginBottom:"8px"}}>Could not load products right now.</div>
-              <div style={{color:"rgba(255,255,255,0.4)",fontSize:"13px",marginBottom:"20px"}}>Please try again in a moment or contact us via WhatsApp.</div>
-              <button onClick={() => window.location.reload()} style={{background:"linear-gradient(135deg,#4a0080,#8b00ff)",color:"white",border:"none",padding:"10px 24px",borderRadius:"30px",cursor:"pointer",fontSize:"14px"}}>Try Again</button>
+              <div style={{color:"#111",marginBottom:"8px"}}>Could not load products right now.</div>
+              <div style={{color:"#6B6560",fontSize:"13px",marginBottom:"20px"}}>Please try again in a moment or contact us via WhatsApp.</div>
+              <button onClick={() => window.location.reload()} style={{background:"#111",color:"white",border:"none",padding:"10px 24px",borderRadius:"2px",cursor:"pointer",fontSize:"13px",letterSpacing:"0.08em",textTransform:"uppercase"}}>Try Again</button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="loading">No products found.</div>
@@ -302,12 +302,12 @@ export default function ProductsPage() {
                       return(
                       <button
                         className="add-btn"
-                        style={{background:inCart?(hovering?"#DC2626":"#16A34A"):"#5B21B6",cursor:inCart&&!hovering?"default":"pointer"}}
+                        style={{background:inCart?(hovering?"#DC2626":"#16A34A"):"#111111",cursor:inCart&&!hovering?"default":"pointer"}}
                         onMouseEnter={()=>inCart&&setHoveringId(p.id)}
                         onMouseLeave={()=>setHoveringId(null)}
                         onClick={e=>{e.stopPropagation();e.preventDefault();inCart?removeFromCart(p.id):handleAddToCart(p);}}
                       >
-                        {inCart?(hovering?"✕ Remove":"✅ Added!"):"Add to Cart →"}
+                        {inCart?(hovering?"Remove":"Added"):"Add"}
                       </button>
                       );
                     })()}

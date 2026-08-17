@@ -81,15 +81,15 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
           .nav-links.open a{color:#111111;font-size:18px;}
           .hamburger{display:flex;}
         }
-        .back-link{color:#666666;text-decoration:none;font-size:14px;display:inline-flex;align-items:center;gap:6px;margin-bottom:24px;transition:color 0.2s;}
-        .back-link:hover{color:#5B21B6;}
-        .page-wrap{padding:110px 60px 80px;max-width:1100px;margin:0 auto;}
-        .product-layout{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:start;}
-        .product-img-box{background:#F5F5F5;border:1px solid #E5E5E5;border-radius:20px;overflow:hidden;aspect-ratio:1;display:flex;align-items:center;justify-content:center;}
+        .back-link{color:#6B6560;text-decoration:none;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;display:inline-flex;align-items:center;gap:6px;margin-bottom:28px;transition:opacity 0.2s;}
+        .back-link:hover{color:#111;opacity:0.7;}
+        .page-wrap{padding:110px 48px 80px;max-width:1180px;margin:0 auto;}
+        .product-layout{display:grid;grid-template-columns:1.05fr 0.95fr;gap:64px;align-items:start;}
+        .product-img-box{background:#F7F5F2;border:none;border-radius:0;overflow:hidden;aspect-ratio:1;display:flex;align-items:center;justify-content:center;}
         .product-img-box img{width:100%;height:100%;object-fit:cover;}
         .placeholder-img{font-size:80px;text-align:center;}
-        .product-category{font-size:12px;letter-spacing:3px;text-transform:uppercase;color:#5B21B6;margin-bottom:12px;font-weight:600;}
-        .product-name{font-family:var(--font-display);font-size:clamp(22px,3vw,34px);font-weight:800;letter-spacing:-0.03em;color:#111111;margin-bottom:12px;line-height:1.25;}
+        .product-category{font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#6B6560;margin-bottom:12px;font-weight:600;}
+        .product-name{font-family:var(--font-display);font-size:clamp(26px,3vw,40px);font-weight:700;letter-spacing:-0.03em;color:#111111;margin-bottom:12px;line-height:1.15;}
         .product-short-desc{color:#555555;font-size:15px;line-height:1.8;margin-bottom:18px;}
         .product-description,.product-full-description{color:#444444;font-size:15px;line-height:1.85;}
         .product-description p,.product-full-description p{margin:0 0 1rem;line-height:1.85;}
@@ -98,25 +98,25 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
         .product-description li,.product-full-description li{margin:0.4rem 0;color:#333333;}
         .product-description h1,.product-full-description h1{font-family:var(--font-display);font-size:1.75rem;font-weight:700;color:#111111;margin:1.25rem 0 0.75rem;}
         .product-description h2,.product-full-description h2{font-family:var(--font-display);font-size:1.5rem;font-weight:700;color:#111111;margin:1.25rem 0 0.75rem;}
-        .product-description h3,.product-full-description h3{font-family:var(--font-display);font-size:1.25rem;font-weight:600;color:#5B21B6;margin:1rem 0 0.5rem;}
-        .product-description a,.product-full-description a{color:#5B21B6;text-decoration:underline;}
+        .product-description h3,.product-full-description h3{font-family:var(--font-display);font-size:1.25rem;font-weight:600;color:#111;margin:1rem 0 0.5rem;}
+        .product-description a,.product-full-description a{color:#111;text-decoration:underline;}
         .product-description strong,.product-full-description strong{font-weight:700;color:#111111;}
-        .product-description blockquote,.product-full-description blockquote{border-left:4px solid #5B21B6;padding:1rem 1.5rem;background:#F5F3FF;margin:1.25rem 0;color:#444444;font-style:italic;border-radius:0 8px 8px 0;}
-        .product-description img,.product-full-description img{max-width:100%;border-radius:10px;margin:1.25rem 0;display:block;}
-        .product-price{font-family:var(--font-display);font-size:36px;font-weight:800;color:#5B21B6;-webkit-text-fill-color:#5B21B6;margin-bottom:22px;}
-        .badge-tag{display:inline-block;background:#5B21B6;color:#FFFFFF;font-size:12px;font-weight:700;padding:4px 14px;border-radius:20px;letter-spacing:1px;margin-bottom:14px;}
-        .add-btn{width:100%;background:#5B21B6;color:#FFFFFF;border:none;padding:18px;border-radius:9px;font-size:16px;font-weight:700;letter-spacing:0.5px;cursor:pointer;transition:all 0.2s;}
-        .add-btn:hover{background:#4C1D95;transform:translateY(-1px);box-shadow:0 4px 16px rgba(91,33,182,0.35);}
+        .product-description blockquote,.product-full-description blockquote{border-left:3px solid #111;padding:1rem 1.5rem;background:#F7F5F2;margin:1.25rem 0;color:#444444;font-style:italic;}
+        .product-description img,.product-full-description img{max-width:100%;border-radius:0;margin:1.25rem 0;display:block;}
+        .product-price{font-family:var(--font-display);font-size:28px;font-weight:600;color:#111111;-webkit-text-fill-color:#111111;margin:18px 0 22px;}
+        .badge-tag{display:inline-block;background:#111;color:#FFFFFF;font-size:11px;font-weight:600;padding:4px 10px;border-radius:0;letter-spacing:0.08em;margin-bottom:14px;}
+        .add-btn{width:100%;background:#111111;color:#FFFFFF;border:none;padding:18px;border-radius:2px;font-size:13px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;transition:all 0.2s;}
+        .add-btn:hover{background:#333;}
         .add-btn.added{background:#16A34A;}
-        .meta-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:22px;}
-        .meta-pill{background:#F5F5F5;border:1px solid #E5E5E5;border-radius:20px;padding:6px 14px;font-size:13px;color:#555555;}
-        .activation-note{background:#F5F3FF;border:1px solid #DDD6FE;border-radius:12px;padding:12px 14px;margin-bottom:18px;color:#444444;font-size:14px;line-height:1.6;}
-        .cart-link{display:block;text-align:center;margin-top:14px;color:#5B21B6;font-size:13px;text-decoration:none;font-weight:600;}
-        .cart-link:hover{color:#4C1D95;}
+        .meta-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px;}
+        .meta-pill{background:#F7F5F2;border:none;border-radius:0;padding:8px 12px;font-size:12px;letter-spacing:0.04em;color:#3F3A36;}
+        .activation-note{background:transparent;border:none;border-top:1px solid #E8E4DF;border-radius:0;padding:14px 0;margin-bottom:18px;color:#6B6560;font-size:14px;line-height:1.6;}
+        .cart-link{display:block;text-align:center;margin-top:14px;color:#111;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;text-decoration:none;font-weight:600;}
+        .cart-link:hover{opacity:0.6;}
         .loading-state{text-align:center;padding:120px 24px;color:#888888;font-size:18px;}
-        .product-sections{max-width:1100px;margin:0 auto;padding:0 60px 80px;}
-        .section-block{background:#F9F9F9;border:1px solid #E5E5E5;border-radius:16px;padding:30px;margin-bottom:18px;}
-        .section-heading{font-family:var(--font-display);font-size:17px;font-weight:700;color:#111111;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #E5E5E5;}
+        .product-sections{max-width:1180px;margin:0 auto;padding:0 48px 80px;}
+        .section-block{background:transparent;border:none;border-top:1px solid #E8E4DF;border-radius:0;padding:32px 0;margin-bottom:0;}
+        .section-heading{font-family:var(--font-display);font-size:13px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#111111;margin-bottom:16px;padding-bottom:0;border-bottom:none;}
         .feature-list{list-style:none;display:flex;flex-direction:column;gap:10px;}
         .feature-list li{display:flex;align-items:center;gap:12px;color:#444444;font-size:15px;}
         .feature-list li::before{content:"✅";flex-shrink:0;}
@@ -135,7 +135,7 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
           <div className="loading-state">Loading product...</div>
         ) : !product ? (
           <div className="loading-state">
-            Product not found. <a href="/products" style={{color:"#5B21B6"}}>Browse all products →</a>
+            Product not found. <a href="/products" style={{color:"#111",textDecoration:"underline"}}>Browse all products</a>
           </div>
         ) : (
           <>
@@ -161,22 +161,22 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
                 )}
                 <div className="product-price">{formatPrice(product.price)}</div>
                 <div className="meta-row">
-                  <span className="meta-pill">📦 {product.stock || "In Stock"}</span>
-                  <span className="meta-pill">🚚 Fast Delivery</span>
-                  <span className="meta-pill">🇵🇰 Pakistan</span>
-                  <span className="meta-pill">✅ Authentic</span>
+                  <span className="meta-pill">{product.stock || "In stock"}</span>
+                  <span className="meta-pill">Cash on Delivery</span>
+                  <span className="meta-pill">Free delivery</span>
+                  <span className="meta-pill">Pakistan-wide</span>
                 </div>
                 <div className="activation-note">
                   We deliver across Pakistan. Need help? WhatsApp {contact.phone}.
                 </div>
                 <button
                   className="add-btn"
-                  style={{background: isInCart ? (hovering ? "#DC2626" : "#16A34A") : "#5B21B6", cursor: isInCart && !hovering ? "default" : "pointer", transform: "none"}}
+                  style={{background: isInCart ? (hovering ? "#DC2626" : "#16A34A") : "#111111", cursor: isInCart && !hovering ? "default" : "pointer", transform: "none"}}
                   onMouseEnter={() => isInCart && setHovering(true)}
                   onMouseLeave={() => setHovering(false)}
                   onClick={() => isInCart ? removeFromCart(product!.id) : handleAdd()}
                 >
-                  {isInCart ? (hovering ? "✕ Remove from Cart" : "✅ Added to Cart!") : "Add to Cart →"}
+                  {isInCart ? (hovering ? "Remove from cart" : "Added to cart") : "Add to cart"}
                 </button>
                 <a href="/cart" className="cart-link">View Cart & Checkout →</a>
               </div>

@@ -58,9 +58,9 @@ export default function Navbar({
       <style>{`
         .site-nav {
           position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-          padding: 18px 60px; display: flex; align-items: center; justify-content: space-between;
-          background: #FFFFFF; border-bottom: 1px solid #E5E5E5;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+          padding: 16px 48px; display: flex; align-items: center; justify-content: space-between;
+          background: rgba(255,255,255,0.96); border-bottom: 1px solid #E8E4DF;
+          box-shadow: none;
         }
         .site-nav .nav-logo {
           display: flex; align-items: center; flex-shrink: 0;
@@ -77,16 +77,17 @@ export default function Navbar({
         }
         .site-nav .nav-links a {
           font-family: var(--font-body), 'Inter', system-ui, sans-serif;
-          color: #374151; text-decoration: none; font-size: 14px; font-weight: 500;
-          letter-spacing: 0.01em; text-transform: uppercase; transition: color 0.2s;
+          color: #3F3A36; text-decoration: none; font-size: 12px; font-weight: 500;
+          letter-spacing: 0.12em; text-transform: uppercase; transition: opacity 0.2s;
         }
-        .site-nav .nav-links a:hover { color: #5B21B6; }
+        .site-nav .nav-links a:hover { color: #111111; opacity: 0.7; }
         .site-nav .nav-cta {
-          background: #5B21B6 !important; color: #FFFFFF !important;
-          padding: 10px 24px !important; border-radius: 30px !important; font-weight: 600 !important;
+          background: #111111 !important; color: #FFFFFF !important;
+          padding: 9px 18px !important; border-radius: 2px !important; font-weight: 600 !important;
           font-family: var(--font-body), 'Inter', system-ui, sans-serif !important;
+          letter-spacing: 0.08em !important; font-size: 11px !important; text-transform: uppercase !important;
         }
-        .site-nav .nav-cta:hover { background: #4C1D95 !important; }
+        .site-nav .nav-cta:hover { background: #333333 !important; }
         .site-nav .hamburger {
           display: none; flex-direction: column; gap: 5px; cursor: pointer;
           background: none; border: none; padding: 5px; z-index: 101;

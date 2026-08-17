@@ -13,16 +13,17 @@ html {
   --font-body: var(--font-inter), 'Inter', system-ui, sans-serif;
   --font-logo: var(--font-cinzel), 'Cinzel', Georgia, serif;
 
-  /* Brand colors */
+  /* Brand colors — Prestige: black chrome, purple only as a quiet accent */
   --color-bg: #FFFFFF;
   --color-text: #111111;
   --color-purple: #5B21B6;
   --color-purple-dark: #4C1D95;
-  --color-black: #1A1A1A;
-  --color-border: #E5E5E5;
-  --color-gray-bg: #F5F5F5;
-  --color-gray-text: #666666;
+  --color-black: #111111;
+  --color-border: #E8E4DF;
+  --color-gray-bg: #F7F5F2;
+  --color-gray-text: #6B6560;
   --color-white: #FFFFFF;
+  --color-accent: #111111;
 }
 
 /* ── Base ─────────────────────────────── */
@@ -76,8 +77,8 @@ html body h3 {
 html body nav {
   background: #FFFFFF !important;
   backdrop-filter: none !important;
-  border-bottom: 1px solid #E5E5E5 !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
+  border-bottom: 1px solid #E8E4DF !important;
+  box-shadow: none !important;
 }
 
 html body .nav-logo {
@@ -92,16 +93,16 @@ html body .nav-links a {
   color: #111111 !important;
 }
 html body .nav-links a:hover {
-  color: #5B21B6 !important;
+  color: #111111 !important;
 }
 html body .nav-cta,
 html body .nav-cta:not([class*="hover"]) {
-  background: #5B21B6 !important;
+  background: #111111 !important;
   color: #FFFFFF !important;
-  border-radius: 30px !important;
+  border-radius: 2px !important;
 }
 html body .nav-cta:hover {
-  background: #1A1A1A !important;
+  background: #333333 !important;
 }
 
 /* Mobile nav open overlay */
@@ -138,8 +139,8 @@ html body .hero-slider .slider-hero-inner h1 * {
 }
 html body .hero-slider h1 span,
 html body .hero-slider .slider-hero-inner h1 span {
-  color: #c4b5fd !important;
-  -webkit-text-fill-color: #c4b5fd !important;
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
 }
 html body .hero-slider p,
 html body .hero-slider .slider-hero-inner p {
@@ -167,11 +168,11 @@ html body .card-title {
 
 html body .section-tag,
 html body .hero-tag {
-  color: #5B21B6 !important;
+  color: #6B6560 !important;
   font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
@@ -215,25 +216,25 @@ html body .section-title span,
 html body .page-heading span {
   background: none !important;
   -webkit-background-clip: unset !important;
-  -webkit-text-fill-color: #5B21B6 !important;
-  color: #5B21B6 !important;
+  -webkit-text-fill-color: #111111 !important;
+  color: #111111 !important;
 }
 
 /* ── Buttons — Global ────────────────── */
 html body .btn-primary,
 html body button.btn-primary,
 html body a.btn-primary {
-  background: #5B21B6 !important;
+  background: #111111 !important;
   color: #FFFFFF !important;
   border: none !important;
-  border-radius: 8px !important;
+  border-radius: 2px !important;
 }
 html body .btn-primary:hover,
 html body button.btn-primary:hover,
 html body a.btn-primary:hover {
-  background: #1A1A1A !important;
-  transform: translateY(-1px) !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+  background: #333333 !important;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 html body .btn-secondary,
@@ -488,7 +489,7 @@ html body .bank-row span:first-child { color: #666666 !important; }
 html body .bank-row span:last-child { color: #111111 !important; }
 
 /* ── Product pages ──────────────────────── */
-html body .product-category { color: #5B21B6 !important; }
+html body .product-category { color: #6B6560 !important; }
 html body .product-name, html body .product-name * { color: #111111 !important; -webkit-text-fill-color: #111111 !important; }
 html body .product-short-desc { color: #444444 !important; }
 html body .full-desc { color: #333333 !important; }
@@ -524,7 +525,7 @@ html body .loading-state { color: #666666 !important; }
 
 /* ── Section tags / page subtitles ─────── */
 html body .page-title { color: #111111 !important; -webkit-text-fill-color: #111111 !important; }
-html body .page-title span { color: #5B21B6 !important; -webkit-text-fill-color: #5B21B6 !important; }
+html body .page-title span { color: #111111 !important; -webkit-text-fill-color: #111111 !important; }
 
 /* ── ERP badge/status fixes ─────────────── */
 /* ERP uses dark theme — these overrides removed to prevent dark-on-dark text */
@@ -568,12 +569,12 @@ html body .founder-quote { color: #444444 !important; border-left-color: #5B21B6
 html body .page-header .page-sub { color: #555555 !important; }
 html body .search-box .search-input { background: #FFFFFF !important; border-color: #E5E5E5 !important; color: #111111 !important; }
 html body .search-input::placeholder { color: #999999 !important; }
-html body .search-btn { background: #5B21B6 !important; color: #FFFFFF !important; }
+html body .search-btn { background: #111111 !important; color: #FFFFFF !important; border-radius: 2px !important; }
 html body .error-msg { color: #DC2626 !important; }
 html body .order-item-name { color: #111111 !important; }
-html body .order-item-price { color: #5B21B6 !important; }
+html body .order-item-price { color: #111111 !important; }
 html body .order-total-row span:first-child { color: #111111 !important; }
-html body .order-total-row span:last-child { color: #5B21B6 !important; }
+html body .order-total-row span:last-child { color: #111111 !important; }
 html body .step-line { background: #E5E5E5 !important; }
 
 /* ── Not found (404) page ───────────────── */
