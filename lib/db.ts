@@ -14,6 +14,21 @@ export function isDatabaseConfigured(): boolean {
   );
 }
 
+/**
+ * Hostinger MySQL users are granted for localhost / IPv4, not IPv6.
+ * Using srvXXX.hstgr.io from the app server itself goes out over IPv6
+ * (e.g. 2a02:4780:…) and MySQL returns Access denied (using password: YES).
+ */
+function resolveDbHost(): string {
+  const host = String(process.env.DB_HOST || '').trim();
+  if (!host || host === 'localhost' || host === '::1') return '127.0.0.1';
+
+  const hostingerRemote = /\.(hstgr\.io|hostinger\.[a-z]+)$/i.test(host);
+  if (hostingerRemote && process.platform !== 'win32') return '127.0.0.1';
+
+  return host;
+}
+
 function createPool(): mysql.Pool {
   if (!isDatabaseConfigured()) {
     throw new Error(
@@ -23,7 +38,7 @@ function createPool(): mysql.Pool {
   }
 
   return mysql.createPool({
-    host:            process.env.DB_HOST,
+    host:            resolveDbHost(),
     user:            process.env.DB_USER,
     password:        process.env.DB_PASSWORD,
     database:        process.env.DB_NAME,
