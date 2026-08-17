@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans, Cinzel } from "next/font/google";
+import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
+import { Cinzel } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "./lib/cartContext";
 // import ChatWidget from "@/components/ChatWidget"; // BERLIN TEMPORARILY HIDDEN
@@ -10,24 +12,24 @@ import { PHONE_DISPLAY, SITE_NAME, SITE_URL } from "@/lib/site";
 
 const inter = Inter({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-inter",
   display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
   variable: "--font-jakarta",
   display: "swap",
-  weight: ["400", "500", "600", "700", "800"],
 });
 
 /** Logo text fallback only — do not use elsewhere */
 const cinzel = Cinzel({
   subsets: ["latin"],
+  weight: ["400", "700", "900"],
   variable: "--font-cinzel",
   display: "swap",
-  weight: ["400", "700", "900"],
 });
 
 async function getSiteSettings(): Promise<Record<string, string>> {
