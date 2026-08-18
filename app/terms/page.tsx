@@ -99,12 +99,12 @@ export default function TermsPage() {
               <div className="highlight-box">
                 <p>By accessing or placing an order on sandy.com.pk, you agree to be bound by these Terms & Conditions. Please read them carefully before making a purchase.</p>
               </div>
-              <p>These terms apply to all visitors, users, and customers of Sandy. We reserve the right to update these terms at any time. Continued use of our website after changes constitutes acceptance of the new terms.</p>
+              <p>These terms apply to all visitors, users, and customers of S&Y. We reserve the right to update these terms at any time. Continued use of our website after changes constitutes acceptance of the new terms.</p>
             </div>
 
             <div className="policy-section" id="products">
               <h2>2. Products & Services</h2>
-              <p>Sandy sells accessories, gadgets and general products for customers in Pakistan. All products are subject to availability.</p>
+              <p>S&Y sells accessories, gadgets and general products for customers in Pakistan. All products are subject to availability.</p>
               <ul>
                 <li>Product descriptions and images are for illustrative purposes. Actual products may vary slightly.</li>
                 <li>We reserve the right to modify or discontinue any product without prior notice.</li>
@@ -156,7 +156,7 @@ export default function TermsPage() {
 
             <div className="policy-section" id="intellectual">
               <h2>7. Intellectual Property</h2>
-              <p>All content on sandy.com.pk — including text, images, logos, and design — is the property of Sandy and is protected by applicable copyright law.</p>
+              <p>All content on sandy.com.pk — including text, images, logos, and design — is the property of S&Y and is protected by applicable copyright law.</p>
               <ul>
                 <li>You may not reproduce, distribute, or use our content without prior written permission.</li>
                 <li>Our brand name and logo may not be used without explicit consent.</li>
@@ -165,7 +165,7 @@ export default function TermsPage() {
 
             <div className="policy-section" id="liability">
               <h2>8. Limitation of Liability</h2>
-              <p>To the fullest extent permitted by law, Sandy shall not be liable for:</p>
+              <p>To the fullest extent permitted by law, S&Y shall not be liable for:</p>
               <ul>
                 <li>Any indirect, incidental, or consequential damages arising from use of our products or website.</li>
                 <li>Loss of data, revenue, or profits.</li>

@@ -4,7 +4,7 @@ import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: `About Us — ${SITE_NAME}`,
-  description: "Sandy is a Pakistani online store based in Lahore. Quality products, honest prices, and delivery you can rely on.",
+  description: "S&Y is a Pakistani online store based in Lahore. Quality products, honest prices, and delivery you can rely on.",
   alternates: { canonical: `${SITE_URL}/about` },
   openGraph: { title: `About Us — ${SITE_NAME}`, description: "A Pakistani online store for accessories, gadgets and everyday products.", url: `${SITE_URL}/about`, siteName: SITE_NAME, type: "website" },
 };

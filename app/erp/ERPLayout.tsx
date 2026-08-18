@@ -231,7 +231,7 @@ export default function ERPLayout({ children, title, active }: ERPLayoutProps) {
         <aside className={`erp-sidebar ${sidebarOpen ? "open" : ""}`}>
           <button className="erp-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar">✕</button>
           <div className="erp-logo">
-            <div className="erp-logo-text">SANDY</div>
+            <div className="erp-logo-text">S&Y</div>
             <div className="erp-logo-sub">ERP System</div>
           </div>
           <nav className="erp-nav">
@@ -242,7 +242,7 @@ export default function ERPLayout({ children, title, active }: ERPLayoutProps) {
             ))}
           </nav>
           <div className="erp-footer">
-            <div className="erp-footer-brand">SANDY ERP</div>
+            <div className="erp-footer-brand">S&Y ERP</div>
           </div>
         </aside>
         <main className="erp-main">

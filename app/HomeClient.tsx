@@ -69,10 +69,10 @@ function formatHeroTitle(title: string) {
 }
 
 export default function HomeClient({
-  topHeroTitle = "Sandy — Quality products, delivered across Pakistan",
+  topHeroTitle = "S&Y — Quality products, delivered across Pakistan",
   topHeroSubtitle = "Handpicked quality, authentic products, fast delivery.",
   heroTitle = "Quality products, delivered across Pakistan",
-  heroSubtitle = "Sandy is your Pakistani online store for accessories, gadgets and everyday essentials.",
+  heroSubtitle = "S&Y is your Pakistani online store for accessories, gadgets and everyday essentials.",
 }: HomeClientProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +112,7 @@ export default function HomeClient({
     { title: "Authentic Goods", sub: "Handpicked quality" },
     { title: "Easy Returns", sub: "Faulty items replaced" },
   ]);
-  const [heroTag, setHeroTag] = useState("Sandy · Pakistan");
+  const [heroTag, setHeroTag] = useState("S&Y · Pakistan");
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterDone, setNewsletterDone] = useState(false);
   const { addToCart, removeFromCart, cart } = useCart();
@@ -208,7 +208,7 @@ export default function HomeClient({
           { title: (data.home_trust_3_title || "").trim() || "Authentic Goods", sub: (data.home_trust_3_sub || "").trim() || "Handpicked quality" },
           { title: (data.home_trust_4_title || "").trim() || "Easy Returns", sub: (data.home_trust_4_sub || "").trim() || "Faulty items replaced" },
         ]);
-        setHeroTag((data.home_hero_tag || "").trim() || (data.home_tagline || "").trim() || "Sandy · Pakistan");
+        setHeroTag((data.home_hero_tag || "").trim() || (data.home_tagline || "").trim() || "S&Y · Pakistan");
       })
       .catch(() => {});
     return () => {};
@@ -236,7 +236,7 @@ export default function HomeClient({
       await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Newsletter", email, subject: "Newsletter", message: "Please add me to the Sandy newsletter." }),
+        body: JSON.stringify({ name: "Newsletter", email, subject: "Newsletter", message: "Please add me to the S&Y newsletter." }),
       });
     } catch {
       // still show thanks — list capture is best-effort
@@ -735,7 +735,7 @@ export default function HomeClient({
             <div className="hero-combined">
               <div className="hero-combined-scroll">
                 <div className="hero-content">
-                  <span className="hero-tag">{heroTag || cmsText(sc, "home_hero_tag", "Sandy · Pakistan")}</span>
+                  <span className="hero-tag">{heroTag || cmsText(sc, "home_hero_tag", "S&Y · Pakistan")}</span>
                   <h2 className="hero-title">
                     {formatHeroTitle(mainHeroTitle)}
                   </h2>

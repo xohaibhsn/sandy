@@ -4,7 +4,7 @@ import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: `Contact Us — ${SITE_NAME}`,
-  description: "Get in touch with Sandy. WhatsApp support, email, and contact form available. We reply within 24 hours.",
+  description: "Get in touch with S&Y. WhatsApp support, email, and contact form available. We reply within 24 hours.",
   alternates: { canonical: `${SITE_URL}/contact` },
   openGraph: { title: `Contact ${SITE_NAME}`, description: "WhatsApp, email and form support available.", url: `${SITE_URL}/contact`, siteName: SITE_NAME, type: "website" },
 };

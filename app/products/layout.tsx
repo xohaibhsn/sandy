@@ -3,11 +3,11 @@ import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: `Products — ${SITE_NAME}`,
-  description: "Browse accessories, gadgets and everyday products at Sandy. Quality items delivered across Pakistan.",
+  description: "Browse accessories, gadgets and everyday products at S&Y. Quality items delivered across Pakistan.",
   alternates: { canonical: `${SITE_URL}/products` },
   openGraph: {
     title: `Products — ${SITE_NAME}`,
-    description: "Browse accessories, gadgets and everyday products at Sandy. Quality items delivered across Pakistan.",
+    description: "Browse accessories, gadgets and everyday products at S&Y. Quality items delivered across Pakistan.",
     url: `${SITE_URL}/products`,
     siteName: SITE_NAME,
     type: "website",

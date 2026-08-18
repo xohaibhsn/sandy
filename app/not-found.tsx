@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 
 export const metadata: Metadata = {
-  title: "Page Not Found — Sandy",
+  title: "Page Not Found — S&Y",
 };
 
 export default function NotFound() {

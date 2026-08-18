@@ -102,9 +102,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await pool.query(`
           INSERT INTO blog_posts (title, slug, excerpt, content, category, emoji, badge, badgeText, status)
           VALUES
-          ('How to Shop on Sandy', 'how-to-shop-on-sandy', 'Getting started on Sandy is easy. Browse accessories and gadgets, add them to your cart, and checkout with COD or prepaid payment.', '<h2>Getting Started</h2><p>Browse products, add items to your cart, enter your delivery details, and place your order. We deliver across Pakistan.</p>', 'Guides', '🛒', 'guide', 'Guide', 'published'),
-          ('Paying on Sandy — COD, JazzCash and Bank Transfer', 'paying-on-sandy', 'Choose Cash on Delivery, JazzCash, Easypaisa or bank transfer at checkout. Account details for prepaid methods are shared after you order.', '<h2>Payment Options</h2><p>COD is the default. For JazzCash, Easypaisa or bank transfer, we share account details after you place the order.</p>', 'Tips', '💳', 'tips', 'Tips', 'published'),
-          ('What''s New at Sandy', 'whats-new-at-sandy', 'We have added new products, improved order tracking, and launched nationwide delivery.', '<h2>New This Month</h2><p>Check out our improved order tracking and new product range.</p>', 'News', '🚀', 'news', 'News', 'published')
+          ('How to Shop on S&Y', 'how-to-shop-on-sandy', 'Getting started on S&Y is easy. Browse accessories and gadgets, add them to your cart, and checkout with COD or prepaid payment.', '<h2>Getting Started</h2><p>Browse products, add items to your cart, enter your delivery details, and place your order. We deliver across Pakistan.</p>', 'Guides', '🛒', 'guide', 'Guide', 'published'),
+          ('Paying on S&Y — COD, JazzCash and Bank Transfer', 'paying-on-sandy', 'Choose Cash on Delivery, JazzCash, Easypaisa or bank transfer at checkout. Account details for prepaid methods are shared after you order.', '<h2>Payment Options</h2><p>COD is the default. For JazzCash, Easypaisa or bank transfer, we share account details after you place the order.</p>', 'Tips', '💳', 'tips', 'Tips', 'published'),
+          ('What''s New at S&Y', 'whats-new-at-sandy', 'We have added new products, improved order tracking, and launched nationwide delivery.', '<h2>New This Month</h2><p>Check out our improved order tracking and new product range.</p>', 'News', '🚀', 'news', 'News', 'published')
         `);
         const [fresh] = await pool.query(listSql);
         return res.status(200).json(Array.isArray(fresh) ? fresh : []);

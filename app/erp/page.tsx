@@ -58,7 +58,7 @@ export default function ERPLoginPage() {
       `}</style>
       <div className="wrap">
         <div className="box">
-          <div className="logo">SANDY</div>
+          <div className="logo">S&Y</div>
           <div className="sub">ERP System</div>
           <h1 className="title">Staff Login</h1>
           <p className="desc">Internal use only. Authorized personnel only.</p>

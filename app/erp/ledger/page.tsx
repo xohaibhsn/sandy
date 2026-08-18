@@ -339,7 +339,7 @@ function LedgerContent({ user }: { user: any }) {
 
       {/* Print-only statement header */}
       <div className="print-header" style={{marginBottom:20,paddingBottom:14,borderBottom:"2px solid #111"}}>
-        <div style={{fontSize:22,fontWeight:800,fontFamily:"serif"}}>SANDY — Employee Ledger Statement</div>
+        <div style={{fontSize:22,fontWeight:800,fontFamily:"serif"}}>S&Y — Employee Ledger Statement</div>
         <div style={{fontSize:13,color:"#444",marginTop:4}}>Employee: <strong>{selected?.name}</strong> · Generated: {new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
       </div>
 

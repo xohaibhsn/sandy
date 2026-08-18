@@ -103,10 +103,10 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const description =
     settings.site_meta_description ||
-    "Sandy — a Pakistani online store for accessories, gadgets and everyday products. Handpicked quality, authentic products, fast delivery across Pakistan.";
+    "S&Y — a Pakistani online store for accessories, gadgets and everyday products. Handpicked quality, authentic products, fast delivery across Pakistan.";
   const keywords =
     settings.site_keywords ||
-    "Sandy, online store Pakistan, accessories Pakistan, gadgets, buy online Lahore, sandy.com.pk";
+    "S&Y, online store Pakistan, accessories Pakistan, gadgets, buy online Lahore, sandy.com.pk";
 
   return {
     title: `${title} — ${tagline}`,

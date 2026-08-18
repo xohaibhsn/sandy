@@ -9,12 +9,12 @@ function checkAdminAuth(req: any): boolean {
 
 
 const DEFAULTS = [
-  ['home_hero','{"title":"Quality products, delivered across Pakistan","subtitle":"Sandy is your Pakistani online store for accessories, gadgets and everyday essentials.","button_text":"Shop Now","button_link":"/products","secondary_button_text":"Learn More","secondary_button_link":"/about"}','json','home','Hero Section',1,1],
+  ['home_hero','{"title":"Quality products, delivered across Pakistan","subtitle":"S&Y is your Pakistani online store for accessories, gadgets and everyday essentials.","button_text":"Shop Now","button_link":"/products","secondary_button_text":"Learn More","secondary_button_link":"/about"}','json','home','Hero Section',1,1],
   ['home_featured_products','{"title":"Our Products","subtitle":"Handpicked quality for every need","show_count":6}','json','home','Featured Products Section',2,1],
   ['home_features','{"title":"Why Choose Us","items":[{"icon":"⚡","title":"Quality","description":"Handpicked products"},{"icon":"🔒","title":"Authentic","description":"Genuine items"},{"icon":"💬","title":"Support","description":"WhatsApp help"},{"icon":"🚀","title":"Fast Delivery","description":"Across Pakistan"}]}','json','home','Features Section',3,1],
   ['home_testimonials','{"title":"What Our Customers Say","items":[{"name":"Ahmed Khan","rating":5,"text":"Fast delivery to Lahore and the product was exactly as described."},{"name":"Sara Ali","rating":5,"text":"Easy checkout with COD. Will order again."}]}','json','home','Testimonials Section',4,1],
   ['home_newsletter','{"title":"Stay in the Loop","subtitle":"Get the latest products, tips and offers delivered to your inbox","button_text":"Subscribe"}','json','home','Newsletter Section',5,1],
-  ['about_hero','{"title":"About Sandy","subtitle":"Your Pakistani online store for accessories, gadgets and everyday products"}','json','about','Hero Section',1,1],
+  ['about_hero','{"title":"About S&Y","subtitle":"Your Pakistani online store for accessories, gadgets and everyday products"}','json','about','Hero Section',1,1],
   ['about_mission','{"title":"Our Mission","text":"We bring quality products to customers across Pakistan — honest prices, authentic items, and delivery you can rely on."}','json','about','Mission Section',2,1],
   ['about_values','{"title":"Our Values","items":[{"icon":"🎯","title":"Quality","description":"Best in class products every time"},{"icon":"❤️","title":"Trust","description":"Transparent & honest always"},{"icon":"🚀","title":"Speed","description":"Fast delivery nationwide"}]}','json','about','Values Section',3,1],
 ];

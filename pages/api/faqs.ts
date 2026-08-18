@@ -19,7 +19,7 @@ const DEFAULT_FAQS = [
   ['How much does shipping cost?','Shipping is currently free on all orders.','Delivery & Shipping',3],
   ['How do I track my order?','Once your order is confirmed, use your Order ID on our Order Tracking page to check real-time status — from confirmation through to delivery.','Delivery & Shipping',4],
   ['Are your products authentic?','Yes. We source carefully and stand behind every item we sell. If something is not as described, contact us on WhatsApp and we will make it right.','Products & Setup',1],
-  ['Do you sell accessories and gadgets?','Yes. Sandy is a Pakistani general store. We are launching with accessories first and will add more categories over time.','Products & Setup',2],
+  ['Do you sell accessories and gadgets?','Yes. S&Y is a Pakistani general store. We are launching with accessories first and will add more categories over time.','Products & Setup',2],
   ['What if I received a faulty item?','Please contact us immediately via WhatsApp (+923334800181) with photos of the fault. We\'ll arrange a replacement or refund.','Returns & Refunds',3],
   ['How do I return an item?','Contact us via WhatsApp (+923334800181) or email with your Order ID and reason for return. We\'ll guide you through the process.','Returns & Refunds',2],
   ['What is your refund policy?','Please see our Refund Policy page for full details. Faulty items are replaced or refunded. Unused items in original condition may be returned as described in the policy.','Returns & Refunds',1],
@@ -28,7 +28,7 @@ const DEFAULT_FAQS = [
 const REQUIRED_FAQS = [
   ['Do you offer Cash on Delivery?','Yes. COD is available across Pakistan and is selected by default at checkout.','Orders & Payment',6],
   ['How do I contact support?','WhatsApp us on +923334800181 or email info@sandy.com.pk. We typically reply during business hours.','General',1],
-  ['Where are you based?','Sandy is based in Lahore, Pakistan, and delivers nationwide.','General',2],
+  ['Where are you based?','S&Y is based in Lahore, Pakistan, and delivers nationwide.','General',2],
 ];
 
 async function insertFaqIfMissing(question: string, answer: string, category: string, sortOrder: number) {

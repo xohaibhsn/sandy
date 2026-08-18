@@ -134,7 +134,7 @@ export default function PrivacyPolicyPage() {
             <div className="policy-section" id="overview">
               <h2>1. Overview</h2>
               <div className="highlight-box">
-                <p>Sandy (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard information when you use our website sandy.com.pk.</p>
+                <p>S&Y (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard information when you use our website sandy.com.pk.</p>
               </div>
               <p>By placing an order or using our website, you agree to the collection and use of information as described in this policy. We handle personal data in line with applicable Pakistani law.</p>
             </div>

@@ -130,8 +130,8 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
 const posts = [
   {
     id: 1, featured: true, emoji: "🛒", badge: "guide", badgeText: "Guide",
-    title: "How to Shop on Sandy — A Quick Guide",
-    excerpt: "New to Sandy? This step-by-step guide walks you through browsing products, adding them to your cart, and placing an order for delivery across Pakistan.",
+    title: "How to Shop on S&Y — A Quick Guide",
+    excerpt: "New to S&Y? This step-by-step guide walks you through browsing products, adding them to your cart, and placing an order for delivery across Pakistan.",
     date: "28 May 2026", readTime: "5 min read", category: "Guides",
   },
   {
@@ -148,25 +148,25 @@ const posts = [
   },
   {
     id: 4, emoji: "🔒", badge: "guide", badgeText: "Guide",
-    title: "How to Track Your Sandy Order",
+    title: "How to Track Your S&Y Order",
     excerpt: "Once you have your Order ID, tracking is easy. Here is how to check status from confirmation through to delivery.",
     date: "18 May 2026", readTime: "4 min read", category: "Guides",
   },
   {
     id: 5, emoji: "🚚", badge: "tips", badgeText: "Tips",
     title: "Delivery Across Pakistan — What to Expect",
-    excerpt: "Most orders arrive within 2–5 working days depending on your city. Here is how shipping currently works at Sandy.",
+    excerpt: "Most orders arrive within 2–5 working days depending on your city. Here is how shipping currently works at S&Y.",
     date: "14 May 2026", readTime: "5 min read", category: "Tips",
   },
   {
     id: 6, emoji: "📺", badge: "news", badgeText: "News",
-    title: "What's New at Sandy — May 2026 Update",
+    title: "What's New at S&Y — May 2026 Update",
     excerpt: "We've added new products, improved our order tracking system, and launched our brand new website. Here's everything that's changed this month.",
     date: "10 May 2026", readTime: "2 min read", category: "News",
   },
   {
     id: 7, emoji: "🛒", badge: "guide", badgeText: "Guide",
-    title: "How to Place an Order on Sandy",
+    title: "How to Place an Order on S&Y",
     excerpt: "New to our store? This quick guide walks you through exactly how to browse products, add them to your cart, and complete your order in minutes.",
     date: "5 May 2026", readTime: "3 min read", category: "Guides",
   },

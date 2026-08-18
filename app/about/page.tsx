@@ -217,7 +217,7 @@ export default function AboutPage() {
             className="hero-text"
             dangerouslySetInnerHTML={renderRichOrPlain(
               sc.about_description || "",
-              "Sandy is a Pakistani online store based in Lahore. We started with a simple idea — quality products, honest prices, and delivery you can rely on."
+              "S&Y is a Pakistani online store based in Lahore. We started with a simple idea — quality products, honest prices, and delivery you can rely on."
             )}
           />
         </div>
@@ -241,7 +241,7 @@ export default function AboutPage() {
               className="story-para"
               dangerouslySetInnerHTML={renderRichOrPlain(
                 sc.about_mission || missionSec.text || "",
-                "Sandy was founded to make everyday shopping easier across Pakistan — authentic products, fair prices, and real human support."
+                "S&Y was founded to make everyday shopping easier across Pakistan — authentic products, fair prices, and real human support."
             )}
             />
             {extraStory.split(/\n\n+/).map((para, i) => (
@@ -298,9 +298,9 @@ export default function AboutPage() {
                 </div>
                 <div className="tl-content">
                   <div className="tl-year">{cmsText(sc, `about_tl${n}_year`, "2026")}</div>
-                  <div className="tl-title">{cmsText(sc, `about_tl${n}_title`, ["Sandy launches", "Growing catalogue", "WhatsApp support", "Nationwide delivery", "New website"][n - 1])}</div>
+                  <div className="tl-title">{cmsText(sc, `about_tl${n}_title`, ["S&Y launches", "Growing catalogue", "WhatsApp support", "Nationwide delivery", "New website"][n - 1])}</div>
                   <div className="tl-desc">{cmsText(sc, `about_tl${n}_desc`, [
-                    "Sandy opened as a Pakistani online store, starting with accessories and nationwide delivery.",
+                    "S&Y opened as a Pakistani online store, starting with accessories and nationwide delivery.",
                     "We are expanding into more categories so you can shop everyday essentials in one place.",
                     "Direct WhatsApp support from our Lahore team — real people, fast replies.",
                     "Cash on Delivery, JazzCash, Easypaisa and bank transfer across Pakistan.",

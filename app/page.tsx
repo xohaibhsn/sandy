@@ -41,7 +41,7 @@ export async function generateMetadata(): Promise<Metadata> {
     `${SITE_NAME} — Quality products, delivered across Pakistan`;
   const metaDesc =
     content.home_meta_description?.trim() ||
-    "Handpicked quality, authentic products, fast delivery. Shop accessories, gadgets and everyday essentials at Sandy.";
+    "Handpicked quality, authentic products, fast delivery. Shop accessories, gadgets and everyday essentials at S&Y.";
 
   return {
     title: { absolute: metaTitle },
@@ -74,7 +74,7 @@ export default async function HomePage() {
       />
       <HomeClient
         topHeroTitle={
-          content.home_top_hero_title?.trim() || "Sandy — Quality products, delivered across Pakistan"
+          content.home_top_hero_title?.trim() || "S&Y — Quality products, delivered across Pakistan"
         }
         topHeroSubtitle={
           content.home_top_hero_subtitle?.trim() ||
@@ -85,7 +85,7 @@ export default async function HomePage() {
         }
         heroSubtitle={
           content.home_hero_subtitle?.trim() ||
-          "Sandy is your Pakistani online store for accessories, gadgets and everyday essentials."
+          "S&Y is your Pakistani online store for accessories, gadgets and everyday essentials."
         }
       />
     </>

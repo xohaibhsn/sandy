@@ -10,7 +10,7 @@ type ChatMessage = {
   createdAt: Date;
 };
 
-const FIRST_MESSAGE = `👋 Hi! I'm Berlin, your Sandy support assistant!
+const FIRST_MESSAGE = `👋 Hi! I'm Berlin, your S&Y support assistant!
 
 How can I help today?
 - Finding a product
@@ -190,14 +190,14 @@ export default function ChatWidget() {
       `}</style>
 
       {open && (
-        <div className="berlin-window" role="dialog" aria-label="Berlin Sandy support chat">
+        <div className="berlin-window" role="dialog" aria-label="Berlin S&Y support chat">
           <div className="berlin-header">
             <div>
               <div className="berlin-title-wrap">
                 <div className="berlin-icon">💬</div>
                 <div>
                   <div className="berlin-title">Berlin</div>
-                  <div className="berlin-subtitle">Sandy Support</div>
+                  <div className="berlin-subtitle">S&Y Support</div>
                 </div>
               </div>
               <div className="berlin-online"><span className="berlin-dot" /> Online</div>

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import dynamic from "next/dynamic";
 import { toEditorHtml } from "@/lib/contentHtml";
-import { CLOUDINARY_FOLDER, SITE_NAME_CAPS, SITE_URL, formatPrice, parsePrice } from "@/lib/site";
+import { CLOUDINARY_FOLDER, SITE_NAME, SITE_NAME_CAPS, SITE_URL, formatPrice, parsePrice } from "@/lib/site";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
 const styles = `
@@ -1141,7 +1141,7 @@ export default function AdminPage() {
                 <label style={{display:"flex",justifyContent:"space-between"}}>
                   SEO Title <span style={{fontSize:11,color:editProduct.seo_title.length>55?"#ff6666":editProduct.seo_title.length>40?"#00c864":"rgba(255,255,255,0.3)"}}>{editProduct.seo_title.length}/60</span>
                 </label>
-                <input placeholder={`Auto: "${editProduct.name || 'Product Name'} | Sandy"`} maxLength={60} value={editProduct.seo_title} onChange={e => setEditProduct({...editProduct,seo_title:e.target.value})} />
+                <input placeholder={`Auto: "${editProduct.name || 'Product Name'} | ${SITE_NAME}"`} maxLength={60} value={editProduct.seo_title} onChange={e => setEditProduct({...editProduct,seo_title:e.target.value})} />
                 <div className="char-bar" style={{background:"rgba(255,255,255,0.08)",width:"100%"}}><div className="char-bar" style={{width:`${Math.min(100,(editProduct.seo_title.length/60)*100)}%`,background:editProduct.seo_title.length>55?"#ff6666":editProduct.seo_title.length>40?"#00c864":"rgba(139,0,255,0.5)"}} /></div>
               </div>
               <div className="modal-field">
@@ -2134,7 +2134,7 @@ export default function AdminPage() {
               </div>
 
               <div style={{maxWidth:600}}>
-                <div className="modal-field"><label>Website Title</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_title||""} onChange={e=>setSiteContent(s=>({...s,site_title:e.target.value}))} placeholder="Sandy" /></div>
+                <div className="modal-field"><label>Website Title</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_title||""} onChange={e=>setSiteContent(s=>({...s,site_title:e.target.value}))} placeholder="S&Y" /></div>
                 <div className="modal-field"><label>Website Tagline</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_tagline||""} onChange={e=>setSiteContent(s=>({...s,site_tagline:e.target.value}))} placeholder="Quality products, delivered across Pakistan" /></div>
                 <div className="modal-field"><label>Default Meta Description</label><textarea rows={3} style={{width:"100%",resize:"vertical"}} value={siteContent.site_meta_description||""} onChange={e=>setSiteContent(s=>({...s,site_meta_description:e.target.value}))} /></div>
                 <div className="modal-field"><label>SEO Keywords</label><input style={{width:"100%"}} value={siteContent.site_keywords||""} onChange={e=>setSiteContent(s=>({...s,site_keywords:e.target.value}))} /></div>
@@ -2469,7 +2469,7 @@ export default function AdminPage() {
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">🏠 Home Page Content</div></div>
                   <div className="modal-field">
                     <label>Meta Title <span style={{fontSize:11,color:(siteContent.home_meta_title||"").length>55?"#ff6666":(siteContent.home_meta_title||"").length>40?"#00c864":"rgba(255,255,255,0.3)"}}>{(siteContent.home_meta_title||"").length}/60</span></label>
-                    <input style={{width:"100%"}} maxLength={60} value={siteContent.home_meta_title||""} onChange={e=>setSiteContent(s=>({...s,home_meta_title:e.target.value}))} placeholder="Sandy — Best Streaming Service UK" />
+                    <input style={{width:"100%"}} maxLength={60} value={siteContent.home_meta_title||""} onChange={e=>setSiteContent(s=>({...s,home_meta_title:e.target.value}))} placeholder="S&Y — Quality products, delivered across Pakistan" />
                   </div>
                   <div className="modal-field">
                     <label>Meta Description <span style={{fontSize:11,color:(siteContent.home_meta_description||"").length>160?"#ff6666":(siteContent.home_meta_description||"").length>120?"#00c864":"rgba(255,255,255,0.3)"}}>{(siteContent.home_meta_description||"").length}/180</span></label>
@@ -2477,13 +2477,13 @@ export default function AdminPage() {
                   </div>
 
                   <div style={{margin:"20px 0 12px",paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.08)",fontSize:13,fontWeight:700,color:"#5B21B6"}}>TOP HERO / SLIDER (title + subtitle above products)</div>
-                  <div className="modal-field"><label>Top Hero Title</label><input style={{width:"100%"}} value={siteContent.home_top_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_title:e.target.value}))} placeholder="Sandy — Quality products, delivered across Pakistan" /></div>
+                  <div className="modal-field"><label>Top Hero Title</label><input style={{width:"100%"}} value={siteContent.home_top_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_title:e.target.value}))} placeholder="S&Y — Quality products, delivered across Pakistan" /></div>
                   <div className="modal-field"><label>Top Hero Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.home_top_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_subtitle:e.target.value}))} placeholder="Premium Streaming Solutions for the UK" /></div>
 
                   <div style={{margin:"20px 0 12px",paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.08)",fontSize:13,fontWeight:700,color:"#5B21B6"}}>MAIN HERO (below products — title, buttons, features, stats)</div>
-                  <div className="modal-field"><label>Main Hero Tag (small label above title)</label><input style={{width:"100%"}} value={siteContent.home_hero_tag||""} onChange={e=>setSiteContent(s=>({...s,home_hero_tag:e.target.value}))} placeholder="Sandy · Pakistan" /></div>
+                  <div className="modal-field"><label>Main Hero Tag (small label above title)</label><input style={{width:"100%"}} value={siteContent.home_hero_tag||""} onChange={e=>setSiteContent(s=>({...s,home_hero_tag:e.target.value}))} placeholder="S&Y · Pakistan" /></div>
                   <div className="modal-field"><label>Main Hero Title</label><input style={{width:"100%"}} value={siteContent.home_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_hero_title:e.target.value}))} placeholder="Premium UK Streaming Service" /></div>
-                  <div className="modal-field"><label>Main Hero Subtitle</label><textarea rows={3} style={{width:"100%",resize:"vertical"}} value={siteContent.home_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_hero_subtitle:e.target.value}))} placeholder="Sandy is your Pakistani online store for accessories, gadgets and everyday essentials." /></div>
+                  <div className="modal-field"><label>Main Hero Subtitle</label><textarea rows={3} style={{width:"100%",resize:"vertical"}} value={siteContent.home_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_hero_subtitle:e.target.value}))} placeholder="S&Y is your Pakistani online store for accessories, gadgets and everyday essentials." /></div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                     <div className="modal-field"><label>Primary Button Text</label><input style={{width:"100%"}} value={siteContent.home_hero_btn_text||""} onChange={e=>setSiteContent(s=>({...s,home_hero_btn_text:e.target.value}))} placeholder="Shop Now" /></div>
                     <div className="modal-field"><label>Primary Button Link</label><input style={{width:"100%"}} value={siteContent.home_hero_btn_link||""} onChange={e=>setSiteContent(s=>({...s,home_hero_btn_link:e.target.value}))} placeholder="/products" /></div>
