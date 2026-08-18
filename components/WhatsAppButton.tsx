@@ -33,7 +33,7 @@ export default function WhatsAppButton() {
         overflow: "hidden",
         background: config.iconUrl ? "transparent" : "#25D366",
       }}
-      title="Chat on WhatsApp"
+      title={cmsText(sc, "whatsapp_btn_title", "Chat on WhatsApp")}
     >
       {config.iconUrl ? (
         <img

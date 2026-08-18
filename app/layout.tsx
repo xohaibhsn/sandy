@@ -102,13 +102,16 @@ export async function generateMetadata(): Promise<Metadata> {
     : `${SITE_URL}/og-default.jpg`;
 
   const description =
+    settings.site_meta_description ||
     "Sandy — a Pakistani online store for accessories, gadgets and everyday products. Handpicked quality, authentic products, fast delivery across Pakistan.";
+  const keywords =
+    settings.site_keywords ||
+    "Sandy, online store Pakistan, accessories Pakistan, gadgets, buy online Lahore, sandy.com.pk";
 
   return {
     title: `${title} — ${tagline}`,
     description,
-    keywords:
-      "Sandy, online store Pakistan, accessories Pakistan, gadgets, buy online Lahore, sandy.com.pk",
+    keywords,
     robots: {
       index: true,
       follow: true,
@@ -157,7 +160,7 @@ export default async function RootLayout({
   const organizationLd = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: SITE_NAME,
+    name: settings.site_title || SITE_NAME,
     url: SITE_URL,
     logo: logoUrl,
     contactPoint: {

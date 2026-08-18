@@ -644,7 +644,7 @@ export default function HomeClient({
             <span className="section-tag">{featuredTag}</span>
             <h2 className="section-title">{featuredTitle}</h2>
           </div>
-          <a href="/products" className="view-all-link">View All Products →</a>
+          <a href={cmsText(sc, "home_view_all_link", "/products")} className="view-all-link">{cmsText(sc, "home_view_all_label", "View All Products →")}</a>
         </div>
 
         <div className="search-wrap">
@@ -652,12 +652,12 @@ export default function HomeClient({
             <input
               className="search-input"
               type="text"
-              placeholder="Search products..."
+              placeholder={cmsText(sc, "home_search_placeholder", "Search products...")}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
             />
-            <button className="search-btn" onClick={handleSearch}>🔍 Search</button>
+            <button className="search-btn" onClick={handleSearch}>🔍 {cmsText(sc, "home_search_btn", "Search")}</button>
           </div>
         </div>
 
@@ -725,7 +725,7 @@ export default function HomeClient({
         </div>
 
         <div className="view-all-wrap">
-          <a href="/products" className="view-all-btn">View All Products →</a>
+          <a href={cmsText(sc, "home_view_all_link", "/products")} className="view-all-btn">{cmsText(sc, "home_view_all_label", "View All Products →")}</a>
         </div>
 
         {/* HERO — DARK section */}
@@ -786,7 +786,7 @@ export default function HomeClient({
         {sectionOn.home_features && (
         <div className="features-outer">
           <div className="features-section">
-            <div className="section-tag">✦ Why Choose Us</div>
+            <div className="section-tag">✦ {cmsText(sc, "home_features_tag", "Why Choose Us")}</div>
             <h2 className="section-title">{sec.home_features?.title || "Why Choose Us"}</h2>
             <div className="features-grid">
               {(sec.home_features?.items || []).map((f:any,i:number)=>(
@@ -821,12 +821,12 @@ export default function HomeClient({
               <div className="home-newsletter-title">{news.title || "Stay in the Loop"}</div>
               <p className="home-newsletter-sub">{news.subtitle || "Get the latest products, tips and offers delivered to your inbox"}</p>
               {newsletterDone ? (
-                <p style={{ color: "#fff", fontWeight: 600 }}>Thank you — we will be in touch.</p>
+                <p style={{ color: "#fff", fontWeight: 600 }}>{cmsText(sc, "home_newsletter_thanks", "Thank you — we will be in touch.")}</p>
               ) : (
                 <div className="home-newsletter-form">
                   <input
                     type="email"
-                    placeholder="your@email.com"
+                    placeholder={cmsText(sc, "home_newsletter_placeholder", "your@email.com")}
                     value={newsletterEmail}
                     onChange={(e) => setNewsletterEmail(e.target.value)}
                   />

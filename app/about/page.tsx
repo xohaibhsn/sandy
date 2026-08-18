@@ -210,7 +210,7 @@ export default function AboutPage() {
 
         {/* HERO */}
         <div className="about-hero">
-          <div className="section-tag">✦ Our Story</div>
+          <div className="section-tag">✦ {cmsText(sc, "about_hero_tag", "Our Story")}</div>
           <h1 className="page-title">{pageTitle}</h1>
           {pageSub ? <p className="hero-text" style={{marginBottom:16}}>{pageSub}</p> : null}
           <div
@@ -235,8 +235,8 @@ export default function AboutPage() {
         {/* STORY */}
         <div className="story-section">
           <div className="story-text">
-            <div className="section-tag">✦ Who We Are</div>
-            <h2 className="story-title">Built on <span>Trust</span></h2>
+            <div className="section-tag">✦ {cmsText(sc, "about_story_tag", "Who We Are")}</div>
+            <h2 className="story-title">{cmsText(sc, "about_story_heading", "Built on Trust")}</h2>
             <div
               className="story-para"
               dangerouslySetInnerHTML={renderRichOrPlain(
@@ -249,17 +249,17 @@ export default function AboutPage() {
             ))}
           </div>
           <div className="story-visual">
-            {[
-              { icon: "🇵🇰", title: "Pakistan Based", desc: "We operate from Lahore and deliver across Pakistan." },
-              { icon: "🤝", title: "Personal Service", desc: "Every customer gets direct WhatsApp support from our team." },
-              { icon: "⚡", title: "Fast & Reliable", desc: "Orders processed quickly after confirmation." },
-              { icon: "💰", title: "Fair Pricing", desc: "No hidden fees. What you see is what you pay." },
-            ].map((p, i) => (
-              <div className="story-point" key={i}>
-                <span className="point-icon">{p.icon}</span>
+            {[1, 2, 3, 4].map((n) => (
+              <div className="story-point" key={n}>
+                <span className="point-icon">{cmsText(sc, `about_point${n}_icon`, ["🇵🇰", "🤝", "⚡", "💰"][n - 1])}</span>
                 <div className="point-text">
-                  <h4>{p.title}</h4>
-                  <p>{p.desc}</p>
+                  <h4>{cmsText(sc, `about_point${n}_title`, ["Pakistan Based", "Personal Service", "Fast & Reliable", "Fair Pricing"][n - 1])}</h4>
+                  <p>{cmsText(sc, `about_point${n}_desc`, [
+                    "We operate from Lahore and deliver across Pakistan.",
+                    "Every customer gets direct WhatsApp support from our team.",
+                    "Orders processed quickly after confirmation.",
+                    "No hidden fees. What you see is what you pay.",
+                  ][n - 1])}</p>
                 </div>
               </div>
             ))}
@@ -270,7 +270,7 @@ export default function AboutPage() {
         <div className="values-section">
           <div className="values-inner">
           <div className="section-header">
-            <div className="section-tag">✦ What We Stand For</div>
+            <div className="section-tag">✦ {cmsText(sc, "about_values_tag", "What We Stand For")}</div>
             <h2 className="section-title">{valuesSec?.title || "Our Values"}</h2>
           </div>
           <div className="values-grid">
@@ -287,25 +287,25 @@ export default function AboutPage() {
 
         {/* TIMELINE */}
         <div className="timeline-section">
-          <div className="section-tag">✦ Our Journey</div>
-          <h2 className="section-title">How We <span>Grew</span></h2>
+          <div className="section-tag">✦ {cmsText(sc, "about_journey_tag", "Our Journey")}</div>
+          <h2 className="section-title">{cmsText(sc, "about_journey_title", "How We Grew")}</h2>
           <div className="timeline">
-            {[
-              { year: "2026", icon: "🚀", title: "Sandy launches", desc: "Sandy opened as a Pakistani online store, starting with accessories and nationwide delivery." },
-              { year: "2026", icon: "📦", title: "Growing catalogue", desc: "We are expanding into more categories so you can shop everyday essentials in one place." },
-              { year: "2026", icon: "💬", title: "WhatsApp support", desc: "Direct WhatsApp support from our Lahore team — real people, fast replies." },
-              { year: "2026", icon: "🌟", title: "Nationwide delivery", desc: "Cash on Delivery, JazzCash, Easypaisa and bank transfer across Pakistan." },
-              { year: "2026", icon: "🛍️", title: "New website", desc: "Launched our custom-built website with order tracking and easy checkout." },
-            ].map((t, i) => (
-              <div className="timeline-item" key={i}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <div className="timeline-item" key={n}>
                 <div className="tl-left">
-                  <div className="tl-dot">{t.icon}</div>
-                  {i < 4 && <div className="tl-line" />}
+                  <div className="tl-dot">{cmsText(sc, `about_tl${n}_icon`, ["🚀", "📦", "💬", "🌟", "🛍️"][n - 1])}</div>
+                  {n < 5 && <div className="tl-line" />}
                 </div>
                 <div className="tl-content">
-                  <div className="tl-year">{t.year}</div>
-                  <div className="tl-title">{t.title}</div>
-                  <div className="tl-desc">{t.desc}</div>
+                  <div className="tl-year">{cmsText(sc, `about_tl${n}_year`, "2026")}</div>
+                  <div className="tl-title">{cmsText(sc, `about_tl${n}_title`, ["Sandy launches", "Growing catalogue", "WhatsApp support", "Nationwide delivery", "New website"][n - 1])}</div>
+                  <div className="tl-desc">{cmsText(sc, `about_tl${n}_desc`, [
+                    "Sandy opened as a Pakistani online store, starting with accessories and nationwide delivery.",
+                    "We are expanding into more categories so you can shop everyday essentials in one place.",
+                    "Direct WhatsApp support from our Lahore team — real people, fast replies.",
+                    "Cash on Delivery, JazzCash, Easypaisa and bank transfer across Pakistan.",
+                    "Launched our custom-built website with order tracking and easy checkout.",
+                  ][n - 1])}</div>
                 </div>
               </div>
             ))}
@@ -318,8 +318,8 @@ export default function AboutPage() {
             <h2 className="cta-title">{cmsText(sc, "about_cta_title", "Ready to Shop With Us?")}</h2>
             <p className="cta-sub">{cmsText(sc, "about_cta_sub", "Join customers across Pakistan. Fast delivery. Real support.")}</p>
             <div className="cta-btns">
-              <a href="/products" className="btn-primary">Browse Products</a>
-              <a href="/contact" className="btn-secondary">Get In Touch</a>
+              <a href={cmsText(sc, "about_cta_btn1_link", "/products")} className="btn-primary">{cmsText(sc, "about_cta_btn1_text", "Browse Products")}</a>
+              <a href={cmsText(sc, "about_cta_btn2_link", "/contact")} className="btn-secondary">{cmsText(sc, "about_cta_btn2_text", "Get In Touch")}</a>
             </div>
           </div>
         </div>

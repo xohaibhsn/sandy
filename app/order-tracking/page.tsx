@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { formatPrice } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -128,6 +129,7 @@ export default function OrderTrackingPage() {
   const [notFound, setNotFound] = useState(false);
   const [searching, setSearching] = useState(false);
   const contact = useContactConfig();
+  const sc = useSiteContent();
 
   const handleSearch = async () => {
     const trimmed = query.trim();
@@ -189,9 +191,9 @@ export default function OrderTrackingPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ Order Tracking</div>
-          <h1 className="page-title">Track Your <span>Order</span></h1>
-          <p className="page-sub">Enter your Order ID to check the latest status of your order.</p>
+          <div className="section-tag">✦ {cmsText(sc, "tracking_tag", "Order Tracking")}</div>
+          <h1 className="page-title">{cmsText(sc, "tracking_title", "Track Your Order")}</h1>
+          <p className="page-sub">{cmsText(sc, "tracking_sub", "Enter your Order ID to check the latest status of your order.")}</p>
         </div>
 
         <div className="search-section">
@@ -199,12 +201,12 @@ export default function OrderTrackingPage() {
             <input
               className="search-input"
               type="text"
-              placeholder="e.g. FK44-62305"
+              placeholder={cmsText(sc, "tracking_placeholder", "e.g. FK44-62305")}
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
             />
-            <button className="search-btn" onClick={handleSearch} disabled={searching}>{searching ? "Searching..." : "Track Order"}</button>
+            <button className="search-btn" onClick={handleSearch} disabled={searching}>{searching ? "Searching..." : cmsText(sc, "tracking_btn", "Track Order")}</button>
           </div>
           {notFound && <p className="error-msg">❌ Order not found. Please check your Order ID and try again.</p>}
         </div>
@@ -284,11 +286,11 @@ export default function OrderTrackingPage() {
         <div className="help-section" style={{ marginTop: result ? "24px" : "50px" }}>
           <div className="help-card">
             <div className="help-text">
-              <h4>Need Help?</h4>
-              <p>Can&apos;t find your order or have a question? Chat with us on WhatsApp.</p>
+              <h4>{cmsText(sc, "tracking_help_title", "Need Help?")}</h4>
+              <p>{cmsText(sc, "tracking_help_sub", "Can't find your order or have a question? Chat with us on WhatsApp.")}</p>
             </div>
             <a href={contact.whatsappUrl} className="wa-btn" target="_blank" rel="noopener noreferrer">
-              💬 WhatsApp Us
+              💬 {cmsText(sc, "tracking_help_btn", "WhatsApp Us")}
             </a>
             {contact.telegramUrl ? (
             <a href={contact.telegramUrl} className="wa-btn" target="_blank" rel="noopener noreferrer" style={{background:"#229ED9"}}>

@@ -118,7 +118,7 @@ export default function FAQPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ Help Centre</div>
+          <div className="section-tag">✦ {cmsText(sc, "faq_tag", "Help Centre")}</div>
           <h1 className="page-title">{cmsText(sc, "faq_title", "Frequently Asked Questions")}</h1>
           <p className="page-sub">{cmsText(sc, "faq_subtitle", "Find answers to the most common questions about our products and services.")}</p>
         </div>
@@ -165,14 +165,14 @@ export default function FAQPage() {
             <p className="help-sub">{cmsText(sc, "faq_help_sub", "Can't find the answer you're looking for? Our team is happy to help.")}</p>
             <div className="help-btns">
               <a href={contact.whatsappUrl} className="btn-whatsapp" target="_blank" rel="noopener noreferrer">
-                💬 WhatsApp Us
+                💬 {cmsText(sc, "faq_btn_whatsapp", "WhatsApp Us")}
               </a>
               {contact.telegramUrl ? (
               <a href={contact.telegramUrl} className="btn-telegram" target="_blank" rel="noopener noreferrer">
-                ✈️ Telegram {contact.telegram}
+                ✈️ {cmsText(sc, "faq_btn_telegram", "Telegram")} {contact.telegram}
               </a>
               ) : null}
-              <a href="/contact" className="btn-contact">📧 Contact Form</a>
+              <a href="/contact" className="btn-contact">📧 {cmsText(sc, "faq_btn_contact", "Contact Form")}</a>
             </div>
           </div>
         </div>

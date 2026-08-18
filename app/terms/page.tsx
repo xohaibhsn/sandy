@@ -68,7 +68,7 @@ export default function TermsPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ Legal</div>
+          <div className="section-tag">✦ {cmsText(sc, "legal_tag", "Legal")}</div>
           <h1 className="page-title">{cmsText(sc, "terms_title", "Terms & Conditions")}</h1>
           <p className="last-updated">{cmsText(sc, "terms_updated", "Last updated: 30 May 2026")}</p>
         </div>

@@ -223,7 +223,7 @@ export default function BlogPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ Our Blog</div>
+          <div className="section-tag">✦ {cmsText(sc, "blog_tag", "Our Blog")}</div>
           <h1 className="page-title">{cmsText(sc, "blog_title", "Tips, Guides & Updates")}</h1>
           <p className="page-sub">{cmsText(sc, "blog_subtitle", "Everything you need to get the most out of your products.")}</p>
         </div>
@@ -248,14 +248,14 @@ export default function BlogPage() {
                   : featuredPost.emoji}
               </div>
               <div className="featured-content">
-                <span className={`post-badge ${featuredPost.badge}`}>⭐ Featured — {featuredPost.badgeText}</span>
+                <span className={`post-badge ${featuredPost.badge}`}>⭐ {cmsText(sc, "blog_featured_label", "Featured")} — {featuredPost.badgeText}</span>
                 <div className="featured-title">{featuredPost.title}</div>
                 <p className="featured-excerpt">{featuredPost.excerpt}</p>
                 <div className="post-meta">
                   <span>📅 {featuredPost.date}</span>
                   <span>⏱ {featuredPost.readTime}</span>
                 </div>
-                <a href={`/blog/${(featuredPost as any).slug || featuredPost.id}`} className="read-more">Read Article →</a>
+                <a href={`/blog/${(featuredPost as any).slug || featuredPost.id}`} className="read-more">{cmsText(sc, "blog_read_more", "Read →")}</a>
               </div>
             </div>
           </div>
@@ -276,7 +276,7 @@ export default function BlogPage() {
                 <p className="card-excerpt">{post.excerpt}</p>
                 <div className="card-footer">
                   <div className="card-meta">📅 {post.date} · ⏱ {post.readTime}</div>
-                  <a href={`/blog/${(post as any).slug||post.id}`} className="read-more" onClick={e=>e.stopPropagation()}>Read →</a>
+                  <a href={`/blog/${(post as any).slug||post.id}`} className="read-more" onClick={e=>e.stopPropagation()}>{cmsText(sc, "blog_read_more", "Read →")}</a>
                 </div>
               </div>
             </div>
@@ -289,12 +289,12 @@ export default function BlogPage() {
             <div className="newsletter-title">{cmsText(sc, "blog_newsletter_title", cmsText(sc, "footer_tagline", "Stay in the Loop"))}</div>
             <p className="newsletter-sub">{cmsText(sc, "blog_newsletter_sub", "Get the latest guides, tips and offers delivered to your inbox.")}</p>
             {subscribed ? (
-              <p style={{ color: "#5B21B6", fontWeight: 600, fontSize: "15px" }}>✅ You&apos;re subscribed! Thank you.</p>
+              <p style={{ color: "#5B21B6", fontWeight: 600, fontSize: "15px" }}>✅ {cmsText(sc, "blog_newsletter_thanks", "You're subscribed! Thank you.")}</p>
             ) : (
               <div className="newsletter-form">
-                <input className="newsletter-input" type="email" placeholder="your@email.com"
+                <input className="newsletter-input" type="email" placeholder={cmsText(sc, "blog_newsletter_placeholder", "your@email.com")}
                   value={email} onChange={e => setEmail(e.target.value)} />
-                <button className="newsletter-btn" onClick={() => email && setSubscribed(true)}>Subscribe</button>
+                <button className="newsletter-btn" onClick={() => email && setSubscribed(true)}>{cmsText(sc, "blog_newsletter_btn", "Subscribe")}</button>
               </div>
             )}
           </div>

@@ -30,6 +30,10 @@ export function cmsText(sc: Record<string, string>, key: string, fallback = ""):
   return value || fallback;
 }
 
+export function cmsFill(template: string, vars: Record<string, string>): string {
+  return String(template || "").replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? "");
+}
+
 /** Shared site_content fetch — one network request for Navbar, footer, contact, pages. */
 export function useSiteContent(): Record<string, string> {
   const [data, setData] = useState<Record<string, string>>(cache || {});

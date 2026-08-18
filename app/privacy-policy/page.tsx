@@ -101,7 +101,7 @@ export default function PrivacyPolicyPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ Legal</div>
+          <div className="section-tag">✦ {cmsText(sc, "legal_tag", "Legal")}</div>
           <h1 className="page-title">{cmsText(sc, "privacy_title", "Privacy Policy")}</h1>
           <p className="last-updated">{cmsText(sc, "privacy_updated", "Last updated: 30 May 2026")}</p>
         </div>

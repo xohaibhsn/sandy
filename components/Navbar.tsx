@@ -111,22 +111,22 @@ export default function Navbar({
       <nav className="site-nav">
         {logoEl}
         <ul className={`nav-links ${menuOpen ? "open" : ""}`}>
-          <li><a href="/" onClick={close}>Home</a></li>
-          <li><a href="/products" onClick={close}>Products</a></li>
-          <li><a href="/order-tracking" onClick={close}>Track Order</a></li>
-          <li><a href="/blog" onClick={close}>Blog</a></li>
-          <li><a href="/contact" onClick={close}>Contact</a></li>
+          <li><a href="/" onClick={close}>{cmsText(sc, "nav_home", "Home")}</a></li>
+          <li><a href="/products" onClick={close}>{cmsText(sc, "nav_products", "Products")}</a></li>
+          <li><a href="/order-tracking" onClick={close}>{cmsText(sc, "nav_track", "Track Order")}</a></li>
+          <li><a href="/blog" onClick={close}>{cmsText(sc, "nav_blog", "Blog")}</a></li>
+          <li><a href="/contact" onClick={close}>{cmsText(sc, "nav_contact", "Contact")}</a></li>
           {cta === "cart" && (
             <li>
               <a href="/cart" className="nav-cta" onClick={close}>
-                🛒 Cart{cartCount > 0 ? ` (${cartCount})` : ""}
+                {cmsText(sc, "nav_cart_label", "Cart")}{cartCount > 0 ? ` (${cartCount})` : ""}
               </a>
             </li>
           )}
           {cta === "shop" && (
             <li>
               <a href={shopHref} className="nav-cta" onClick={close}>
-                Shop Now
+                {cmsText(sc, "nav_shop_label", "Shop Now")}
               </a>
             </li>
           )}

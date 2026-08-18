@@ -93,7 +93,7 @@ export default function RefundPolicyPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ Legal</div>
+          <div className="section-tag">✦ {cmsText(sc, "legal_tag", "Legal")}</div>
           <h1 className="page-title">{cmsText(sc, "refund_title", "Refund Policy")}</h1>
           <p className="last-updated">{cmsText(sc, "refund_updated", "Last updated: 30 May 2026")}</p>
         </div>
@@ -101,10 +101,10 @@ export default function RefundPolicyPage() {
         {/* SUMMARY CARDS */}
         <div className="summary-cards">
           {[
-            { icon: "📦", title: "Physical Products", text: "14-day return window from delivery date" },
-            { icon: "💳", title: "Prepaid Orders", text: "Refunds after we confirm the return" },
-            { icon: "⚠️", title: "Faulty Items", text: "Full refund or replacement at no cost" },
-            { icon: "🚚", title: "Return Postage", text: "Customer's responsibility unless item is faulty" },
+            { icon: "📦", title: cmsText(sc, "refund_sum1_title", "Physical Products"), text: cmsText(sc, "refund_sum1_text", "14-day return window from delivery date") },
+            { icon: "💳", title: cmsText(sc, "refund_sum2_title", "Prepaid Orders"), text: cmsText(sc, "refund_sum2_text", "Refunds after we confirm the return") },
+            { icon: "⚠️", title: cmsText(sc, "refund_sum3_title", "Faulty Items"), text: cmsText(sc, "refund_sum3_text", "Full refund or replacement at no cost") },
+            { icon: "🚚", title: cmsText(sc, "refund_sum4_title", "Return Postage"), text: cmsText(sc, "refund_sum4_text", "Customer's responsibility unless item is faulty") },
           ].map((c, i) => (
             <div className="summary-card" key={i}>
               <span className="summary-card-icon">{c.icon}</span>
@@ -227,10 +227,10 @@ export default function RefundPolicyPage() {
         {/* CTA */}
         <div className="contact-cta">
           <div className="cta-box">
-            <div className="cta-title">Need Help With a Return?</div>
-            <p className="cta-sub">Our team is here to help. Contact us via WhatsApp for the fastest response.</p>
+            <div className="cta-title">{cmsText(sc, "refund_cta_title", "Need Help With a Return?")}</div>
+            <p className="cta-sub">{cmsText(sc, "refund_cta_sub", "Our team is here to help. Contact us via WhatsApp for the fastest response.")}</p>
             <div className="cta-btns">
-              <a href={contact.whatsappUrl} className="btn-wa" target="_blank" rel="noopener noreferrer">💬 WhatsApp Us</a>
+              <a href={contact.whatsappUrl} className="btn-wa" target="_blank" rel="noopener noreferrer">💬 {cmsText(sc, "refund_cta_btn", "WhatsApp Us")}</a>
               {contact.telegramUrl ? (
               <a href={contact.telegramUrl} className="btn-contact" target="_blank" rel="noopener noreferrer">✈️ Telegram {contact.telegram}</a>
               ) : null}

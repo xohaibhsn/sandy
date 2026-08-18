@@ -9,6 +9,7 @@ import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { SITE_URL, formatPrice } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
+import { cmsFill, cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 const cardDescXss = {
   whiteList: {
@@ -50,6 +51,7 @@ export default function ProductsPage() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const contact = useContactConfig();
+  const sc = useSiteContent();
   // Live search
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -218,13 +220,13 @@ export default function ProductsPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">The Collection</div>
-          <h1 className="page-title">All products</h1>
+          <div className="section-tag">{cmsText(sc, "products_tag", "The Collection")}</div>
+          <h1 className="page-title">{cmsText(sc, "products_title", "All products")}</h1>
         </div>
 
         <div className="activation-banner">
           <div className="activation-banner-inner">
-            Fast delivery across Pakistan. Need help? WhatsApp {contact.phone}.
+            {cmsFill(cmsText(sc, "products_banner", "Fast delivery across Pakistan. Need help? WhatsApp {phone}."), { phone: contact.phone })}
           </div>
         </div>
 
@@ -236,10 +238,10 @@ export default function ProductsPage() {
             ))}
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-            <input type="number" style={{width:80,background:"#FFFFFF",border:"1px solid #E8E4DF",borderRadius:2,padding:"7px 10px",color:"#111",fontSize:13,outline:"none"}} placeholder="Min Rs." value={minPrice} onChange={e=>setMinPrice(e.target.value)} />
+            <input type="number" style={{width:80,background:"#FFFFFF",border:"1px solid #E8E4DF",borderRadius:2,padding:"7px 10px",color:"#111",fontSize:13,outline:"none"}} placeholder={cmsText(sc, "products_min", "Min Rs.")} value={minPrice} onChange={e=>setMinPrice(e.target.value)} />
             <span style={{color:"#6B6560",fontSize:13}}>—</span>
-            <input type="number" style={{width:80,background:"#FFFFFF",border:"1px solid #E8E4DF",borderRadius:2,padding:"7px 10px",color:"#111",fontSize:13,outline:"none"}} placeholder="Max Rs." value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} />
-            <button style={{background:"#111",border:"none",color:"#fff",padding:"7px 14px",borderRadius:2,cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:"0.06em"}} onClick={applyPrice}>Apply</button>
+            <input type="number" style={{width:80,background:"#FFFFFF",border:"1px solid #E8E4DF",borderRadius:2,padding:"7px 10px",color:"#111",fontSize:13,outline:"none"}} placeholder={cmsText(sc, "products_max", "Max Rs.")} value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} />
+            <button style={{background:"#111",border:"none",color:"#fff",padding:"7px 14px",borderRadius:2,cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:"0.06em"}} onClick={applyPrice}>{cmsText(sc, "products_apply", "Apply")}</button>
             <select style={{background:"#FFFFFF",border:"1px solid #E8E4DF",borderRadius:2,padding:"7px 10px",color:"#111",fontSize:13,outline:"none",cursor:"pointer"}} value={sort} onChange={e=>applySort(e.target.value)}>
               <option value="featured">Featured</option>
               <option value="price_asc">Price: Low → High</option>
@@ -260,7 +262,7 @@ export default function ProductsPage() {
               <button onClick={() => window.location.reload()} style={{background:"#111",color:"white",border:"none",padding:"10px 24px",borderRadius:"2px",cursor:"pointer",fontSize:"13px",letterSpacing:"0.08em",textTransform:"uppercase"}}>Try Again</button>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="loading">No products found.</div>
+            <div className="loading">{cmsText(sc, "products_empty", "No products found.")}</div>
           ) : (
             filtered.map((p) => (
               <div className="product-card" key={p.id} onClick={() => window.location.href=`/products/${p.slug || p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`} style={{cursor:"pointer"}}>

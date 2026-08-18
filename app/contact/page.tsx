@@ -197,7 +197,7 @@ export default function ContactPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ Get In Touch</div>
+          <div className="section-tag">✦ {cmsText(sc, "contact_tag", "Get In Touch")}</div>
           <h1 className="page-title">{cmsText(sc, "contact_title", "Contact Us")}</h1>
           <p className="page-sub">{cmsText(sc, "contact_subtitle", "Have a question or need help? We're here for you — reach out anytime.")}</p>
         </div>
@@ -206,35 +206,35 @@ export default function ContactPage() {
         <div className="contact-cards">
           <a href={contact.whatsappUrl} className="contact-card-featured" target="_blank" rel="noopener noreferrer">
             <span className="contact-card-icon">💬</span>
-            <div className="contact-card-title">WhatsApp</div>
+            <div className="contact-card-title">{cmsText(sc, "contact_wa_title", "WhatsApp")}</div>
             <div className="contact-card-value">{contact.phone}</div>
-            <div className="contact-card-sub">✦ Fastest response</div>
+            <div className="contact-card-sub">✦ {cmsText(sc, "contact_wa_sub", "Fastest response")}</div>
           </a>
           {contact.telegramUrl ? (
           <a href={contact.telegramUrl} className="contact-card" target="_blank" rel="noopener noreferrer">
             <span className="contact-card-icon">✈️</span>
-            <div className="contact-card-title">Telegram</div>
+            <div className="contact-card-title">{cmsText(sc, "contact_tg_title", "Telegram")}</div>
             <div className="contact-card-value">{contact.telegram}</div>
-            <div className="contact-card-sub">Message us anytime</div>
+            <div className="contact-card-sub">{cmsText(sc, "contact_tg_sub", "Message us anytime")}</div>
           </a>
           ) : null}
           <a href={`mailto:${contact.email}`} className="contact-card">
             <span className="contact-card-icon">📧</span>
-            <div className="contact-card-title">Email</div>
+            <div className="contact-card-title">{cmsText(sc, "contact_email_title", "Email")}</div>
             <div className="contact-card-value">{contact.email}</div>
-            <div className="contact-card-sub">Reply within 24 hours</div>
+            <div className="contact-card-sub">{cmsText(sc, "contact_email_sub", "Reply within 24 hours")}</div>
           </a>
           <div className="contact-card">
             <span className="contact-card-icon">🕐</span>
-            <div className="contact-card-title">Support Hours</div>
+            <div className="contact-card-title">{cmsText(sc, "contact_hours_title", "Support Hours")}</div>
             <div className="contact-card-value">{cmsText(sc, "contact_hours", "9AM – 10PM")}</div>
-            <div className="contact-card-sub">7 days a week</div>
+            <div className="contact-card-sub">{cmsText(sc, "contact_hours_sub", "7 days a week")}</div>
           </div>
           <div className="contact-card">
             <span className="contact-card-icon">📍</span>
-            <div className="contact-card-title">Based In</div>
+            <div className="contact-card-title">{cmsText(sc, "contact_address_title", "Based In")}</div>
             <div className="contact-card-value">{cmsText(sc, "contact_address", "Lahore, Pakistan")}</div>
-            <div className="contact-card-sub">Nationwide delivery</div>
+            <div className="contact-card-sub">{cmsText(sc, "contact_address_sub", "Nationwide delivery")}</div>
           </div>
         </div>
 
@@ -245,12 +245,12 @@ export default function ContactPage() {
             {submitted ? (
               <div className="form-success">
                 <span className="success-icon">✅</span>
-                <div className="success-title">Message Sent!</div>
-                <p className="success-sub">Thank you for reaching out. We&apos;ll get back to you within 24 hours. For urgent queries, please WhatsApp us directly.</p>
+                <div className="success-title">{cmsText(sc, "contact_success_title", "Message Sent!")}</div>
+                <p className="success-sub">{cmsText(sc, "contact_success_sub", "Thank you for reaching out. We'll get back to you within 24 hours. For urgent queries, please WhatsApp us directly.")}</p>
               </div>
             ) : (
               <>
-                <div className="form-title">Send Us a Message</div>
+                <div className="form-title">{cmsText(sc, "contact_form_title", "Send Us a Message")}</div>
                 <div className="form-row">
                   <div className="form-group">
                     <label>Your Name *</label>

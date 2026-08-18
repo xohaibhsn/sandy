@@ -13,6 +13,7 @@ import {
   formatPrice,
 } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 type PaymentMethod = "cod" | "jazzcash" | "easypaisa" | "bank";
 
@@ -185,6 +186,7 @@ type Step = "cart" | "checkout" | "success";
 export default function CartPage() {
   const { cart, removeFromCart, updateQty, clearCart, total } = useCart();
   const contact = useContactConfig();
+  const sc = useSiteContent();
   const [step, setStep] = useState<Step>("cart");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -322,8 +324,8 @@ export default function CartPage() {
 
       <div className="page-wrapper">
         <div className="page-header">
-          <div className="section-tag">✦ {step === "cart" ? "Your Cart" : "Checkout"}</div>
-          <h1 className="page-title">{step === "cart" ? <>My <span>Cart</span></> : <>Complete <span>Order</span></>}</h1>
+          <div className="section-tag">✦ {step === "cart" ? cmsText(sc, "cart_tag", "Your Cart") : cmsText(sc, "checkout_tag", "Checkout")}</div>
+          <h1 className="page-title">{step === "cart" ? cmsText(sc, "cart_title", "My Cart") : cmsText(sc, "checkout_title", "Complete Order")}</h1>
         </div>
 
         {step === "cart" && (
@@ -332,9 +334,9 @@ export default function CartPage() {
               {cart.length === 0 ? (
                 <div className="cart-empty">
                   <span className="cart-empty-icon">🛒</span>
-                  <h3>Your cart is empty</h3>
-                  <p>Add some products to get started!</p>
-                  <a href="/" className="btn-primary">Browse Products</a>
+                  <h3>{cmsText(sc, "cart_empty_title", "Your cart is empty")}</h3>
+                  <p>{cmsText(sc, "cart_empty_sub", "Add some products to get started!")}</p>
+                  <a href={cmsText(sc, "cart_empty_link", "/")} className="btn-primary">{cmsText(sc, "cart_empty_btn", "Browse Products")}</a>
                 </div>
               ) : (
                 cart.map(item => (
@@ -357,14 +359,14 @@ export default function CartPage() {
               )}
             </div>
             <div className="order-summary">
-              <div className="summary-header"><h3>Order Summary</h3></div>
+              <div className="summary-header"><h3>{cmsText(sc, "cart_summary", "Order Summary")}</h3></div>
               <div className="summary-body">
-                <div className="summary-row"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div>
-                <div className="summary-row"><span>Shipping</span><span>{shipping === 0 ? "Free" : formatPrice(shipping)}</span></div>
+                <div className="summary-row"><span>{cmsText(sc, "cart_subtotal", "Subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
+                <div className="summary-row"><span>{cmsText(sc, "cart_shipping", "Shipping")}</span><span>{shipping === 0 ? cmsText(sc, "cart_shipping_free", "Free") : formatPrice(shipping)}</span></div>
                 <div className="summary-row"><span>{TAX_LABEL}</span><span>{formatPrice(vatAmount)}</span></div>
                 {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                 <hr className="summary-divider" />
-                <div className="summary-row summary-total"><span>Total</span><span>{formatPrice(grandTotal)}</span></div>
+                <div className="summary-row summary-total"><span>{cmsText(sc, "cart_total", "Total")}</span><span>{formatPrice(grandTotal)}</span></div>
               </div>
               {/* Coupon input */}
               <div style={{padding:"0 20px 16px"}}>
@@ -376,7 +378,7 @@ export default function CartPage() {
                 {couponError && <div style={{fontSize:12,color:"#ff6666"}}>❌ {couponError}</div>}
               </div>
               <button className="checkout-btn" disabled={cart.length === 0} onClick={() => setStep("checkout")}>
-                Proceed to Checkout →
+                {cmsText(sc, "cart_checkout_btn", "Proceed to Checkout →")}
               </button>
             </div>
           </div>
@@ -387,7 +389,7 @@ export default function CartPage() {
             <div className="checkout-grid">
               <div>
                 <div className="form-section">
-                  <h3>Your Details</h3>
+                  <h3>{cmsText(sc, "cart_details_heading", "Your Details")}</h3>
                   {[
                     {label:"Full Name", key:"name", type:"text", placeholder:"Ahmed Khan"},
                     {label:"Email Address", key:"email", type:"email", placeholder:"ahmed@email.com"},
@@ -430,9 +432,14 @@ export default function CartPage() {
 
               <div>
                 <div className="form-section">
-                  <h3>Payment Method</h3>
+                  <h3>{cmsText(sc, "cart_pay_heading", "Payment Method")}</h3>
                   <div className="payment-options">
-                    {PAYMENT_OPTIONS.map(p => (
+                    {[
+                      { val: "cod" as PaymentMethod, label: cmsText(sc, "cart_pay_cod_label", "Cash on Delivery (COD)"), sub: cmsText(sc, "cart_pay_cod_sub", "Pay in cash when your order arrives") },
+                      { val: "jazzcash" as PaymentMethod, label: cmsText(sc, "cart_pay_jazz_label", "JazzCash"), sub: cmsText(sc, "cart_pay_jazz_sub", "Pay via JazzCash and enter your payment reference") },
+                      { val: "easypaisa" as PaymentMethod, label: cmsText(sc, "cart_pay_easy_label", "Easypaisa"), sub: cmsText(sc, "cart_pay_easy_sub", "Pay via Easypaisa and enter your payment reference") },
+                      { val: "bank" as PaymentMethod, label: cmsText(sc, "cart_pay_bank_label", "Bank Transfer"), sub: cmsText(sc, "cart_pay_bank_sub", "Transfer to our bank and upload your receipt") },
+                    ].map(p => (
                       <div key={p.val} className={`payment-option ${paymentMethod === p.val ? "selected" : ""}`} onClick={() => setPaymentMethod(p.val)}>
                         <input type="radio" readOnly checked={paymentMethod === p.val} />
                         <div>
@@ -455,7 +462,7 @@ export default function CartPage() {
                       <div className="bank-details">
                         <h4>{paymentLabel(paymentMethod)} details</h4>
                         <p style={{fontSize:13,color:"#555",lineHeight:1.6,marginBottom:10}}>
-                          Account details will be shared after your order. Enter your payment reference below if you have already paid, or wait for our WhatsApp message with the account number.
+                          {cmsText(sc, "cart_prepaid_help", "Account details will be shared after your order. Enter your payment reference below if you have already paid, or wait for our WhatsApp message with the account number.")}
                         </p>
                         <div className="bank-row"><span>Amount</span><span>{formatPrice(grandTotal)}</span></div>
                       </div>
@@ -482,21 +489,21 @@ export default function CartPage() {
                   )}
 
                   <div className="summary-body" style={{background:"rgba(139,0,255,0.05)", borderRadius:"12px", marginBottom:"16px"}}>
-                    <div className="summary-row"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div>
-                    <div className="summary-row"><span>Shipping</span><span>{shipping === 0 ? "Free" : formatPrice(shipping)}</span></div>
+                    <div className="summary-row"><span>{cmsText(sc, "cart_subtotal", "Subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
+                    <div className="summary-row"><span>{cmsText(sc, "cart_shipping", "Shipping")}</span><span>{shipping === 0 ? cmsText(sc, "cart_shipping_free", "Free") : formatPrice(shipping)}</span></div>
                     <div className="summary-row"><span>{TAX_LABEL}</span><span>{formatPrice(vatAmount)}</span></div>
                     {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                     <hr className="summary-divider" />
-                    <div className="summary-row summary-total"><span>Total</span><span>{formatPrice(grandTotal)}</span></div>
+                    <div className="summary-row summary-total"><span>{cmsText(sc, "cart_total", "Total")}</span><span>{formatPrice(grandTotal)}</span></div>
                   </div>
                   <div style={{background:"rgba(91,33,182,0.08)",border:"1px solid rgba(91,33,182,0.2)",borderRadius:"12px",padding:"12px 14px",fontSize:"13px",lineHeight:1.6,color:"#444444",marginBottom:"16px"}}>
-                    We deliver across Pakistan. You will receive order updates on WhatsApp.
+                    {cmsText(sc, "cart_delivery_note", "We deliver across Pakistan. You will receive order updates on WhatsApp.")}
                   </div>
 
                   <button className="place-order-btn"
                     disabled={placing || cart.length === 0}
                     onClick={handleOrder}>
-                    {placing ? "Placing Order..." : "Place Order →"}
+                    {placing ? cmsText(sc, "cart_placing", "Placing Order...") : cmsText(sc, "cart_place_btn", "Place Order →")}
                   </button>
                   {orderError && (
                     <div style={{marginTop:"14px",background:"rgba(255,68,68,0.1)",border:"1px solid rgba(255,68,68,0.3)",borderRadius:"12px",padding:"14px 16px"}}>

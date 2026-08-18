@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import { formatPrice } from "@/lib/site";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import SiteFooter from "@/components/SiteFooter";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 const styles = `
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -86,6 +87,7 @@ export default function CartSuccessPage() {
   const [snap, setSnap] = useState<OrderSnapshot | null>(null);
   const [ready, setReady] = useState(false);
   const contact = useContactConfig();
+  const sc = useSiteContent();
 
   useEffect(() => {
     try {
@@ -134,10 +136,9 @@ export default function CartSuccessPage() {
             </div>
           </div>
 
-          <h1 className="title">Thank you for your order!</h1>
+          <h1 className="title">{cmsText(sc, "order_success_title", "Thank you for your order!")}</h1>
           <p className="subtitle">
-            Your order has been received and is being processed.<br />
-            You&apos;ll receive confirmation on WhatsApp. We deliver across Pakistan.
+            {cmsText(sc, "order_success_sub", "Your order has been received and is being processed.")}
           </p>
 
           {/* Order ID */}
@@ -203,7 +204,7 @@ export default function CartSuccessPage() {
 
           {/* Optional WhatsApp CTA */}
           <a href={waUrl} target="_blank" rel="noopener noreferrer" className="wa-btn">
-            💬 Need help? Chat with Support via WhatsApp (Optional)
+            💬 {cmsText(sc, "order_success_wa", "Need help? Chat with Support via WhatsApp (Optional)")}
           </a>
           {contact.telegramUrl ? (
           <a href={contact.telegramUrl} target="_blank" rel="noopener noreferrer" className="telegram-btn">
@@ -211,12 +212,11 @@ export default function CartSuccessPage() {
           </a>
           ) : null}
           <p className="wa-optional">
-            This is completely optional — your order is already confirmed and being processed above.<br />
-            Click only if you need immediate assistance.
+            {cmsText(sc, "order_success_wa_note", "This is completely optional — your order is already confirmed and being processed above. Click only if you need immediate assistance.")}
           </p>
 
           {/* Track order */}
-          <a href="/order-tracking" className="track-btn">Track My Order &rarr;</a>
+          <a href={cmsText(sc, "order_success_track_link", "/order-tracking")} className="track-btn">{cmsText(sc, "order_success_track", "Track My Order →")}</a>
         </div>
       </div>
 

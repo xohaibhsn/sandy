@@ -201,6 +201,29 @@ type ChatLead = { id:number; customer_name:string; customer_whatsapp:string; cus
 type BerlinTraining = { id:number; title:string; content:string; is_active:number; created_at:string; updated_at:string; };
 type TrainingChatMessage = { role:"user"|"assistant"; content:string; saved?:boolean; };
 
+function CmsField({
+  label, k, siteContent, setSiteContent, area, placeholder, rows,
+}: {
+  label: string;
+  k: string;
+  siteContent: Record<string, string>;
+  setSiteContent: (fn: (s: Record<string, string>) => Record<string, string>) => void;
+  area?: boolean;
+  placeholder?: string;
+  rows?: number;
+}) {
+  return (
+    <div className="modal-field">
+      <label>{label}</label>
+      {area ? (
+        <textarea rows={rows || 2} style={{width:"100%",resize:"vertical"}} value={siteContent[k]||""} onChange={e=>setSiteContent(s=>({...s,[k]:e.target.value}))} placeholder={placeholder} />
+      ) : (
+        <input style={{width:"100%"}} value={siteContent[k]||""} onChange={e=>setSiteContent(s=>({...s,[k]:e.target.value}))} placeholder={placeholder} />
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [adminRole, setAdminRole] = useState<AdminRole>("super_admin");
@@ -2113,6 +2136,12 @@ export default function AdminPage() {
               <div style={{maxWidth:600}}>
                 <div className="modal-field"><label>Website Title</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_title||""} onChange={e=>setSiteContent(s=>({...s,site_title:e.target.value}))} placeholder="Sandy" /></div>
                 <div className="modal-field"><label>Website Tagline</label><input className="modal-field" style={{width:"100%"}} value={siteContent.site_tagline||""} onChange={e=>setSiteContent(s=>({...s,site_tagline:e.target.value}))} placeholder="Quality products, delivered across Pakistan" /></div>
+                <div className="modal-field"><label>Default Meta Description</label><textarea rows={3} style={{width:"100%",resize:"vertical"}} value={siteContent.site_meta_description||""} onChange={e=>setSiteContent(s=>({...s,site_meta_description:e.target.value}))} /></div>
+                <div className="modal-field"><label>SEO Keywords</label><input style={{width:"100%"}} value={siteContent.site_keywords||""} onChange={e=>setSiteContent(s=>({...s,site_keywords:e.target.value}))} /></div>
+                <div className="modal-field"><label>WhatsApp Button Title (tooltip)</label><input style={{width:"100%"}} value={siteContent.whatsapp_btn_title||""} onChange={e=>setSiteContent(s=>({...s,whatsapp_btn_title:e.target.value}))} placeholder="Chat on WhatsApp" /></div>
+                <div className="modal-field"><label>Instagram URL</label><input style={{width:"100%"}} value={siteContent.social_instagram||""} onChange={e=>setSiteContent(s=>({...s,social_instagram:e.target.value}))} placeholder="https://instagram.com/..." /></div>
+                <div className="modal-field"><label>Facebook URL</label><input style={{width:"100%"}} value={siteContent.social_facebook||""} onChange={e=>setSiteContent(s=>({...s,social_facebook:e.target.value}))} placeholder="https://facebook.com/..." /></div>
+                <div className="modal-field"><label>TikTok URL</label><input style={{width:"100%"}} value={siteContent.social_tiktok||""} onChange={e=>setSiteContent(s=>({...s,social_tiktok:e.target.value}))} placeholder="https://tiktok.com/..." /></div>
 
                 <div className="modal-field">
                   <label>Site Logo</label>
@@ -2410,7 +2439,7 @@ export default function AdminPage() {
                   </button>
                 </div>
 
-                <button className="btn-primary" style={{marginTop:12}} disabled={contentSaving} onClick={()=>saveContent(["site_title","site_tagline"])}>
+                <button className="btn-primary" style={{marginTop:12}} disabled={contentSaving} onClick={()=>saveContent(["site_title","site_tagline","site_meta_description","site_keywords","whatsapp_btn_title","social_instagram","social_facebook","social_tiktok"])}>
                   {contentSaving?"Saving...":"💾 Save Settings"}
                 </button>
               </div>
@@ -2429,7 +2458,7 @@ export default function AdminPage() {
               </div>
 
               <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
-                {[["home","🏠 Home"],["about","ℹ️ About"],["contact","📞 Contact"],["faq","❓ FAQ"],["blog","📝 Blog"],["footer","🔻 Footer"],["legal","⚖️ Legal"]].map(([k,l])=>(
+                {[["home","🏠 Home"],["about","ℹ️ About"],["contact","📞 Contact"],["products","🛍️ Products"],["shop","📦 Product Page"],["cart","🛒 Cart"],["tracking","📍 Tracking"],["faq","❓ FAQ"],["blog","📝 Blog"],["nav","🧭 Nav & Footer"],["legal","⚖️ Legal"]].map(([k,l])=>(
                   <button key={k} className={`action-btn ${activePage===k?"btn-verify":"btn-view"}`} style={{padding:"10px 20px",fontSize:13}} onClick={()=>setActivePage(k)}>{l}</button>
                 ))}
               </div>
@@ -2516,6 +2545,14 @@ export default function AdminPage() {
                   </div>
 
                   <div className="modal-field"><label>Tagline</label><input style={{width:"100%"}} value={siteContent.home_tagline||""} onChange={e=>setSiteContent(s=>({...s,home_tagline:e.target.value}))} placeholder="Fast. Reliable. Affordable." /></div>
+                  <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>FEATURED PRODUCTS / SEARCH / NEWSLETTER CHROME</div>
+                  <CmsField label="View All Products Label" k="home_view_all_label" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="View All Products Link" k="home_view_all_link" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Search Placeholder" k="home_search_placeholder" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Search Button" k="home_search_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Why Choose Us Tag" k="home_features_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Newsletter Placeholder" k="home_newsletter_placeholder" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Newsletter Thank You" k="home_newsletter_thanks" siteContent={siteContent} setSiteContent={setSiteContent} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent([
                     "home_meta_title","home_meta_description",
                     "home_top_hero_title","home_top_hero_subtitle",
@@ -2524,7 +2561,7 @@ export default function AdminPage() {
                     "home_features_list",
                     "home_stat1_num","home_stat1_label","home_stat2_num","home_stat2_label","home_stat3_num","home_stat3_label",
                     "home_trust_1_title","home_trust_1_sub","home_trust_2_title","home_trust_2_sub","home_trust_3_title","home_trust_3_sub","home_trust_4_title","home_trust_4_sub",
-                    "home_tagline",
+                    "home_tagline","home_view_all_label","home_view_all_link","home_search_placeholder","home_search_btn","home_features_tag","home_newsletter_placeholder","home_newsletter_thanks",
                   ])}>{contentSaving?"Saving...":"💾 Save Home"}</button>
                 </div>
               )}
@@ -2565,8 +2602,44 @@ export default function AdminPage() {
                   </div>
                   <div className="modal-field"><label>CTA Title</label><input style={{width:"100%"}} value={siteContent.about_cta_title||""} onChange={e=>setSiteContent(s=>({...s,about_cta_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>CTA Subtitle</label><input style={{width:"100%"}} value={siteContent.about_cta_sub||""} onChange={e=>setSiteContent(s=>({...s,about_cta_sub:e.target.value}))} /></div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <CmsField label="CTA Button 1 Text" k="about_cta_btn1_text" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="CTA Button 1 Link" k="about_cta_btn1_link" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="CTA Button 2 Text" k="about_cta_btn2_text" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="CTA Button 2 Link" k="about_cta_btn2_link" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  </div>
+                  <CmsField label="Hero Tag" k="about_hero_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Story Tag" k="about_story_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Story Heading" k="about_story_heading" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Values Tag" k="about_values_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Journey Tag" k="about_journey_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Journey Title" k="about_journey_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>STORY POINTS (4)</div>
+                  {[1,2,3,4].map(n=>(
+                    <div key={n} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr",gap:10,marginBottom:8}}>
+                      <CmsField label={`Icon ${n}`} k={`about_point${n}_icon`} siteContent={siteContent} setSiteContent={setSiteContent} />
+                      <CmsField label={`Title ${n}`} k={`about_point${n}_title`} siteContent={siteContent} setSiteContent={setSiteContent} />
+                      <CmsField label={`Desc ${n}`} k={`about_point${n}_desc`} siteContent={siteContent} setSiteContent={setSiteContent} area />
+                    </div>
+                  ))}
+                  <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>TIMELINE (5)</div>
+                  {[1,2,3,4,5].map(n=>(
+                    <div key={n} style={{display:"grid",gridTemplateColumns:"80px 80px 1fr",gap:10,marginBottom:8}}>
+                      <CmsField label={`Year ${n}`} k={`about_tl${n}_year`} siteContent={siteContent} setSiteContent={setSiteContent} />
+                      <CmsField label={`Icon ${n}`} k={`about_tl${n}_icon`} siteContent={siteContent} setSiteContent={setSiteContent} />
+                      <CmsField label={`Title ${n}`} k={`about_tl${n}_title`} siteContent={siteContent} setSiteContent={setSiteContent} />
+                      <CmsField label={`Desc ${n}`} k={`about_tl${n}_desc`} siteContent={siteContent} setSiteContent={setSiteContent} area />
+                    </div>
+                  ))}
                   <p style={{fontSize:12,color:"#888",margin:"8px 0 16px"}}>Values / mission cards: edit in <strong>Page Builder → About</strong>.</p>
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["about_title","about_description","about_mission","about_story_extra","about_cta_title","about_cta_sub","about_stat1_num","about_stat1_label","about_stat2_num","about_stat2_label","about_stat3_num","about_stat3_label","about_stat4_num","about_stat4_label","about_stat5_num","about_stat5_label"])}>{contentSaving?"Saving...":"💾 Save About"}</button>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent([
+                    "about_title","about_description","about_mission","about_story_extra","about_cta_title","about_cta_sub",
+                    "about_cta_btn1_text","about_cta_btn1_link","about_cta_btn2_text","about_cta_btn2_link",
+                    "about_hero_tag","about_story_tag","about_story_heading","about_values_tag","about_journey_tag","about_journey_title",
+                    "about_stat1_num","about_stat1_label","about_stat2_num","about_stat2_label","about_stat3_num","about_stat3_label","about_stat4_num","about_stat4_label","about_stat5_num","about_stat5_label",
+                    ...[1,2,3,4].flatMap(n=>[`about_point${n}_icon`,`about_point${n}_title`,`about_point${n}_desc`]),
+                    ...[1,2,3,4,5].flatMap(n=>[`about_tl${n}_year`,`about_tl${n}_icon`,`about_tl${n}_title`,`about_tl${n}_desc`]),
+                  ])}>{contentSaving?"Saving...":"💾 Save About"}</button>
                 </div>
               )}
 
@@ -2583,18 +2656,137 @@ export default function AdminPage() {
                     <div className="modal-field"><label>Telegram Handle</label><input style={{width:"100%"}} value={siteContent.contact_telegram||""} onChange={e=>setSiteContent(s=>({...s,contact_telegram:e.target.value}))} placeholder="optional" /></div>
                     <div className="modal-field"><label>Business Hours</label><input style={{width:"100%"}} value={siteContent.contact_hours||""} onChange={e=>setSiteContent(s=>({...s,contact_hours:e.target.value}))} /></div>
                     <div className="modal-field"><label>Address</label><input style={{width:"100%"}} value={siteContent.contact_address||""} onChange={e=>setSiteContent(s=>({...s,contact_address:e.target.value}))} /></div>
+                    <CmsField label="Page Tag" k="contact_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="WhatsApp Card Title" k="contact_wa_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="WhatsApp Card Subtitle" k="contact_wa_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Telegram Card Title" k="contact_tg_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Telegram Card Subtitle" k="contact_tg_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Email Card Title" k="contact_email_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Email Card Subtitle" k="contact_email_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Hours Card Title" k="contact_hours_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Hours Card Subtitle" k="contact_hours_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Address Card Title" k="contact_address_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Address Card Subtitle" k="contact_address_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Form Title" k="contact_form_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Success Title" k="contact_success_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Success Message" k="contact_success_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
                   </div>
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["contact_title","contact_subtitle","contact_phone","contact_email","contact_whatsapp","whatsapp_number","contact_telegram","contact_hours","contact_address"])}>{contentSaving?"Saving...":"💾 Save Contact"}</button>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["contact_title","contact_subtitle","contact_phone","contact_email","contact_whatsapp","whatsapp_number","contact_telegram","contact_hours","contact_address","contact_tag","contact_wa_title","contact_wa_sub","contact_tg_title","contact_tg_sub","contact_email_title","contact_email_sub","contact_hours_title","contact_hours_sub","contact_address_title","contact_address_sub","contact_form_title","contact_success_title","contact_success_sub"])}>{contentSaving?"Saving...":"💾 Save Contact"}</button>
                 </div>
               )}
 
-              {/* FOOTER */}
-              {activePage==="footer" && (
+              {activePage==="products" && (
                 <div className="section-card" style={{padding:24}}>
-                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">🔻 Footer Content</div></div>
-                  <div className="modal-field"><label>Footer Text (copyright)</label><input style={{width:"100%"}} value={siteContent.footer_text||""} onChange={e=>setSiteContent(s=>({...s,footer_text:e.target.value}))} /></div>
-                  <div className="modal-field"><label>Footer Tagline</label><input style={{width:"100%"}} value={siteContent.footer_tagline||""} onChange={e=>setSiteContent(s=>({...s,footer_tagline:e.target.value}))} /></div>
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["footer_text","footer_tagline"])}>{contentSaving?"Saving...":"💾 Save Footer"}</button>
+                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">🛍️ Products Listing Copy</div></div>
+                  <CmsField label="Page Tag" k="products_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Page Title" k="products_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Banner (use {phone} for WhatsApp number)" k="products_banner" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Empty State" k="products_empty" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Min Price Placeholder" k="products_min" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Max Price Placeholder" k="products_max" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Apply Button" k="products_apply" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["products_tag","products_title","products_banner","products_empty","products_min","products_max","products_apply"])}>{contentSaving?"Saving...":"💾 Save Products Copy"}</button>
+                </div>
+              )}
+
+              {activePage==="shop" && (
+                <div className="section-card" style={{padding:24}}>
+                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">📦 Product Detail Copy</div></div>
+                  <CmsField label="Back Link" k="pdp_back" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Pill: COD" k="pdp_pill_cod" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Pill: Delivery" k="pdp_pill_delivery" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Pill: Region" k="pdp_pill_region" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Help Note (use {phone})" k="pdp_help" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Add to Cart" k="pdp_add" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Added to Cart" k="pdp_added" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Remove from Cart" k="pdp_remove" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="View Cart Link" k="pdp_view_cart" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="About Heading" k="pdp_about" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Included Heading" k="pdp_included" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["pdp_back","pdp_pill_cod","pdp_pill_delivery","pdp_pill_region","pdp_help","pdp_add","pdp_added","pdp_remove","pdp_view_cart","pdp_about","pdp_included"])}>{contentSaving?"Saving...":"💾 Save Product Page"}</button>
+                </div>
+              )}
+
+              {activePage==="cart" && (
+                <div className="section-card" style={{padding:24}}>
+                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">🛒 Cart & Checkout Copy</div></div>
+                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>GST rate, provinces, and payment method values stay in code. Only display labels are here.</p>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <CmsField label="Cart Tag" k="cart_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Cart Title" k="cart_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Checkout Tag" k="checkout_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Checkout Title" k="checkout_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Empty Title" k="cart_empty_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Empty Subtitle" k="cart_empty_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Empty Button" k="cart_empty_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Empty Button Link" k="cart_empty_link" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Summary Heading" k="cart_summary" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Subtotal" k="cart_subtotal" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Shipping" k="cart_shipping" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Free Shipping Label" k="cart_shipping_free" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Total" k="cart_total" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Checkout Button" k="cart_checkout_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Place Order Button" k="cart_place_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Placing Label" k="cart_placing" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Details Heading" k="cart_details_heading" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Payment Heading" k="cart_pay_heading" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="COD Label" k="cart_pay_cod_label" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="COD Subtitle" k="cart_pay_cod_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="JazzCash Label" k="cart_pay_jazz_label" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="JazzCash Subtitle" k="cart_pay_jazz_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Easypaisa Label" k="cart_pay_easy_label" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Easypaisa Subtitle" k="cart_pay_easy_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Bank Label" k="cart_pay_bank_label" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Bank Subtitle" k="cart_pay_bank_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Success Title" k="order_success_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Success Track Button" k="order_success_track" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Success Track Link" k="order_success_track_link" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  </div>
+                  <CmsField label="Delivery Note" k="cart_delivery_note" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Prepaid Help" k="cart_prepaid_help" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Success Subtitle" k="order_success_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Success WhatsApp CTA" k="order_success_wa" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Success WhatsApp Note" k="order_success_wa_note" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["cart_tag","cart_title","checkout_tag","checkout_title","cart_empty_title","cart_empty_sub","cart_empty_btn","cart_empty_link","cart_summary","cart_subtotal","cart_shipping","cart_shipping_free","cart_total","cart_checkout_btn","cart_place_btn","cart_placing","cart_details_heading","cart_pay_heading","cart_pay_cod_label","cart_pay_cod_sub","cart_pay_jazz_label","cart_pay_jazz_sub","cart_pay_easy_label","cart_pay_easy_sub","cart_pay_bank_label","cart_pay_bank_sub","cart_delivery_note","cart_prepaid_help","order_success_title","order_success_sub","order_success_wa","order_success_wa_note","order_success_track","order_success_track_link"])}>{contentSaving?"Saving...":"💾 Save Cart Copy"}</button>
+                </div>
+              )}
+
+              {activePage==="tracking" && (
+                <div className="section-card" style={{padding:24}}>
+                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">📍 Order Tracking Copy</div></div>
+                  <CmsField label="Tag" k="tracking_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Title" k="tracking_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Subtitle" k="tracking_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Placeholder" k="tracking_placeholder" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Track Button" k="tracking_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Help Title" k="tracking_help_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Help Subtitle" k="tracking_help_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Help Button" k="tracking_help_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["tracking_tag","tracking_title","tracking_sub","tracking_placeholder","tracking_btn","tracking_help_title","tracking_help_sub","tracking_help_btn"])}>{contentSaving?"Saving...":"💾 Save Tracking Copy"}</button>
+                </div>
+              )}
+
+              {/* NAV + FOOTER */}
+              {activePage==="nav" && (
+                <div className="section-card" style={{padding:24}}>
+                  <div className="section-header" style={{marginBottom:20}}><div className="section-title">🧭 Nav & Footer Labels</div></div>
+                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>Link destinations stay structural (routes). Labels and social URLs are editable.</p>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <CmsField label="Nav: Home" k="nav_home" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Nav: Products" k="nav_products" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Nav: Track Order" k="nav_track" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Nav: Blog" k="nav_blog" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Nav: Contact" k="nav_contact" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Cart Button" k="nav_cart_label" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Shop Now Button" k="nav_shop_label" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Footer: Privacy" k="footer_privacy" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Footer: Terms" k="footer_terms" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Footer: Refund" k="footer_refund" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Footer: FAQ" k="footer_faq" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  </div>
+                  <CmsField label="Footer copyright" k="footer_text" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Footer tagline" k="footer_tagline" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["nav_home","nav_products","nav_track","nav_blog","nav_contact","nav_cart_label","nav_shop_label","footer_privacy","footer_terms","footer_refund","footer_faq","footer_text","footer_tagline"])}>{contentSaving?"Saving...":"💾 Save Nav & Footer"}</button>
                 </div>
               )}
 
@@ -2606,7 +2798,11 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Page Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.faq_subtitle||""} onChange={e=>setSiteContent(s=>({...s,faq_subtitle:e.target.value}))} /></div>
                   <div className="modal-field"><label>Help Box Title</label><input style={{width:"100%"}} value={siteContent.faq_help_title||""} onChange={e=>setSiteContent(s=>({...s,faq_help_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Help Box Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.faq_help_sub||""} onChange={e=>setSiteContent(s=>({...s,faq_help_sub:e.target.value}))} /></div>
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["faq_title","faq_subtitle","faq_help_title","faq_help_sub"])}>{contentSaving?"Saving...":"💾 Save FAQ Copy"}</button>
+                  <CmsField label="Page Tag" k="faq_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="WhatsApp Button" k="faq_btn_whatsapp" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Telegram Button" k="faq_btn_telegram" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Contact Form Button" k="faq_btn_contact" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["faq_title","faq_subtitle","faq_help_title","faq_help_sub","faq_tag","faq_btn_whatsapp","faq_btn_telegram","faq_btn_contact"])}>{contentSaving?"Saving...":"💾 Save FAQ Copy"}</button>
                 </div>
               )}
 
@@ -2618,7 +2814,18 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Page Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.blog_subtitle||""} onChange={e=>setSiteContent(s=>({...s,blog_subtitle:e.target.value}))} /></div>
                   <div className="modal-field"><label>Newsletter Title</label><input style={{width:"100%"}} value={siteContent.blog_newsletter_title||""} onChange={e=>setSiteContent(s=>({...s,blog_newsletter_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Newsletter Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.blog_newsletter_sub||""} onChange={e=>setSiteContent(s=>({...s,blog_newsletter_sub:e.target.value}))} /></div>
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["blog_title","blog_subtitle","blog_newsletter_title","blog_newsletter_sub"])}>{contentSaving?"Saving...":"💾 Save Blog Copy"}</button>
+                  <CmsField label="Page Tag" k="blog_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Read More Label" k="blog_read_more" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Featured Label" k="blog_featured_label" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Newsletter Button" k="blog_newsletter_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Newsletter Placeholder" k="blog_newsletter_placeholder" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Newsletter Thank You" k="blog_newsletter_thanks" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Post CTA Title" k="blog_post_cta_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Post CTA Subtitle" k="blog_post_cta_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Post CTA Button" k="blog_post_cta_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Post CTA Link" k="blog_post_cta_link" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Post FAQ Heading" k="blog_post_faq_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["blog_title","blog_subtitle","blog_newsletter_title","blog_newsletter_sub","blog_tag","blog_read_more","blog_featured_label","blog_newsletter_btn","blog_newsletter_placeholder","blog_newsletter_thanks","blog_post_cta_title","blog_post_cta_sub","blog_post_cta_btn","blog_post_cta_link","blog_post_faq_title"])}>{contentSaving?"Saving...":"💾 Save Blog Copy"}</button>
                 </div>
               )}
 
@@ -2635,7 +2842,18 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Refund Title</label><input style={{width:"100%"}} value={siteContent.refund_title||""} onChange={e=>setSiteContent(s=>({...s,refund_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Refund Last Updated</label><input style={{width:"100%"}} value={siteContent.refund_updated||""} onChange={e=>setSiteContent(s=>({...s,refund_updated:e.target.value}))} /></div>
                   <div className="modal-field"><label>Refund Body</label><TipTapEditor content={toEditorHtml(siteContent.refund_content || "")} onChange={(html)=>setSiteContent(s=>({...s,refund_content:html}))} placeholder="Leave empty to use the default refund policy..." /></div>
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["privacy_title","privacy_updated","privacy_content","terms_title","terms_updated","terms_content","refund_title","refund_updated","refund_content"])}>{contentSaving?"Saving...":"💾 Save Legal"}</button>
+                  <CmsField label="Legal Tag" k="legal_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>REFUND SUMMARY CARDS</div>
+                  {[1,2,3,4].map(n=>(
+                    <div key={n} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+                      <CmsField label={`Card ${n} Title`} k={`refund_sum${n}_title`} siteContent={siteContent} setSiteContent={setSiteContent} />
+                      <CmsField label={`Card ${n} Text`} k={`refund_sum${n}_text`} siteContent={siteContent} setSiteContent={setSiteContent} area />
+                    </div>
+                  ))}
+                  <CmsField label="Refund CTA Title" k="refund_cta_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Refund CTA Subtitle" k="refund_cta_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Refund CTA Button" k="refund_cta_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["privacy_title","privacy_updated","privacy_content","terms_title","terms_updated","terms_content","refund_title","refund_updated","refund_content","legal_tag","refund_sum1_title","refund_sum1_text","refund_sum2_title","refund_sum2_text","refund_sum3_title","refund_sum3_text","refund_sum4_title","refund_sum4_text","refund_cta_title","refund_cta_sub","refund_cta_btn"])}>{contentSaving?"Saving...":"💾 Save Legal"}</button>
                 </div>
               )}
             </div>

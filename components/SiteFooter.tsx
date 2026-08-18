@@ -8,6 +8,9 @@ export default function SiteFooter() {
   const brand = cmsText(sc, "site_title", SITE_NAME).toUpperCase() || SITE_NAME_CAPS;
   const tagline = cmsText(sc, "footer_tagline", "");
   const copy = cmsText(sc, "footer_text", FOOTER_COPY);
+  const ig = cmsText(sc, "social_instagram", "");
+  const fb = cmsText(sc, "social_facebook", "");
+  const tt = cmsText(sc, "social_tiktok", "");
 
   return (
     <>
@@ -50,6 +53,9 @@ export default function SiteFooter() {
         }
         .site-footer-links a:hover { color: #FFFFFF; }
         .site-footer-copy { font-size: 12px; color: rgba(255,255,255,0.4); }
+        .site-footer-social { display: flex; gap: 14px; align-items: center; }
+        .site-footer-social a { color: rgba(255,255,255,0.6); font-size: 13px; text-decoration: none; }
+        .site-footer-social a:hover { color: #FFFFFF; }
         @media (max-width: 768px) {
           .site-footer {
             padding: 36px 24px;
@@ -66,11 +72,18 @@ export default function SiteFooter() {
           {tagline ? <div className="site-footer-tag">{tagline}</div> : null}
         </div>
         <ul className="site-footer-links">
-          <li><a href="/privacy-policy">Privacy Policy</a></li>
-          <li><a href="/terms">Terms & Conditions</a></li>
-          <li><a href="/refund-policy">Refund Policy</a></li>
-          <li><a href="/faq">FAQ</a></li>
+          <li><a href="/privacy-policy">{cmsText(sc, "footer_privacy", "Privacy Policy")}</a></li>
+          <li><a href="/terms">{cmsText(sc, "footer_terms", "Terms & Conditions")}</a></li>
+          <li><a href="/refund-policy">{cmsText(sc, "footer_refund", "Refund Policy")}</a></li>
+          <li><a href="/faq">{cmsText(sc, "footer_faq", "FAQ")}</a></li>
         </ul>
+        {(ig || fb || tt) ? (
+          <div className="site-footer-social">
+            {ig ? <a href={ig} target="_blank" rel="noopener noreferrer">Instagram</a> : null}
+            {fb ? <a href={fb} target="_blank" rel="noopener noreferrer">Facebook</a> : null}
+            {tt ? <a href={tt} target="_blank" rel="noopener noreferrer">TikTok</a> : null}
+          </div>
+        ) : null}
         <div className="site-footer-copy">{copy}</div>
       </footer>
     </>

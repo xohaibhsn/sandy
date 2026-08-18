@@ -4,6 +4,7 @@ import xss from "xss";
 import { fixContentLinkRels } from "@/lib/seoLinks";
 import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
+import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 // Allowed HTML tags from TipTap editor output
 const xssOptions = {
@@ -34,6 +35,7 @@ interface Post {
 
 export default function BlogPostClient({ post }: { post: Post | null }) {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const sc = useSiteContent();
 
   const dateStr = post?.created_at
     ? new Date(post.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" })
@@ -163,7 +165,7 @@ export default function BlogPostClient({ post }: { post: Post | null }) {
 
             {faqs.length > 0 && (
               <div className="faq-section">
-                <div className="faq-title">Frequently Asked Questions</div>
+                <div className="faq-title">{cmsText(sc, "blog_post_faq_title", "Frequently Asked Questions")}</div>
                 {faqs.map((faq, i) => (
                   <div key={i} className={`faq-item ${openFaq === i ? "open" : ""}`}>
                     <div className="faq-q" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
@@ -179,9 +181,9 @@ export default function BlogPostClient({ post }: { post: Post | null }) {
             )}
 
             <div className="cta-box">
-              <div className="cta-title">Ready to Shop?</div>
-              <div className="cta-sub">Browse accessories, gadgets and everyday products delivered across Pakistan.</div>
-              <a href="/products" className="btn-primary">View Products →</a>
+              <div className="cta-title">{cmsText(sc, "blog_post_cta_title", "Ready to Shop?")}</div>
+              <div className="cta-sub">{cmsText(sc, "blog_post_cta_sub", "Browse accessories, gadgets and everyday products delivered across Pakistan.")}</div>
+              <a href={cmsText(sc, "blog_post_cta_link", "/products")} className="btn-primary">{cmsText(sc, "blog_post_cta_btn", "View Products →")}</a>
             </div>
           </>
         )}

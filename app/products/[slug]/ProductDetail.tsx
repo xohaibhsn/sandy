@@ -7,6 +7,7 @@ import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { formatPrice } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
+import { cmsFill, cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 const xssOptions = {
   whiteList: {
@@ -39,6 +40,7 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
   const [hovering, setHovering] = useState(false);
   const { addToCart, removeFromCart, cart } = useCart();
   const contact = useContactConfig();
+  const sc = useSiteContent();
 
   useEffect(() => {
     if (initialProduct) return;
@@ -140,7 +142,7 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
           </div>
         ) : (
           <>
-            <a href="/products" className="back-link">← Back to Products</a>
+            <a href="/products" className="back-link">{cmsText(sc, "pdp_back", "← Back to Products")}</a>
             <div className="product-layout">
               <div className="product-img-box">
                 {product.image
@@ -163,12 +165,12 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
                 <div className="product-price">{formatPrice(product.price)}</div>
                 <div className="meta-row">
                   <span className="meta-pill">{product.stock || "In stock"}</span>
-                  <span className="meta-pill">Cash on Delivery</span>
-                  <span className="meta-pill">Free delivery</span>
-                  <span className="meta-pill">Pakistan-wide</span>
+                  <span className="meta-pill">{cmsText(sc, "pdp_pill_cod", "Cash on Delivery")}</span>
+                  <span className="meta-pill">{cmsText(sc, "pdp_pill_delivery", "Free delivery")}</span>
+                  <span className="meta-pill">{cmsText(sc, "pdp_pill_region", "Pakistan-wide")}</span>
                 </div>
                 <div className="activation-note">
-                  We deliver across Pakistan. Need help? WhatsApp {contact.phone}.
+                  {cmsFill(cmsText(sc, "pdp_help", "We deliver across Pakistan. Need help? WhatsApp {phone}."), { phone: contact.phone })}
                 </div>
                 <button
                   className="add-btn"
@@ -177,9 +179,9 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
                   onMouseLeave={() => setHovering(false)}
                   onClick={() => isInCart ? removeFromCart(product!.id) : handleAdd()}
                 >
-                  {isInCart ? (hovering ? "Remove from cart" : "Added to cart") : "Add to cart"}
+                  {isInCart ? (hovering ? cmsText(sc, "pdp_remove", "Remove from cart") : cmsText(sc, "pdp_added", "Added to cart")) : cmsText(sc, "pdp_add", "Add to cart")}
                 </button>
-                <a href="/cart" className="cart-link">View Cart & Checkout →</a>
+                <a href="/cart" className="cart-link">{cmsText(sc, "pdp_view_cart", "View Cart & Checkout →")}</a>
               </div>
             </div>
           </>
@@ -190,7 +192,7 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
         <div className="product-sections">
           {product.full_description && (
             <div className="section-block">
-              <div className="section-heading">About This Product</div>
+              <div className="section-heading">{cmsText(sc, "pdp_about", "About This Product")}</div>
               <div
                 className="product-full-description"
                 dangerouslySetInnerHTML={{
@@ -201,7 +203,7 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
           )}
           {featureList.length > 0 && (
             <div className="section-block">
-              <div className="section-heading">What&apos;s Included</div>
+              <div className="section-heading">{cmsText(sc, "pdp_included", "What's Included")}</div>
               <ul className="feature-list">
                 {featureList.map((f, i) => (
                   <li key={i}>{f.replace(/^[✅✔️•\-*]\s*/,'')}</li>
