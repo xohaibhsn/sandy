@@ -269,114 +269,130 @@ const DEFAULTS = [
   ['refund_cta_btn','WhatsApp Us','text','legal','Refund CTA Button'],
 ];
 
+let initializationPromise: Promise<void> | null = null;
+
+async function initializeSiteContent(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS site_content (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      content_key VARCHAR(100) UNIQUE NOT NULL,
+      content_value TEXT,
+      content_type ENUM('text','textarea','image','url') DEFAULT 'text',
+      page_name VARCHAR(50),
+      label VARCHAR(100),
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  for (const [key, val, type, page, label] of DEFAULTS) {
+    try {
+      await pool.query(
+        'INSERT IGNORE INTO site_content (content_key, content_value, content_type, page_name, label) VALUES (?,?,?,?,?)',
+        [key, val, type, page, label]
+      );
+    } catch (_) {}
+  }
+
+  // Migrate Firestick / UK CMS rows to S&Y (Pakistan)
+  try {
+    await pool.query(
+      `UPDATE site_content SET content_value=? WHERE content_key='contact_email' AND (content_value LIKE '%firestick%' OR content_value LIKE '%@firestick4uk.com%')`,
+      [CONTACT_EMAIL]
+    );
+    await pool.query(
+      `UPDATE site_content SET content_value=? WHERE content_key IN ('whatsapp_number','contact_whatsapp') AND (content_value LIKE '%447%' OR content_value LIKE '%44%')`,
+      [WHATSAPP_DIGITS]
+    );
+    await pool.query(
+      `UPDATE site_content SET content_value=? WHERE content_key='contact_phone' AND content_value LIKE '%44%'`,
+      [PHONE_DISPLAY]
+    );
+    await pool.query(
+      `UPDATE site_content SET content_value=? WHERE content_key='contact_address' AND (content_value LIKE '%United Kingdom%' OR content_value LIKE '%UK%')`,
+      [CONTACT_ADDRESS]
+    );
+    await pool.query(
+      `UPDATE site_content SET content_value='' WHERE content_key='contact_telegram' AND content_value LIKE '%firestick%'`
+    );
+    await pool.query(
+      `UPDATE site_content SET content_value=? WHERE content_key='site_title' AND content_value LIKE '%Firestick%'`,
+      [SITE_NAME]
+    );
+    await pool.query(
+      `UPDATE site_content SET content_value='Quality products, delivered across Pakistan' WHERE content_key='site_tagline' AND (content_value LIKE '%Firestick%' OR content_value LIKE '%UK%')`
+    );
+    await pool.query(
+      `UPDATE site_content SET content_value=? WHERE content_key='footer_text' AND content_value LIKE '%Firestick%'`,
+      [FOOTER_COPY]
+    );
+    await pool.query(
+      `UPDATE site_content SET page_name='settings', label='WhatsApp Number' WHERE content_key='contact_whatsapp'`
+    );
+    await pool.query(
+      `UPDATE site_content SET page_name='settings', label='Phone Number' WHERE content_key='contact_phone'`
+    );
+    await pool.query(
+      `UPDATE site_content SET page_name='settings', label='Contact Email' WHERE content_key='contact_email'`
+    );
+  } catch (_) {}
+
+  // Keep whatsapp_number in sync with contact_whatsapp (legacy key for floating button)
+  try {
+    await pool.query(
+      `UPDATE site_content wa
+       INNER JOIN site_content cw ON cw.content_key='contact_whatsapp'
+       SET wa.content_value = cw.content_value
+       WHERE wa.content_key='whatsapp_number'`
+    );
+  } catch (_) {}
+
+  // Ensure telegram default exists
+  try {
+    await pool.query(
+      "INSERT IGNORE INTO site_content (content_key, content_value, content_type, page_name, label) VALUES ('contact_telegram','','text','settings','Telegram Handle')"
+    );
+  } catch (_) {}
+
+  // Replace public IPTV wording with Streaming
+  for (const [from, to] of [
+    ['Premium IPTV & Streaming', 'Premium Streaming'],
+    ['IPTV & Streaming Solutions', 'Streaming Solutions'],
+    ['Premium IPTV', 'Premium Streaming'],
+    ['IPTV', 'Streaming'],
+    ['iptv', 'streaming'],
+  ] as const) {
+    try {
+      await pool.query(
+        'UPDATE site_content SET content_value = REPLACE(content_value, ?, ?) WHERE content_value LIKE ?',
+        [from, to, `%${from}%`]
+      );
+    } catch (_) {}
+  }
+
+  // Keep labels in sync for new/renamed home fields
+  try {
+    await pool.query(`UPDATE site_content SET label='Top Hero Title' WHERE content_key='home_top_hero_title'`);
+    await pool.query(`UPDATE site_content SET label='Top Hero Subtitle' WHERE content_key='home_top_hero_subtitle'`);
+    await pool.query(`UPDATE site_content SET label='Main Hero Title' WHERE content_key='home_hero_title'`);
+    await pool.query(`UPDATE site_content SET label='Main Hero Subtitle' WHERE content_key='home_hero_subtitle'`);
+  } catch (_) {}
+}
+
+function ensureSiteContentInitialized(): Promise<void> {
+  if (!initializationPromise) {
+    initializationPromise = initializeSiteContent().catch((error) => {
+      initializationPromise = null;
+      throw error;
+    });
+  }
+  return initializationPromise;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method !== 'GET' && !checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS site_content (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        content_key VARCHAR(100) UNIQUE NOT NULL,
-        content_value TEXT,
-        content_type ENUM('text','textarea','image','url') DEFAULT 'text',
-        page_name VARCHAR(50),
-        label VARCHAR(100),
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
-    for (const [key, val, type, page, label] of DEFAULTS) {
-      try {
-        await pool.query(
-          'INSERT IGNORE INTO site_content (content_key, content_value, content_type, page_name, label) VALUES (?,?,?,?,?)',
-          [key, val, type, page, label]
-        );
-      } catch (_) {}
-    }
-
-    // Migrate Firestick / UK CMS rows to S&Y (Pakistan)
-    try {
-      await pool.query(
-        `UPDATE site_content SET content_value=? WHERE content_key='contact_email' AND (content_value LIKE '%firestick%' OR content_value LIKE '%@firestick4uk.com%')`,
-        [CONTACT_EMAIL]
-      );
-      await pool.query(
-        `UPDATE site_content SET content_value=? WHERE content_key IN ('whatsapp_number','contact_whatsapp') AND (content_value LIKE '%447%' OR content_value LIKE '%44%')`,
-        [WHATSAPP_DIGITS]
-      );
-      await pool.query(
-        `UPDATE site_content SET content_value=? WHERE content_key='contact_phone' AND content_value LIKE '%44%'`,
-        [PHONE_DISPLAY]
-      );
-      await pool.query(
-        `UPDATE site_content SET content_value=? WHERE content_key='contact_address' AND (content_value LIKE '%United Kingdom%' OR content_value LIKE '%UK%')`,
-        [CONTACT_ADDRESS]
-      );
-      await pool.query(
-        `UPDATE site_content SET content_value='' WHERE content_key='contact_telegram' AND content_value LIKE '%firestick%'`
-      );
-      await pool.query(
-        `UPDATE site_content SET content_value=? WHERE content_key='site_title' AND content_value LIKE '%Firestick%'`,
-        [SITE_NAME]
-      );
-      await pool.query(
-        `UPDATE site_content SET content_value='Quality products, delivered across Pakistan' WHERE content_key='site_tagline' AND (content_value LIKE '%Firestick%' OR content_value LIKE '%UK%')`
-      );
-      await pool.query(
-        `UPDATE site_content SET content_value=? WHERE content_key='footer_text' AND content_value LIKE '%Firestick%'`,
-        [FOOTER_COPY]
-      );
-      await pool.query(
-        `UPDATE site_content SET page_name='settings', label='WhatsApp Number' WHERE content_key='contact_whatsapp'`
-      );
-      await pool.query(
-        `UPDATE site_content SET page_name='settings', label='Phone Number' WHERE content_key='contact_phone'`
-      );
-      await pool.query(
-        `UPDATE site_content SET page_name='settings', label='Contact Email' WHERE content_key='contact_email'`
-      );
-    } catch (_) {}
-
-    // Keep whatsapp_number in sync with contact_whatsapp (legacy key for floating button)
-    try {
-      await pool.query(
-        `UPDATE site_content wa
-         INNER JOIN site_content cw ON cw.content_key='contact_whatsapp'
-         SET wa.content_value = cw.content_value
-         WHERE wa.content_key='whatsapp_number'`
-      );
-    } catch (_) {}
-
-    // Ensure telegram default exists
-    try {
-      await pool.query(
-        "INSERT IGNORE INTO site_content (content_key, content_value, content_type, page_name, label) VALUES ('contact_telegram','','text','settings','Telegram Handle')"
-      );
-    } catch (_) {}
-
-    // Replace public IPTV wording with Streaming
-    for (const [from, to] of [
-      ['Premium IPTV & Streaming', 'Premium Streaming'],
-      ['IPTV & Streaming Solutions', 'Streaming Solutions'],
-      ['Premium IPTV', 'Premium Streaming'],
-      ['IPTV', 'Streaming'],
-      ['iptv', 'streaming'],
-    ] as const) {
-      try {
-        await pool.query(
-          'UPDATE site_content SET content_value = REPLACE(content_value, ?, ?) WHERE content_value LIKE ?',
-          [from, to, `%${from}%`]
-        );
-      } catch (_) {}
-    }
-
-    // Keep labels in sync for new/renamed home fields
-    try {
-      await pool.query(`UPDATE site_content SET label='Top Hero Title' WHERE content_key='home_top_hero_title'`);
-      await pool.query(`UPDATE site_content SET label='Top Hero Subtitle' WHERE content_key='home_top_hero_subtitle'`);
-      await pool.query(`UPDATE site_content SET label='Main Hero Title' WHERE content_key='home_hero_title'`);
-      await pool.query(`UPDATE site_content SET label='Main Hero Subtitle' WHERE content_key='home_hero_subtitle'`);
-    } catch (_) {}
+    await ensureSiteContentInitialized();
 
     if (req.method === 'GET') {
       const { page } = req.query;

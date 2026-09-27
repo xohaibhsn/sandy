@@ -7,78 +7,92 @@ function checkAdminAuth(req: any): boolean {
   return !!session;
 }
 
+let initializationPromise: Promise<void> | null = null;
 
+async function initializeBlog(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS blog_posts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      title VARCHAR(500) NOT NULL,
+      slug VARCHAR(500),
+      excerpt TEXT,
+      content LONGTEXT,
+      category VARCHAR(100) DEFAULT 'Guides',
+      emoji VARCHAR(10) DEFAULT '📝',
+      badge VARCHAR(50) DEFAULT 'guide',
+      badgeText VARCHAR(50) DEFAULT 'Guide',
+      featured_image VARCHAR(1000),
+      meta_title VARCHAR(500),
+      meta_description VARCHAR(500),
+      focus_keyword VARCHAR(255),
+      status VARCHAR(20) DEFAULT 'published',
+      featured TINYINT(1) DEFAULT 0,
+      active TINYINT(1) DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  for (const col of [
+    "ALTER TABLE blog_posts ADD COLUMN slug VARCHAR(500) AFTER title",
+    "ALTER TABLE blog_posts ADD COLUMN content LONGTEXT AFTER excerpt",
+    "ALTER TABLE blog_posts ADD COLUMN featured_image VARCHAR(1000) AFTER badgeText",
+    "ALTER TABLE blog_posts ADD COLUMN meta_title VARCHAR(500)",
+    "ALTER TABLE blog_posts ADD COLUMN meta_description VARCHAR(500)",
+    "ALTER TABLE blog_posts ADD COLUMN focus_keyword VARCHAR(255)",
+    "ALTER TABLE blog_posts ADD COLUMN status VARCHAR(20) DEFAULT 'published'",
+    "ALTER TABLE blog_posts ADD COLUMN featured TINYINT(1) DEFAULT 0",
+    "ALTER TABLE blog_posts ADD COLUMN canonical_url VARCHAR(500)",
+    "ALTER TABLE blog_posts ADD COLUMN faqs TEXT",
+    "ALTER TABLE blog_posts ADD COLUMN active TINYINT(1) DEFAULT 1",
+    "ALTER TABLE blog_posts ADD COLUMN badgeText VARCHAR(50) DEFAULT 'Guide'",
+    "ALTER TABLE blog_posts ADD COLUMN emoji VARCHAR(10) DEFAULT '📝'",
+  ]) { try { await pool.query(col); } catch (_) {} }
+
+  // Activate any existing posts that have NULL active (added before column existed)
+  try { await pool.query("UPDATE blog_posts SET active=1 WHERE active IS NULL"); } catch (_) {}
+
+  // Replace IPTV wording in existing public blog content
+  for (const [from, to] of [
+    ['Premium IPTV & Streaming', 'Premium Streaming'],
+    ['IPTV & Streaming Solutions', 'Streaming Solutions'],
+    ['Premium IPTV', 'Premium Streaming'],
+    ['Best IPTV', 'Best Streaming'],
+    ['IPTV Subscriptions', 'Streaming Subscriptions'],
+    ['IPTV service', 'streaming service'],
+    ['IPTV Plans', 'Streaming Plans'],
+    ['IPTV', 'Streaming'],
+    ['iptv', 'streaming'],
+  ] as const) {
+    try {
+      await pool.query(
+        `UPDATE blog_posts SET
+           title = REPLACE(title, ?, ?),
+           excerpt = REPLACE(excerpt, ?, ?),
+           content = REPLACE(content, ?, ?),
+           meta_title = REPLACE(IFNULL(meta_title,''), ?, ?),
+           meta_description = REPLACE(IFNULL(meta_description,''), ?, ?)
+         WHERE title LIKE ? OR excerpt LIKE ? OR content LIKE ? OR IFNULL(meta_title,'') LIKE ? OR IFNULL(meta_description,'') LIKE ?`,
+        [from, to, from, to, from, to, from, to, from, to, `%${from}%`, `%${from}%`, `%${from}%`, `%${from}%`, `%${from}%`]
+      );
+    } catch (_) {}
+  }
+}
+
+function ensureBlogInitialized(): Promise<void> {
+  if (!initializationPromise) {
+    initializationPromise = initializeBlog().catch((error) => {
+      initializationPromise = null;
+      throw error;
+    });
+  }
+  return initializationPromise;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method !== 'GET' && !checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS blog_posts (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(500) NOT NULL,
-        slug VARCHAR(500),
-        excerpt TEXT,
-        content LONGTEXT,
-        category VARCHAR(100) DEFAULT 'Guides',
-        emoji VARCHAR(10) DEFAULT '📝',
-        badge VARCHAR(50) DEFAULT 'guide',
-        badgeText VARCHAR(50) DEFAULT 'Guide',
-        featured_image VARCHAR(1000),
-        meta_title VARCHAR(500),
-        meta_description VARCHAR(500),
-        focus_keyword VARCHAR(255),
-        status VARCHAR(20) DEFAULT 'published',
-        featured TINYINT(1) DEFAULT 0,
-        active TINYINT(1) DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    for (const col of [
-      "ALTER TABLE blog_posts ADD COLUMN slug VARCHAR(500) AFTER title",
-      "ALTER TABLE blog_posts ADD COLUMN content LONGTEXT AFTER excerpt",
-      "ALTER TABLE blog_posts ADD COLUMN featured_image VARCHAR(1000) AFTER badgeText",
-      "ALTER TABLE blog_posts ADD COLUMN meta_title VARCHAR(500)",
-      "ALTER TABLE blog_posts ADD COLUMN meta_description VARCHAR(500)",
-      "ALTER TABLE blog_posts ADD COLUMN focus_keyword VARCHAR(255)",
-      "ALTER TABLE blog_posts ADD COLUMN status VARCHAR(20) DEFAULT 'published'",
-      "ALTER TABLE blog_posts ADD COLUMN featured TINYINT(1) DEFAULT 0",
-      "ALTER TABLE blog_posts ADD COLUMN canonical_url VARCHAR(500)",
-      "ALTER TABLE blog_posts ADD COLUMN faqs TEXT",
-      "ALTER TABLE blog_posts ADD COLUMN active TINYINT(1) DEFAULT 1",
-      "ALTER TABLE blog_posts ADD COLUMN badgeText VARCHAR(50) DEFAULT 'Guide'",
-      "ALTER TABLE blog_posts ADD COLUMN emoji VARCHAR(10) DEFAULT '📝'",
-    ]) { try { await pool.query(col); } catch (_) {} }
-
-    // Activate any existing posts that have NULL active (added before column existed)
-    try { await pool.query("UPDATE blog_posts SET active=1 WHERE active IS NULL"); } catch (_) {}
-
-    // Replace IPTV wording in existing public blog content
-    for (const [from, to] of [
-      ['Premium IPTV & Streaming', 'Premium Streaming'],
-      ['IPTV & Streaming Solutions', 'Streaming Solutions'],
-      ['Premium IPTV', 'Premium Streaming'],
-      ['Best IPTV', 'Best Streaming'],
-      ['IPTV Subscriptions', 'Streaming Subscriptions'],
-      ['IPTV service', 'streaming service'],
-      ['IPTV Plans', 'Streaming Plans'],
-      ['IPTV', 'Streaming'],
-      ['iptv', 'streaming'],
-    ] as const) {
-      try {
-        await pool.query(
-          `UPDATE blog_posts SET
-             title = REPLACE(title, ?, ?),
-             excerpt = REPLACE(excerpt, ?, ?),
-             content = REPLACE(content, ?, ?),
-             meta_title = REPLACE(IFNULL(meta_title,''), ?, ?),
-             meta_description = REPLACE(IFNULL(meta_description,''), ?, ?)
-           WHERE title LIKE ? OR excerpt LIKE ? OR content LIKE ? OR IFNULL(meta_title,'') LIKE ? OR IFNULL(meta_description,'') LIKE ?`,
-          [from, to, from, to, from, to, from, to, from, to, `%${from}%`, `%${from}%`, `%${from}%`, `%${from}%`, `%${from}%`]
-        );
-      } catch (_) {}
-    }
+    await ensureBlogInitialized();
 
     if (req.method === 'GET') {
       const { slug, id } = req.query;

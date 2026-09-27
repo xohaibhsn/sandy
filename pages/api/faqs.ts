@@ -37,53 +37,69 @@ async function insertFaqIfMissing(question: string, answer: string, category: st
   await pool.query('INSERT INTO faqs (question,answer,category,sort_order) VALUES (?,?,?,?)', [question, answer, category, sortOrder]);
 }
 
+let initializationPromise: Promise<void> | null = null;
+
+async function initializeFaqs(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS faqs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      category VARCHAR(100) DEFAULT 'General',
+      sort_order INT DEFAULT 0,
+      is_visible TINYINT(1) DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const [count]: any = await pool.query('SELECT COUNT(*) as c FROM faqs');
+  if (Number(count[0]?.c || 0) === 0) {
+    for (const [q,a,cat,ord] of DEFAULT_FAQS) {
+      await pool.query('INSERT INTO faqs (question,answer,category,sort_order) VALUES (?,?,?,?)', [q,a,cat,ord]);
+    }
+  }
+
+  for (const [q, a, cat, ord] of REQUIRED_FAQS) {
+    await insertFaqIfMissing(q as string, a as string, cat as string, ord as number);
+  }
+
+  const obsoleteQuestions = [
+    'Do you deliver across the whole UK?',
+    'Do Firesticks come pre-configured?',
+    'What is a subscription plan?',
+    'Which devices are compatible with the subscription plans?',
+    'What if my device stops working?',
+    'Do you offer free trials?',
+    'What devices does it work on?',
+    'How long to activate?',
+    'Can I use it on 2 devices simultaneously?',
+    'My service is buffering/not working?',
+    'Does it work outside UK?',
+    'How do I pay by bank transfer?',
+  ];
+  try {
+    await pool.query(
+      `DELETE FROM faqs WHERE question IN (${obsoleteQuestions.map(() => '?').join(',')})`,
+      obsoleteQuestions
+    );
+  } catch (_) {}
+}
+
+function ensureFaqsInitialized(): Promise<void> {
+  if (!initializationPromise) {
+    initializationPromise = initializeFaqs().catch((error) => {
+      initializationPromise = null;
+      throw error;
+    });
+  }
+  return initializationPromise;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method !== 'GET' && !checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS faqs (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        question TEXT NOT NULL,
-        answer TEXT NOT NULL,
-        category VARCHAR(100) DEFAULT 'General',
-        sort_order INT DEFAULT 0,
-        is_visible TINYINT(1) DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    const [count]: any = await pool.query('SELECT COUNT(*) as c FROM faqs');
-    if (Number(count[0]?.c || 0) === 0) {
-      for (const [q,a,cat,ord] of DEFAULT_FAQS) {
-        await pool.query('INSERT INTO faqs (question,answer,category,sort_order) VALUES (?,?,?,?)', [q,a,cat,ord]);
-      }
-    }
-
-    for (const [q, a, cat, ord] of REQUIRED_FAQS) {
-      await insertFaqIfMissing(q as string, a as string, cat as string, ord as number);
-    }
-
-    const obsoleteQuestions = [
-      'Do you deliver across the whole UK?',
-      'Do Firesticks come pre-configured?',
-      'What is a subscription plan?',
-      'Which devices are compatible with the subscription plans?',
-      'What if my device stops working?',
-      'Do you offer free trials?',
-      'What devices does it work on?',
-      'How long to activate?',
-      'Can I use it on 2 devices simultaneously?',
-      'My service is buffering/not working?',
-      'Does it work outside UK?',
-      'How do I pay by bank transfer?',
-    ];
-    try {
-      await pool.query(
-        `DELETE FROM faqs WHERE question IN (${obsoleteQuestions.map(() => '?').join(',')})`,
-        obsoleteQuestions
-      );
-    } catch (_) {}
+    await ensureFaqsInitialized();
 
     if (req.method === 'GET') {
       const { admin } = req.query;

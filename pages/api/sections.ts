@@ -19,67 +19,83 @@ const DEFAULTS = [
   ['about_values','{"title":"Our Values","items":[{"icon":"🎯","title":"Quality","description":"Best in class products every time"},{"icon":"❤️","title":"Trust","description":"Transparent & honest always"},{"icon":"🚀","title":"Speed","description":"Fast delivery nationwide"}]}','json','about','Values Section',3,1],
 ];
 
+let initializationPromise: Promise<void> | null = null;
+
+async function initializeSections(): Promise<void> {
+  // Create table if it doesn't exist yet
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS site_content (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      content_key VARCHAR(100) UNIQUE NOT NULL,
+      content_value TEXT,
+      content_type ENUM('text','textarea','image','url','json') DEFAULT 'text',
+      page_name VARCHAR(50),
+      label VARCHAR(100),
+      section_order INT DEFAULT 0,
+      is_visible TINYINT(1) DEFAULT 1,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Add missing columns + extend ENUM to include 'json'
+  for (const sql of [
+    "ALTER TABLE site_content ADD COLUMN section_order INT DEFAULT 0",
+    "ALTER TABLE site_content ADD COLUMN is_visible TINYINT(1) DEFAULT 1",
+    "ALTER TABLE site_content MODIFY COLUMN content_type ENUM('text','textarea','image','url','json') DEFAULT 'text'",
+  ]) { try { await pool.query(sql); } catch (_) {} }
+
+  // Fix rows that have empty content_type due to old ENUM missing 'json'
+  const sectionKeys = DEFAULTS.map(d => d[0]);
+  if (sectionKeys.length) {
+    try {
+      await pool.query(
+        `UPDATE site_content SET content_type='json' WHERE content_key IN (${sectionKeys.map(()=>'?').join(',')}) AND (content_type='' OR content_type IS NULL)`,
+        sectionKeys
+      );
+    } catch (_) {}
+  }
+
+  for (const [key,val,type,page,label,order,vis] of DEFAULTS) {
+    try {
+      await pool.query(
+        'INSERT IGNORE INTO site_content (content_key,content_value,content_type,page_name,label,section_order,is_visible) VALUES (?,?,?,?,?,?,?)',
+        [key,val,type,page,label,order,vis]
+      );
+    } catch (_) {}
+  }
+
+  // Replace IPTV wording in section JSON content
+  for (const [from, to] of [
+    ['Premium IPTV & Streaming', 'Premium Streaming'],
+    ['IPTV & Streaming Solutions', 'Streaming Solutions'],
+    ['Premium IPTV', 'Premium Streaming'],
+    ['IPTV', 'Streaming'],
+  ] as const) {
+    try {
+      await pool.query(
+        `UPDATE site_content SET content_value = REPLACE(content_value, ?, ?)
+         WHERE content_type='json' AND content_value LIKE ?`,
+        [from, to, `%${from}%`]
+      );
+    } catch (_) {}
+  }
+}
+
+function ensureSectionsInitialized(): Promise<void> {
+  if (!initializationPromise) {
+    initializationPromise = initializeSections().catch((error) => {
+      initializationPromise = null;
+      throw error;
+    });
+  }
+  return initializationPromise;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method !== 'GET' && !checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
 
-    // Create table if it doesn't exist yet
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS site_content (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        content_key VARCHAR(100) UNIQUE NOT NULL,
-        content_value TEXT,
-        content_type ENUM('text','textarea','image','url','json') DEFAULT 'text',
-        page_name VARCHAR(50),
-        label VARCHAR(100),
-        section_order INT DEFAULT 0,
-        is_visible TINYINT(1) DEFAULT 1,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Add missing columns + extend ENUM to include 'json'
-    for (const sql of [
-      "ALTER TABLE site_content ADD COLUMN section_order INT DEFAULT 0",
-      "ALTER TABLE site_content ADD COLUMN is_visible TINYINT(1) DEFAULT 1",
-      "ALTER TABLE site_content MODIFY COLUMN content_type ENUM('text','textarea','image','url','json') DEFAULT 'text'",
-    ]) { try { await pool.query(sql); } catch (_) {} }
-
-    // Fix rows that have empty content_type due to old ENUM missing 'json'
-    const sectionKeys = DEFAULTS.map(d => d[0]);
-    if (sectionKeys.length) {
-      try {
-        await pool.query(
-          `UPDATE site_content SET content_type='json' WHERE content_key IN (${sectionKeys.map(()=>'?').join(',')}) AND (content_type='' OR content_type IS NULL)`,
-          sectionKeys
-        );
-      } catch (_) {}
-    }
-
-    for (const [key,val,type,page,label,order,vis] of DEFAULTS) {
-      try {
-        await pool.query(
-          'INSERT IGNORE INTO site_content (content_key,content_value,content_type,page_name,label,section_order,is_visible) VALUES (?,?,?,?,?,?,?)',
-          [key,val,type,page,label,order,vis]
-        );
-      } catch (_) {}
-    }
-
-    // Replace IPTV wording in section JSON content
-    for (const [from, to] of [
-      ['Premium IPTV & Streaming', 'Premium Streaming'],
-      ['IPTV & Streaming Solutions', 'Streaming Solutions'],
-      ['Premium IPTV', 'Premium Streaming'],
-      ['IPTV', 'Streaming'],
-    ] as const) {
-      try {
-        await pool.query(
-          `UPDATE site_content SET content_value = REPLACE(content_value, ?, ?)
-           WHERE content_type='json' AND content_value LIKE ?`,
-          [from, to, `%${from}%`]
-        );
-      } catch (_) {}
-    }
+    await ensureSectionsInitialized();
 
     if (req.method === 'GET') {
       const { page, all } = req.query;
