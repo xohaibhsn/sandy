@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import { Plus_Jakarta_Sans } from "next/font/google";
-import { Cinzel } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { CartProvider } from "./lib/cartContext";
 // import ChatWidget from "@/components/ChatWidget"; // BERLIN TEMPORARILY HIDDEN
@@ -10,24 +8,24 @@ import JsonLd from "@/components/JsonLd";
 import { getContactConfig } from "@/lib/contact-config";
 import { PHONE_DISPLAY, SITE_NAME, SITE_URL } from "@/lib/site";
 
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const inter = localFont({
+  src: "./fonts/Inter-Variable-Latin.woff2",
+  weight: "100 900",
   variable: "--font-inter",
   display: "swap",
 });
 
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
+const jakarta = localFont({
+  src: "./fonts/PlusJakartaSans-Variable-Latin.woff2",
+  weight: "200 800",
   variable: "--font-jakarta",
   display: "swap",
 });
 
 /** Logo text fallback only — do not use elsewhere */
-const cinzel = Cinzel({
-  subsets: ["latin"],
-  weight: ["400", "700", "900"],
+const cinzel = localFont({
+  src: "./fonts/Cinzel-Variable-Latin.woff2",
+  weight: "400 900",
   variable: "--font-cinzel",
   display: "swap",
 });
