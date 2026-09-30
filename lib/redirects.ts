@@ -335,8 +335,9 @@ export async function listRedirects(): Promise<RedirectRecord[]> {
 
 /**
  * Bounded save-time loop protection over ACTIVE redirects.
- * excludeId: when updating, skip treating the same row's OLD destination as chain authority;
- * if a hop lands on excludeId, follow the CANDIDATE destination instead.
+ * excludeId: during UPDATE, the existing row being replaced is excluded from
+ * traversal of the old graph (treated as removed), so its old source mapping
+ * is not followed.
  */
 export async function assertNoRedirectLoop(params: {
   sourcePath: string;
@@ -379,14 +380,13 @@ export async function assertNoRedirectLoop(params: {
     if (!list.length) return;
 
     const row = list[0] as { id: number; destination: string };
-    const hopDest = String(row.destination);
 
-    // When updating, if we hit the row being edited, continue via the candidate destination
-    // rather than the stale stored destination.
-    let continueDest = hopDest;
+    // UPDATE replaces this row; its OLD source mapping is absent from the future graph.
     if (params.excludeId != null && Number(row.id) === Number(params.excludeId)) {
-      continueDest = destination;
+      return;
     }
+
+    const continueDest = String(row.destination);
 
     if (isExternalDestination(continueDest)) return;
 
