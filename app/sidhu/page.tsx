@@ -202,8 +202,7 @@ type BerlinTraining = { id:number; title:string; content:string; is_active:numbe
 type TrainingChatMessage = { role:"user"|"assistant"; content:string; saved?:boolean; };
 
 function CmsField({
-  label, k, siteContent, setSiteContent, area, placeholder, rows,
-}: {
+  label, k, siteContent, setSiteContent, area, placeholder, rows }: {
   label: string;
   k: string;
   siteContent: Record<string, string>;
@@ -226,6 +225,7 @@ function CmsField({
 
 export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const [adminRole, setAdminRole] = useState<AdminRole>("super_admin");
   const [adminName, setAdminName] = useState("Admin");
   const [staffUsers, setStaffUsers] = useState<any[]>([]);
@@ -302,24 +302,36 @@ export default function AdminPage() {
   const trainingChatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (localStorage.getItem("sAdminSession") === "true") {
-      setLoggedIn(true);
-      setAdminRole((localStorage.getItem("sAdminRole") || "super_admin") as AdminRole);
-      setAdminName(localStorage.getItem("sAdminName") || "Admin");
-      document.cookie = "sAdminSession=1; path=/; max-age=604800; SameSite=Lax";
-    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin-session", { credentials: "same-origin" }).then((r) => r.json());
+        if (cancelled) return;
+        if (res?.authenticated) {
+          setLoggedIn(true);
+          setAdminRole((res.role || "super_admin") as AdminRole);
+          setAdminName(res.name || "Admin");
+        } else {
+          setLoggedIn(false);
+        }
+      } catch {
+        if (!cancelled) setLoggedIn(false);
+      } finally {
+        if (!cancelled) setAuthChecking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!loggedIn) return;
-    // Fix 2 — include session header for admin API auth
-    const session = localStorage.getItem("sAdminSession") || "";
-    const adminHeaders = { "x-admin-session": session };
-    fetch("/api/admin-products", { headers: adminHeaders, credentials: "same-origin" })
+    fetch("/api/admin-products", { credentials: "same-origin" })
       .then(r => r.json())
       .then(data => { setProducts(Array.isArray(data) ? data : []); })
       .catch(() => { setProducts([]); });
-    fetch("/api/admin-orders", { headers: adminHeaders })
+    fetch("/api/admin-orders", { credentials: "same-origin" })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -336,16 +348,15 @@ export default function AdminPage() {
             receipt_path: o.receipt_path || "",
             address: [o.delivery_address, o.city, o.postcode].filter(Boolean).join(", "),
             payment: o.payment_method || "",
-            payment_reference: o.payment_reference || "",
-          })));
+            payment_reference: o.payment_reference || "" })));
         }
       })
       .catch(() => {});
-    fetch("/api/blog", { headers: adminHeaders })
+    fetch("/api/blog", { credentials: "same-origin" })
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setBlogPosts(data); })
       .catch(() => {});
-    fetch("/api/admin-orders?customers=1", { headers: adminHeaders })
+    fetch("/api/admin-orders?customers=1", { credentials: "same-origin" })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -355,19 +366,18 @@ export default function AdminPage() {
             phone: c.customer_phone || "",
             orders: Number(c.order_count) || 0,
             spent: formatPrice(c.total_spent || 0),
-            joined: c.first_order ? new Date(c.first_order).toLocaleDateString("en-GB",{month:"short",year:"numeric"}) : "—",
-          })));
+            joined: c.first_order ? new Date(c.first_order).toLocaleDateString("en-GB",{month:"short",year:"numeric"}) : "—" })));
         }
       })
       .catch(() => {});
-    fetch("/api/coupons", { headers: adminHeaders }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setCoupons(d); }).catch(()=>{});
+    fetch("/api/coupons", { credentials: "same-origin" }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setCoupons(d); }).catch(()=>{});
     fetch("/api/site-content?page=all")
       .then(r => r.json())
       .then(d => { if (d && typeof d === "object") setSiteContent(d); })
       .catch(() => {});
     fetch("/api/sections?page=home&all=1").then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setSections(d); }).catch(()=>{});
-    fetch("/api/faqs?admin=true", { headers: adminHeaders }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setFaqs(d); }).catch(()=>{});
-    fetch("/api/admin/leads", { headers: adminHeaders })
+    fetch("/api/faqs?admin=true", { credentials: "same-origin" }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setFaqs(d); }).catch(()=>{});
+    fetch("/api/admin/leads", { credentials: "same-origin" })
       .then(r => r.json())
       .then(d => {
         if (Array.isArray(d)) {
@@ -376,11 +386,11 @@ export default function AdminPage() {
         }
       })
       .catch(() => {});
-    fetch("/api/admin/berlin-training", { headers: adminHeaders })
+    fetch("/api/admin/berlin-training", { credentials: "same-origin" })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setBerlinTraining(d); })
       .catch(() => {});
-    fetch("/api/admin/berlin-training-chat", { headers: adminHeaders })
+    fetch("/api/admin/berlin-training-chat", { credentials: "same-origin" })
       .then(r => r.json())
       .then(d => {
         if (Array.isArray(d) && d.length > 0) {
@@ -389,7 +399,7 @@ export default function AdminPage() {
       })
       .catch(() => {});
     if (adminRole === "super_admin") {
-      fetch("/api/admin-staff", { headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"", "x-admin-role": "super_admin" } })
+      fetch("/api/admin-staff", { credentials: "same-origin" })
         .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setStaffUsers(d); }).catch(()=>{});
     }
   }, [loggedIn]);
@@ -415,19 +425,15 @@ export default function AdminPage() {
   }, [loggedIn, tab]);
 
   // Helper: pass role in all admin API headers (SSR-safe)
-  const getRoleHeaders = () => ({
-    "x-admin-session": typeof window !== "undefined" ? localStorage.getItem("sAdminSession")||"" : "",
-    "x-admin-role": adminRole,
-  });
+  const getRoleHeaders = () => ({});
 
   const saveContent = async (keys: string[]) => {
     setContentSaving(true); setContentMsg("");
     const updates = keys.map(k => ({ key: k, value: siteContent[k] || "" }));
     const res = await fetch("/api/site-content", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-      body: JSON.stringify({ updates }),
-    }).then(r => r.json()).catch(() => ({}));
+      credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ updates }) }).then(r => r.json()).catch(() => ({}));
     setContentSaving(false);
     setContentMsg(res.success ? "✅ Saved!" : `❌ ${res.error || "Save failed"}`);
     setTimeout(() => setContentMsg(""), 3000);
@@ -444,16 +450,14 @@ export default function AdminPage() {
       });
       const data = await fetch("/api/upload-favicon", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name }),
-      }).then((r) => r.json());
+        credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: base64, name: file.name }) }).then((r) => r.json());
       if (data.url) {
         setSiteContent((s) => ({ ...s, favicon_url: data.url }));
         await fetch("/api/site-content", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-          body: JSON.stringify({ key: "favicon_url", value: data.url }),
-        });
+          credentials: "same-origin", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "favicon_url", value: data.url }) });
         setContentMsg("✅ Favicon uploaded!");
       } else {
         setContentMsg(`❌ ${data.error || "Upload failed"}`);
@@ -471,16 +475,14 @@ export default function AdminPage() {
       const base64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(file); });
       const data = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/logo` }),
-      }).then(r => r.json());
+        credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/logo` }) }).then(r => r.json());
       if (data.path) {
         setSiteContent(s => ({ ...s, site_logo_url: data.path }));
         await fetch("/api/site-content", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-          body: JSON.stringify({ key: "site_logo_url", value: data.path }),
-        });
+          credentials: "same-origin", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "site_logo_url", value: data.path }) });
         setContentMsg("✅ Logo saved!");
       } else {
         setContentMsg(`❌ ${data.error || "Upload failed"}`);
@@ -502,16 +504,14 @@ export default function AdminPage() {
       });
       const data = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/hero-slides` }),
-      }).then((r) => r.json());
+        credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/hero-slides` }) }).then((r) => r.json());
       if (data.path) {
         setSiteContent((s) => ({ ...s, [key]: data.path }));
         await fetch("/api/site-content", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-          body: JSON.stringify({ key, value: data.path }),
-        });
+          credentials: "same-origin", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, value: data.path }) });
         setContentMsg(`✅ Slide ${slideNum} saved!`);
       } else {
         setContentMsg(`❌ ${data.error || "Upload failed"}`);
@@ -529,17 +529,15 @@ export default function AdminPage() {
       const base64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(file); });
       const data = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/whatsapp-icon` }),
-      }).then(r => r.json());
+        credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/whatsapp-icon` }) }).then(r => r.json());
       if (data.path) {
         const url = `${data.path}${data.path.includes("?") ? "&" : "?"}v=${Date.now()}`;
         setSiteContent(s => ({ ...s, whatsapp_icon_url: url }));
         await fetch("/api/site-content", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-          body: JSON.stringify({ key: "whatsapp_icon_url", value: url }),
-        });
+          credentials: "same-origin", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "whatsapp_icon_url", value: url }) });
         setContentMsg("✅ WhatsApp icon saved!");
       } else {
         setContentMsg(`❌ ${data.error || "Upload failed"}`);
@@ -560,17 +558,15 @@ export default function AdminPage() {
       });
       const data = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/og` }),
-      }).then((r) => r.json());
+        credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: base64, name: file.name, folder: `${CLOUDINARY_FOLDER}/og` }) }).then((r) => r.json());
       if (data.path) {
         const url = `${data.path}${data.path.includes("?") ? "&" : "?"}v=${Date.now()}`;
         setSiteContent((s) => ({ ...s, og_default_image: url }));
         await fetch("/api/site-content", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getRoleHeaders() },
-          body: JSON.stringify({ key: "og_default_image", value: url }),
-        });
+          credentials: "same-origin", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "og_default_image", value: url }) });
         setContentMsg("✅ OG image saved!");
       } else {
         setContentMsg(`❌ ${data.error || "Upload failed"}`);
@@ -587,16 +583,17 @@ export default function AdminPage() {
       const res = await fetch("/api/admin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ username, password }),
       }).then(r => r.json());
       if (res.success) {
-        localStorage.setItem("sAdminSession", "true");
-        localStorage.setItem("sAdminRole", res.role || "super_admin");
-        localStorage.setItem("sAdminName", res.name || "Admin");
-        document.cookie = "sAdminSession=1; path=/; max-age=604800; SameSite=Lax";
+        localStorage.removeItem("sAdminSession");
+        localStorage.removeItem("sAdminRole");
+        localStorage.removeItem("sAdminName");
         setAdminRole((res.role || "super_admin") as AdminRole);
         setAdminName(res.name || "Admin");
         setLoggedIn(true);
+        setAuthChecking(false);
         setLoginError("");
       } else {
         setLoginError("❌ Incorrect username or password");
@@ -606,17 +603,19 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/admin-logout", { method: "POST", credentials: "same-origin" });
+    } catch { /* ignore */ }
     localStorage.removeItem("sAdminSession");
     localStorage.removeItem("sAdminRole");
     localStorage.removeItem("sAdminName");
-    document.cookie = "sAdminSession=; path=/; max-age=0";
     setLoggedIn(false);
     setAdminRole("super_admin");
   };
 
   const loadStaff = () => {
-    fetch("/api/admin-staff", { headers: getRoleHeaders() })
+    fetch("/api/admin-staff", { credentials: "same-origin" })
       .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setStaffUsers(d); }).catch(()=>{});
   };
 
@@ -625,7 +624,7 @@ export default function AdminPage() {
     if (staffModal==="new" && !staffForm.password) { setStaffMsg("❌ Password required"); return; }
     const method = staffModal==="new" ? "POST" : "PUT";
     const body = staffModal==="new" ? staffForm : { ...staffForm, id: staffModal.id };
-    const res = await fetch("/api/admin-staff",{method,headers:{...getRoleHeaders(),"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json()).catch(()=>({}));
+    const res = await fetch("/api/admin-staff",{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json()).catch(()=>({}));
     if (res.success) { setStaffMsg("✅ Saved!"); setStaffModal(null); loadStaff(); }
     else setStaffMsg(`❌ ${res.error||"Failed"}`);
     setTimeout(()=>setStaffMsg(""),3000);
@@ -633,16 +632,15 @@ export default function AdminPage() {
 
   const deleteStaff = async (id:number) => {
     if (!confirm("Delete this staff user?")) return;
-    await fetch(`/api/admin-staff?id=${id}`,{method:"DELETE",headers:getRoleHeaders()});
+    await fetch(`/api/admin-staff?id=${id}`,{method:"DELETE",credentials: "same-origin"});
     loadStaff();
   };
 
   const updateStatus = (id: string, status: OrderStatus) => {
     fetch("/api/admin-orders", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-      body: JSON.stringify({ order_id: id, status }),
-    }).catch(() => {});
+      credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: id, status }) }).catch(() => {});
     setOrders(orders.map(o => o.id === id ? { ...o, status } : o));
     setOrderModal(null);
   };
@@ -654,9 +652,8 @@ export default function AdminPage() {
     if (!confirm(msg)) return;
     const res = await fetch("/api/admin-orders", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-      body: JSON.stringify({ order_id: orderId }),
-    }).then(r=>r.json()).catch(()=>({}));
+      credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: orderId }) }).then(r=>r.json()).catch(()=>({}));
     if (res.success) {
       setOrders(prev => prev.filter(o => o.id !== orderId));
       setOrderModal(null);
@@ -686,7 +683,7 @@ export default function AdminPage() {
   }, []);
 
   const fetchBlogs = () => {
-    fetch("/api/blog", { headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"" } }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setBlogPosts(d); }).catch(()=>{});
+    fetch("/api/blog", {  }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setBlogPosts(d); }).catch(()=>{});
   };
 
   const saveBlog = async () => {
@@ -695,9 +692,8 @@ export default function AdminPage() {
     const isNew = blogModal === "new";
     const res = await fetch("/api/blog", {
       method: isNew ? "POST" : "PUT",
-      headers: { "Content-Type": "application/json", "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-      body: JSON.stringify(isNew ? payload : { ...payload, id: (blogModal as BlogPost).id }),
-    }).then(r=>r.json()).catch(()=>({}));
+      credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(isNew ? payload : { ...payload, id: (blogModal as BlogPost).id }) }).then(r=>r.json()).catch(()=>({}));
     if (res.success) {
       setBlogMsg(isNew ? "✅ Post published!" : "✅ Post updated!");
       setBlogModal(null);
@@ -710,7 +706,7 @@ export default function AdminPage() {
 
   const deleteBlog = async (id: number) => {
     if (!confirm("Delete this blog post?")) return;
-    const res = await fetch(`/api/blog?id=${id}`, { method: "DELETE", headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"" } }).then(r=>r.json()).catch(()=>({}));
+    const res = await fetch(`/api/blog?id=${id}`, { method: "DELETE" }).then(r=>r.json()).catch(()=>({}));
     if (res.success) {
       setBlogPosts(blogPosts.filter(p => p.id !== id));
       setBlogMsg("✅ Post deleted");
@@ -721,16 +717,14 @@ export default function AdminPage() {
   };
 
   const deleteProduct = (id: number) => {
-    fetch(`/api/admin-products?id=${id}`, { method: "DELETE", headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"" } }).catch(() => {});
+    fetch(`/api/admin-products?id=${id}`, { method: "DELETE" }).catch(() => {});
     setProducts(products.filter(p => p.id !== id));
   };
 
   const deleteLead = async (id: number) => {
     if (!confirm("Delete this chat lead?")) return;
     const res = await fetch(`/api/admin/leads?id=${id}`, {
-      method: "DELETE",
-      headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-    }).then(r=>r.json()).catch(()=>({}));
+      method: "DELETE" }).then(r=>r.json()).catch(()=>({}));
     if (res.success) {
       setChatLeads(prev => prev.filter(lead => lead.id !== id));
       setSelectedLeadIds(prev => prev.filter(leadId => leadId !== id));
@@ -751,9 +745,8 @@ export default function AdminPage() {
     if (!confirm(`Delete ${selectedLeadIds.length} selected Berlin chat lead${selectedLeadIds.length === 1 ? "" : "s"}?`)) return;
     const res = await fetch("/api/admin/leads", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-      body: JSON.stringify({ ids:selectedLeadIds }),
-    }).then(r=>r.json()).catch(()=>({}));
+      credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids:selectedLeadIds }) }).then(r=>r.json()).catch(()=>({}));
     if (res.success) {
       setChatLeads(prev => prev.filter(lead => !selectedLeadIds.includes(lead.id)));
       setSelectedLeadIds([]);
@@ -764,14 +757,14 @@ export default function AdminPage() {
   };
 
   const loadBerlinTraining = () => {
-    fetch("/api/admin/berlin-training", { headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"" } })
+    fetch("/api/admin/berlin-training", {  })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setBerlinTraining(d); })
       .catch(() => {});
   };
 
   const loadBerlinTrainingChat = () => {
-    fetch("/api/admin/berlin-training-chat", { headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"" } })
+    fetch("/api/admin/berlin-training-chat", {  })
       .then(r => r.json())
       .then(d => {
         if (Array.isArray(d) && d.length > 0) {
@@ -793,9 +786,8 @@ export default function AdminPage() {
 
     const res = await fetch("/api/admin/berlin-training-chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-      body: JSON.stringify({ message }),
-    }).then(r => r.json()).catch(() => ({ error:"Training chat failed" }));
+      credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }) }).then(r => r.json()).catch(() => ({ error:"Training chat failed" }));
 
     setTrainingChatLoading(false);
     if (res.response) {
@@ -818,9 +810,8 @@ export default function AdminPage() {
     const isEdit = trainingForm.id > 0;
     const res = await fetch("/api/admin/berlin-training", {
       method: isEdit ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json", "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-      body: JSON.stringify(trainingForm),
-    }).then(r => r.json()).catch(() => ({}));
+      credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(trainingForm) }).then(r => r.json()).catch(() => ({}));
     if (res.success) {
       setTrainingMsg(isEdit ? "✅ Berlin training updated" : "✅ Berlin training added");
       setTrainingForm({ id:0, title:"", content:"", is_active:true });
@@ -839,18 +830,15 @@ export default function AdminPage() {
   const toggleBerlinTraining = async (item: BerlinTraining) => {
     await fetch("/api/admin/berlin-training", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-      body: JSON.stringify({ ...item, is_active: !item.is_active }),
-    });
+      credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...item, is_active: !item.is_active }) });
     loadBerlinTraining();
   };
 
   const deleteBerlinTraining = async (id: number) => {
     if (!confirm("Delete this Berlin training note?")) return;
     await fetch(`/api/admin/berlin-training?id=${id}`, {
-      method: "DELETE",
-      headers: { "x-admin-session": localStorage.getItem("sAdminSession")||"" },
-    });
+      method: "DELETE" });
     loadBerlinTraining();
   };
 
@@ -865,9 +853,8 @@ export default function AdminPage() {
       });
       const res = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file: base64, name: file.name }),
-      }).then(r => r.json());
+        credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: base64, name: file.name }) }).then(r => r.json());
       if (res.path) setEditProduct(p => ({ ...p, image: res.path }));
     } catch {}
     setImageUploading(false);
@@ -891,24 +878,20 @@ export default function AdminPage() {
       features: editProduct.features || "",
       seo_title: editProduct.seo_title || "",
       meta_description: editProduct.meta_description || "",
-      focus_keyword: editProduct.focus_keyword || "",
-    };
-    const adminSess = localStorage.getItem("sAdminSession")||"";
+      focus_keyword: editProduct.focus_keyword || "" };
     if (productModal === "new") {
       const res = await fetch("/api/admin-products", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-session": adminSess },
-        body: JSON.stringify(payload),
-      }).then(r => r.json()).catch(() => ({}));
+        credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload) }).then(r => r.json()).catch(() => ({}));
       if (res.error) { alert(res.error); return; }
       const newId = res.id || Date.now();
       setProducts([...products, { ...editProduct, slug, id: newId, emoji: "" }]);
     } else if (productModal) {
       const res = await fetch("/api/admin-products", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-admin-session": adminSess },
-        body: JSON.stringify({ ...payload, id: productModal.id, active: 1 }),
-      }).then(r => r.json()).catch(() => ({}));
+        credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, id: productModal.id, active: 1 }) }).then(r => r.json()).catch(() => ({}));
       if (res.error) { alert(res.error); return; }
       setProducts(products.map(p => p.id === productModal.id ? { ...p, ...editProduct, slug } : p));
     }
@@ -935,6 +918,14 @@ export default function AdminPage() {
   const leadsLast24 = chatLeads.filter(lead => new Date(lead.created_at).getTime() >= leadWindowStart).length;
 
   const statusClass = (s: string) => `status-badge status-${s}`;
+
+  if (authChecking) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#0a0a0f",color:"rgba(255,255,255,0.6)",fontSize:14}}>
+        Checking session…
+      </div>
+    );
+  }
 
   if (!loggedIn) {
     return (
@@ -1083,8 +1074,7 @@ export default function AdminPage() {
                   slug: e.target.value
                     .toLowerCase()
                     .replace(/[^a-z0-9]+/g, "-")
-                    .replace(/(^-|-$)/g, ""),
-                })}
+                    .replace(/(^-|-$)/g, "") })}
                 placeholder="e.g. b1g-1-month-plan"
               />
               <small style={{display:"block",marginTop:4,fontSize:11,color:"rgba(255,255,255,0.35)"}}>
@@ -1807,9 +1797,8 @@ export default function AdminPage() {
                 </div>
                 <button className="btn-primary" style={{marginTop:8}} onClick={async()=>{
                   if(!couponForm.code||!couponForm.value){setCouponMsg("❌ Code and value required");return;}
-                  const sess=localStorage.getItem("sAdminSession")||"";
-                  const r=await fetch("/api/coupons",{method:"POST",headers:{"Content-Type":"application/json","x-admin-session":sess},body:JSON.stringify(couponForm)}).then(x=>x.json()).catch(()=>({}));
-                  if(r.success){setCouponMsg("✅ Coupon created!");setCouponForm({code:"",type:"percentage",value:"",minimum_order:"0",usage_limit:"",expires_at:""});fetch("/api/coupons",{headers:{"x-admin-session":sess}}).then(x=>x.json()).then(d=>Array.isArray(d)&&setCoupons(d));}
+                  const r=await fetch("/api/coupons",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(couponForm)}).then(x=>x.json()).catch(()=>({}));
+                  if(r.success){setCouponMsg("✅ Coupon created!");setCouponForm({code:"",type:"percentage",value:"",minimum_order:"0",usage_limit:"",expires_at:""});fetch("/api/coupons",{headers:{}}).then(x=>x.json()).then(d=>Array.isArray(d)&&setCoupons(d));}
                   else setCouponMsg(`❌ ${r.error||"Failed"}`);
                   setTimeout(()=>setCouponMsg(""),3000);
                 }}>+ Create Coupon</button>
@@ -1830,11 +1819,11 @@ export default function AdminPage() {
                           <td>{c.used_count}{c.usage_limit?`/${c.usage_limit}`:" / ∞"}</td>
                           <td style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{c.expires_at?new Date(c.expires_at).toLocaleDateString("en-GB"):"Never"}</td>
                           <td>
-                            <span className={`status-badge ${c.is_active?"status-confirmed":"status-pending"}`} style={{cursor:"pointer"}} onClick={async()=>{const sess=localStorage.getItem("sAdminSession")||"";await fetch("/api/coupons",{method:"PUT",headers:{"Content-Type":"application/json","x-admin-session":sess},body:JSON.stringify({...c,is_active:!c.is_active})});fetch("/api/coupons",{headers:{"x-admin-session":sess}}).then(r=>r.json()).then(d=>Array.isArray(d)&&setCoupons(d));}}>
+                            <span className={`status-badge ${c.is_active?"status-confirmed":"status-pending"}`} style={{cursor:"pointer"}} onClick={async()=>{await fetch("/api/coupons",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...c,is_active:!c.is_active})});fetch("/api/coupons",{headers:{}}).then(r=>r.json()).then(d=>Array.isArray(d)&&setCoupons(d));}}>
                               {c.is_active?"Active":"Inactive"}
                             </span>
                           </td>
-                          <td><button className="action-btn btn-delete" onClick={async()=>{if(!confirm("Delete?"))return;await fetch(`/api/coupons?id=${c.id}`,{method:"DELETE",headers:{"x-admin-session":localStorage.getItem("sAdminSession")||""}});setCoupons(prev=>prev.filter(x=>x.id!==c.id));}}>Delete</button></td>
+                          <td><button className="action-btn btn-delete" onClick={async()=>{if(!confirm("Delete?"))return;await fetch(`/api/coupons?id=${c.id}`,{method:"DELETE",headers:{}});setCoupons(prev=>prev.filter(x=>x.id!==c.id));}}>Delete</button></td>
                         </tr>
                       ))}
                     </tbody>

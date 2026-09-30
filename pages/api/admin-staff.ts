@@ -1,22 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { createHash } from 'crypto';
-
-function checkAdminAuth(req: NextApiRequest): boolean {
-  const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
-  return !!session;
-}
-
-function checkSuperAdmin(req: NextApiRequest): boolean {
-  try {
-    const s = req.headers['x-admin-role'] as string;
-    return s === 'super_admin';
-  } catch { return false; }
-}
+import { requireAdmin, requireRole } from '../../lib/adminAuth';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
-
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS admin_staff (
@@ -31,14 +18,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `);
 
     if (req.method === 'GET') {
+      const session = await requireAdmin(req, res);
+      if (!session) return;
       const [rows] = await pool.query('SELECT id,name,email,role,active,created_at FROM admin_staff ORDER BY created_at DESC');
       return res.status(200).json(Array.isArray(rows) ? rows : []);
     }
 
     // POST/PUT/DELETE require super_admin
-    if (!checkSuperAdmin(req)) {
-      return res.status(403).json({ error: 'Only super_admin can manage staff users' });
-    }
+    const session = await requireRole(req, res, ['super_admin']);
+    if (!session) return;
 
     if (req.method === 'POST') {
       const { name, email, password, role } = req.body;

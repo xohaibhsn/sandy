@@ -1,10 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
-
-function checkAdminAuth(req: any): boolean {
-  const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
-  return !!session;
-}
+import { requireAdmin } from '../../lib/adminAuth';
 
 
 
@@ -93,7 +89,10 @@ function ensureSectionsInitialized(): Promise<void> {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    if (req.method !== 'GET' && !checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
+    if (req.method !== 'GET') {
+      const session = await requireAdmin(req, res);
+      if (!session) return;
+    }
 
     await ensureSectionsInitialized();
 

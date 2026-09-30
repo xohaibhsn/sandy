@@ -1,10 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
-
-function checkAdminAuth(req: any): boolean {
-  const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
-  return !!session;
-}
+import { getAdminSession, requireAdmin } from '../../lib/adminAuth';
 
 
 
@@ -97,14 +93,22 @@ function ensureFaqsInitialized(): Promise<void> {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    if (req.method !== 'GET' && !checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
+    if (req.method !== 'GET') {
+      const session = await requireAdmin(req, res);
+      if (!session) return;
+    }
 
     await ensureFaqsInitialized();
 
     if (req.method === 'GET') {
       const { admin } = req.query;
       let query = 'SELECT * FROM faqs';
-      if (!(admin && checkAdminAuth(req))) query += ' WHERE is_visible=1';
+      if (admin) {
+        const { session } = await getAdminSession(req);
+        if (!session) query += ' WHERE is_visible=1';
+      } else {
+        query += ' WHERE is_visible=1';
+      }
       query += ' ORDER BY category, sort_order ASC';
       const [rows] = await pool.query(query);
       return res.status(200).json(Array.isArray(rows)?rows:[]);

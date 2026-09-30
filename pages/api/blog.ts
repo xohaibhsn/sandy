@@ -1,11 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { SITE_URL } from '../../lib/site';
-
-function checkAdminAuth(req: any): boolean {
-  const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
-  return !!session;
-}
+import { getAdminSession, requireAdmin } from '../../lib/adminAuth';
 
 let initializationPromise: Promise<void> | null = null;
 
@@ -90,7 +86,10 @@ function ensureBlogInitialized(): Promise<void> {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    if (req.method !== 'GET' && !checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
+    if (req.method !== 'GET') {
+      const session = await requireAdmin(req, res);
+      if (!session) return;
+    }
 
     await ensureBlogInitialized();
 
@@ -107,7 +106,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const [rows]: any = await pool.query('SELECT * FROM blog_posts WHERE id = ? LIMIT 1', [id]);
         return res.status(200).json(rows[0] || null);
       }
-      const isAdmin = checkAdminAuth(req);
+      const { session } = await getAdminSession(req);
+      const isAdmin = !!session;
       const listSql = isAdmin
         ? 'SELECT * FROM blog_posts ORDER BY created_at DESC'
         : 'SELECT * FROM blog_posts WHERE active = 1 AND (status = "published" OR status IS NULL) ORDER BY created_at DESC';

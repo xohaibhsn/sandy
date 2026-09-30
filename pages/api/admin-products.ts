@@ -2,11 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { ensureProductsTable } from '../../lib/ensureShopTables';
 import { parsePrice } from '../../lib/site';
-
-function checkAdminAuth(req: NextApiRequest): boolean {
-  const session = req.headers['x-admin-session'] || req.cookies?.sAdminSession;
-  return !!session;
-}
+import { requireAdmin, requireRole } from '../../lib/adminAuth';
 
 function toSlug(value: string): string {
   return String(value || '')
@@ -16,11 +12,12 @@ function toSlug(value: string): string {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!checkAdminAuth(req)) return res.status(403).json({ error: 'Forbidden' });
-  // Writers cannot mutate products
-  const role = req.headers['x-admin-role'] as string;
-  if (req.method !== 'GET' && role === 'writer') {
-    return res.status(403).json({ error: 'Forbidden: Writers cannot modify products' });
+  if (req.method === 'GET') {
+    const session = await requireAdmin(req, res);
+    if (!session) return;
+  } else {
+    const session = await requireRole(req, res, ['super_admin', 'manager']);
+    if (!session) return;
   }
   try {
     await ensureProductsTable();
