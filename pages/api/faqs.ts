@@ -82,7 +82,7 @@ async function initializeFaqs(): Promise<void> {
       `DELETE FROM faqs WHERE question IN (${obsoleteQuestions.map(() => '?').join(',')})`,
       obsoleteQuestions
     );
-  } catch (_) {}
+  } catch {}
 }
 
 function ensureFaqsInitialized(): Promise<void> {

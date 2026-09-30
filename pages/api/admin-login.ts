@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       setSessionCookie(res);
       return res.status(200).json({ success: true, role: rows[0].role, name: rows[0].name, staffUser: true });
     }
-  } catch (_) { /* DB not ready yet — fall through to master admin check */ }
+  } catch { /* DB not ready yet — fall through to master admin check */ }
 
   // ── Master admin login (username must be 'admin') ─────────────────────────
   if (username !== 'admin') {
@@ -65,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         setSessionCookie(res);
         return res.status(200).json({ success: true, role: 'super_admin', name: 'Admin' });
       }
-    } catch (_) {}
+    } catch {}
   }
 
   if (plainEnv && String(password) === plainEnv) {

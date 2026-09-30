@@ -42,7 +42,7 @@ async function initializeSections(): Promise<void> {
     "ALTER TABLE site_content ADD COLUMN section_order INT DEFAULT 0",
     "ALTER TABLE site_content ADD COLUMN is_visible TINYINT(1) DEFAULT 1",
     "ALTER TABLE site_content MODIFY COLUMN content_type ENUM('text','textarea','image','url','json') DEFAULT 'text'",
-  ]) { try { await pool.query(sql); } catch (_) {} }
+  ]) { try { await pool.query(sql); } catch {} }
 
   // Fix rows that have empty content_type due to old ENUM missing 'json'
   const sectionKeys = DEFAULTS.map(d => d[0]);
@@ -52,7 +52,7 @@ async function initializeSections(): Promise<void> {
         `UPDATE site_content SET content_type='json' WHERE content_key IN (${sectionKeys.map(()=>'?').join(',')}) AND (content_type='' OR content_type IS NULL)`,
         sectionKeys
       );
-    } catch (_) {}
+    } catch {}
   }
 
   for (const [key,val,type,page,label,order,vis] of DEFAULTS) {
@@ -61,7 +61,7 @@ async function initializeSections(): Promise<void> {
         'INSERT IGNORE INTO site_content (content_key,content_value,content_type,page_name,label,section_order,is_visible) VALUES (?,?,?,?,?,?,?)',
         [key,val,type,page,label,order,vis]
       );
-    } catch (_) {}
+    } catch {}
   }
 
   // Replace IPTV wording in section JSON content
@@ -77,7 +77,7 @@ async function initializeSections(): Promise<void> {
          WHERE content_type='json' AND content_value LIKE ?`,
         [from, to, `%${from}%`]
       );
-    } catch (_) {}
+    } catch {}
   }
 }
 

@@ -46,10 +46,10 @@ async function initializeBlog(): Promise<void> {
     "ALTER TABLE blog_posts ADD COLUMN active TINYINT(1) DEFAULT 1",
     "ALTER TABLE blog_posts ADD COLUMN badgeText VARCHAR(50) DEFAULT 'Guide'",
     "ALTER TABLE blog_posts ADD COLUMN emoji VARCHAR(10) DEFAULT '📝'",
-  ]) { try { await pool.query(col); } catch (_) {} }
+  ]) { try { await pool.query(col); } catch {} }
 
   // Activate any existing posts that have NULL active (added before column existed)
-  try { await pool.query("UPDATE blog_posts SET active=1 WHERE active IS NULL"); } catch (_) {}
+  try { await pool.query("UPDATE blog_posts SET active=1 WHERE active IS NULL"); } catch {}
 
   // Replace IPTV wording in existing public blog content
   for (const [from, to] of [
@@ -74,7 +74,7 @@ async function initializeBlog(): Promise<void> {
          WHERE title LIKE ? OR excerpt LIKE ? OR content LIKE ? OR IFNULL(meta_title,'') LIKE ? OR IFNULL(meta_description,'') LIKE ?`,
         [from, to, from, to, from, to, from, to, from, to, `%${from}%`, `%${from}%`, `%${from}%`, `%${from}%`, `%${from}%`]
       );
-    } catch (_) {}
+    } catch {}
   }
 }
 

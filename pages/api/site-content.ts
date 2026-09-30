@@ -290,7 +290,7 @@ async function initializeSiteContent(): Promise<void> {
         'INSERT IGNORE INTO site_content (content_key, content_value, content_type, page_name, label) VALUES (?,?,?,?,?)',
         [key, val, type, page, label]
       );
-    } catch (_) {}
+    } catch {}
   }
 
   // Migrate Firestick / UK CMS rows to S&Y (Pakistan)
@@ -334,7 +334,7 @@ async function initializeSiteContent(): Promise<void> {
     await pool.query(
       `UPDATE site_content SET page_name='settings', label='Contact Email' WHERE content_key='contact_email'`
     );
-  } catch (_) {}
+  } catch {}
 
   // Keep whatsapp_number in sync with contact_whatsapp (legacy key for floating button)
   try {
@@ -344,14 +344,14 @@ async function initializeSiteContent(): Promise<void> {
        SET wa.content_value = cw.content_value
        WHERE wa.content_key='whatsapp_number'`
     );
-  } catch (_) {}
+  } catch {}
 
   // Ensure telegram default exists
   try {
     await pool.query(
       "INSERT IGNORE INTO site_content (content_key, content_value, content_type, page_name, label) VALUES ('contact_telegram','','text','settings','Telegram Handle')"
     );
-  } catch (_) {}
+  } catch {}
 
   // Replace public IPTV wording with Streaming
   for (const [from, to] of [
@@ -366,7 +366,7 @@ async function initializeSiteContent(): Promise<void> {
         'UPDATE site_content SET content_value = REPLACE(content_value, ?, ?) WHERE content_value LIKE ?',
         [from, to, `%${from}%`]
       );
-    } catch (_) {}
+    } catch {}
   }
 
   // Keep labels in sync for new/renamed home fields
@@ -375,7 +375,7 @@ async function initializeSiteContent(): Promise<void> {
     await pool.query(`UPDATE site_content SET label='Top Hero Subtitle' WHERE content_key='home_top_hero_subtitle'`);
     await pool.query(`UPDATE site_content SET label='Main Hero Title' WHERE content_key='home_hero_title'`);
     await pool.query(`UPDATE site_content SET label='Main Hero Subtitle' WHERE content_key='home_hero_subtitle'`);
-  } catch (_) {}
+  } catch {}
 }
 
 function ensureSiteContentInitialized(): Promise<void> {
