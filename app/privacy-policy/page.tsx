@@ -148,7 +148,6 @@ export default function PrivacyPolicyPage() {
                 <li>Phone number / WhatsApp number</li>
                 <li>Delivery address (house, area, city, province, postal code)</li>
                 <li>Order details and payment receipts</li>
-                <li>IP address and browser information (via cookies)</li>
                 <li>Any messages or communications you send us</li>
               </ul>
               <p>We do not collect or store credit/debit card details. Payments are made via bank transfer, and we only receive a receipt image uploaded by the customer.</p>
@@ -179,13 +178,10 @@ export default function PrivacyPolicyPage() {
             </div>
 
             <div className="policy-section" id="cookies">
-              <h2>5. Cookies</h2>
-              <p>Our website uses cookies to improve your browsing experience. Cookies are small text files stored on your device. We use:</p>
-              <ul>
-                <li><strong>Essential cookies</strong> — required for the website to function (e.g. shopping cart).</li>
-                <li><strong>Analytics cookies</strong> — to understand how visitors use our site (e.g. Google Analytics).</li>
-              </ul>
-              <p>You can disable cookies in your browser settings, although this may affect website functionality.</p>
+              <h2>5. Cookies and Local Browser Storage</h2>
+              <p>Our storefront does not currently use optional analytics or advertising cookies (such as Google Analytics).</p>
+              <p>Shopping-cart information is stored locally in your browser so your cart can persist between pages. Essential session cookies or storage may be used for restricted administrative login. These technologies support site functionality and are not used for visitor profiling or advertising.</p>
+              <p>You can clear locally stored site data through your browser controls. Clearing this data may affect cart or admin-login continuity.</p>
             </div>
 
             <div className="policy-section" id="security">
