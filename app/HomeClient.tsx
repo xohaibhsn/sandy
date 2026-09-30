@@ -7,7 +7,7 @@ import { useCart } from "./lib/cartContext";
 import Navbar from "@/components/Navbar";
 import HeroSlider from "@/components/HeroSlider";
 import SiteFooter from "@/components/SiteFooter";
-import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import { cmsText, loadSiteContent, useSiteContent } from "@/hooks/useSiteContent";
 import { formatPrice } from "@/lib/site";
 
 const cardDescXss = {
@@ -153,8 +153,7 @@ export default function HomeClient({
         }
       })
       .catch(() => {});
-    fetch('/api/site-content?page=all')
-      .then(r => r.json())
+    loadSiteContent()
       .then(data => {
         if (!data || typeof data !== 'object') return;
         const slideUrls = [

@@ -6,7 +6,7 @@ let cache: Record<string, string> | null = null;
 let inflight: Promise<Record<string, string>> | null = null;
 const listeners = new Set<(data: Record<string, string>) => void>();
 
-function loadSiteContent(): Promise<Record<string, string>> {
+export function loadSiteContent(): Promise<Record<string, string>> {
   if (cache) return Promise.resolve(cache);
   if (!inflight) {
     inflight = fetch("/api/site-content?page=all")
