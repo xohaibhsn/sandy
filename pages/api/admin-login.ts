@@ -8,6 +8,15 @@ import {
   setSessionCookie,
   type AdminRole,
 } from '../../lib/adminAuth';
+import { verifyAdminStaffPassword } from '../../lib/adminStaffPassword';
+
+type StaffAuthRow = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  password_hash: string;
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -32,26 +41,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    const inputHash = crypto.createHash('sha256').update(String(password)).digest('hex');
-    const [rows]: any = await pool.query(
-      'SELECT id,name,email,role FROM admin_staff WHERE email=? AND password_hash=? AND active=1',
-      [username, inputHash]
+    const [rows] = await pool.query(
+      'SELECT id,name,email,role,password_hash FROM admin_staff WHERE email=? AND active=1 LIMIT 1',
+      [username]
     );
-    if (rows.length) {
-      const staff = rows[0];
-      const role = (staff.role || 'writer') as AdminRole;
-      try {
-        const rawToken = await createAdminSession({
-          staffId: Number(staff.id),
-          isMaster: false,
-          role,
-          name: String(staff.name || 'Admin'),
-        });
-        setSessionCookie(res, rawToken);
-        return res.status(200).json({ success: true, role, name: staff.name, staffUser: true });
-      } catch {
-        return res.status(503).json({ success: false, error: 'Service unavailable' });
+    const staff = (Array.isArray(rows) ? rows[0] : null) as StaffAuthRow | null;
+    if (staff) {
+      const check = await verifyAdminStaffPassword(String(password), String(staff.password_hash || ''));
+      if (check.valid) {
+        if (check.upgradedHash) {
+          try {
+            const [upgradeResult] = await pool.query(
+              'UPDATE admin_staff SET password_hash=? WHERE id=? AND password_hash=?',
+              [check.upgradedHash, staff.id, staff.password_hash]
+            );
+            const affected = Number((upgradeResult as { affectedRows?: number } | undefined)?.affectedRows || 0);
+            if (affected !== 1) {
+              return res.status(401).json({ success: false });
+            }
+          } catch {
+            return res.status(503).json({ success: false, error: 'Service unavailable' });
+          }
+        }
+
+        const role = (staff.role || 'writer') as AdminRole;
+        try {
+          const rawToken = await createAdminSession({
+            staffId: Number(staff.id),
+            isMaster: false,
+            role,
+            name: String(staff.name || 'Admin'),
+          });
+          setSessionCookie(res, rawToken);
+          return res.status(200).json({ success: true, role, name: staff.name, staffUser: true });
+        } catch {
+          return res.status(503).json({ success: false, error: 'Service unavailable' });
+        }
       }
+      // Wrong staff password: do not create a staff session. Fall through so
+      // existing master-admin username "admin" behavior remains unchanged.
     }
   } catch { /* DB not ready yet — fall through to master admin check */ }
 

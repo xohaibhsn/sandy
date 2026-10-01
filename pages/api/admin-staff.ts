@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
-import { createHash } from 'crypto';
 import { requireAdmin, requireRole } from '../../lib/adminAuth';
+import { hashAdminStaffPassword } from '../../lib/adminStaffPassword';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -33,12 +33,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password required' });
       const validRoles = ['super_admin','manager','writer'];
       const finalRole = validRoles.includes(role) ? role : 'writer';
-      const hash = createHash('sha256').update(password).digest('hex');
-      const [result]: any = await pool.query(
+      const hash = await hashAdminStaffPassword(String(password));
+      const [result] = await pool.query(
         'INSERT INTO admin_staff (name,email,password_hash,role) VALUES (?,?,?,?)',
         [name, email, hash, finalRole]
       );
-      return res.status(200).json({ success: true, id: result.insertId });
+      const insertId = Number((result as { insertId?: number } | undefined)?.insertId || 0);
+      return res.status(200).json({ success: true, id: insertId });
     }
 
     if (req.method === 'PUT') {
@@ -47,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const validRoles = ['super_admin','manager','writer'];
       const finalRole = validRoles.includes(role) ? role : 'writer';
       if (password) {
-        const hash = createHash('sha256').update(password).digest('hex');
+        const hash = await hashAdminStaffPassword(String(password));
         await pool.query('UPDATE admin_staff SET name=?,email=?,role=?,password_hash=?,active=? WHERE id=?',
           [name, email, finalRole, hash, active??1, id]);
       } else {
@@ -64,7 +65,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Server error';
+    return res.status(500).json({ error: message });
   }
 }
