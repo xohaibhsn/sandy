@@ -64,6 +64,9 @@ const ALLOWED_STATUS = new Set<number>([301, 302, 307, 308]);
 
 let redirectsReady = false;
 let redirectsInFlight: Promise<void> | null = null;
+/** In-process negative backoff when redirects table is missing (public lookup only). */
+let redirectsMissingUntil = 0;
+const REDIRECTS_MISSING_BACKOFF_MS = 60_000;
 
 function hasControlOrCrLf(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
@@ -272,6 +275,7 @@ export async function ensureRedirectsTable(): Promise<void> {
         )
       `);
       redirectsReady = true;
+      redirectsMissingUntil = 0;
     })().catch((err) => {
       redirectsInFlight = null;
       redirectsReady = false;
@@ -293,21 +297,40 @@ function mapRow(row: Record<string, unknown>): RedirectRecord {
   };
 }
 
+/**
+ * Read-only public/runtime lookup. Does NOT ensure/create the table.
+ * ER_NO_SUCH_TABLE uses a short in-process null backoff (not a redirect cache).
+ * Other DB errors propagate; Proxy fail-opens with NextResponse.next().
+ * Admin CRUD continues to call ensureRedirectsTable() separately.
+ */
 export async function getActiveRedirectBySource(
   sourcePath: string
 ): Promise<RedirectRecord | null> {
-  await ensureRedirectsTable();
   const source = normalizeRedirectSource(sourcePath);
-  const [rows] = await pool.query(
-    `SELECT id, source_path, destination, status_code, is_active, created_at, updated_at
-     FROM redirects
-     WHERE source_path = ? AND is_active = 1
-     LIMIT 1`,
-    [source]
-  );
-  const list = Array.isArray(rows) ? rows : [];
-  if (!list.length) return null;
-  return mapRow(list[0] as Record<string, unknown>);
+
+  if (Date.now() < redirectsMissingUntil) {
+    return null;
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, source_path, destination, status_code, is_active, created_at, updated_at
+       FROM redirects
+       WHERE source_path = ? AND is_active = 1
+       LIMIT 1`,
+      [source]
+    );
+    redirectsMissingUntil = 0;
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return null;
+    return mapRow(list[0] as Record<string, unknown>);
+  } catch (err) {
+    if (isMysqlNoSuchTable(err)) {
+      redirectsMissingUntil = Date.now() + REDIRECTS_MISSING_BACKOFF_MS;
+      return null;
+    }
+    throw err;
+  }
 }
 
 export async function getRedirectById(id: number): Promise<RedirectRecord | null> {
@@ -446,6 +469,15 @@ function isMysqlDuplicate(err: unknown): boolean {
     err !== null &&
     "code" in err &&
     (err as { code?: string }).code === "ER_DUP_ENTRY"
+  );
+}
+
+function isMysqlNoSuchTable(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: string }).code === "ER_NO_SUCH_TABLE"
   );
 }
 
