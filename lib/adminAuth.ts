@@ -217,10 +217,119 @@ export async function getAdminSession(req: NextApiRequest): Promise<{
   }
 }
 
+const SAFE_ADMIN_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function headerList(value: string | string[] | undefined): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.filter((item) => typeof item === "string");
+  return [];
+}
+
+function normalizeRequestHost(value: string | string[] | undefined): string | null {
+  const parts = headerList(value);
+  if (parts.length !== 1) return null;
+  const host = parts[0].trim().toLowerCase();
+  if (!host || host.length > 255 || /[\s/\\@]/.test(host)) return null;
+  return host;
+}
+
+function forwardedProto(req: NextApiRequest): "http" | "https" | null {
+  const parts = headerList(req.headers["x-forwarded-proto"]);
+  if (parts.length === 0) return null;
+  const first = parts[0].split(",")[0]?.trim().toLowerCase() ?? "";
+  if (!first) return null;
+  if (first === "http" || first === "https") return first;
+  return null;
+}
+
+function forwardedProtoPresent(req: NextApiRequest): boolean {
+  return headerList(req.headers["x-forwarded-proto"]).some((part) => part.trim() !== "");
+}
+
+function explicitCrossSite(req: NextApiRequest): boolean {
+  const parts = headerList(req.headers["sec-fetch-site"]);
+  if (parts.length === 0) return false;
+  const first = parts[0].split(",")[0]?.trim().toLowerCase() ?? "";
+  return first === "cross-site";
+}
+
+function provenanceMatches(raw: string, host: string, proto: "http" | "https" | null): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  if (url.host.toLowerCase() !== host) return false;
+  if (proto === "https" && url.protocol !== "https:") return false;
+  if (proto === "http" && url.protocol !== "http:") return false;
+  return true;
+}
+
+function forbidCrossOrigin(res: NextApiResponse): false {
+  res.status(403).json({ error: "Forbidden" });
+  return false;
+}
+
+/**
+ * Same-origin gate for unsafe admin requests. Safe methods pass through.
+ * Does not consult the session store.
+ */
+export function requireSameOriginAdminRequest(
+  req: NextApiRequest,
+  res: NextApiResponse
+): boolean {
+  const method = String(req.method || "").toUpperCase();
+  if (SAFE_ADMIN_METHODS.has(method)) return true;
+
+  try {
+    if (explicitCrossSite(req)) return forbidCrossOrigin(res);
+
+    const host = normalizeRequestHost(req.headers.host);
+    if (!host) return forbidCrossOrigin(res);
+
+    if (forwardedProtoPresent(req)) {
+      const proto = forwardedProto(req);
+      if (!proto) return forbidCrossOrigin(res);
+      return provenanceOk(req, res, host, proto);
+    }
+
+    return provenanceOk(req, res, host, null);
+  } catch {
+    return forbidCrossOrigin(res);
+  }
+}
+
+function provenanceOk(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  host: string,
+  proto: "http" | "https" | null
+): boolean {
+  const originParts = headerList(req.headers.origin);
+  if (originParts.length > 1) return forbidCrossOrigin(res);
+  const origin = originParts.length === 1 ? originParts[0].trim() : "";
+
+  if (origin) {
+    if (origin.toLowerCase() === "null") return forbidCrossOrigin(res);
+    if (!provenanceMatches(origin, host, proto)) return forbidCrossOrigin(res);
+    return true;
+  }
+
+  const refererParts = headerList(req.headers.referer);
+  if (refererParts.length > 1) return forbidCrossOrigin(res);
+  const referer = refererParts.length === 1 ? refererParts[0].trim() : "";
+  if (!referer) return forbidCrossOrigin(res);
+  if (!provenanceMatches(referer, host, proto)) return forbidCrossOrigin(res);
+  return true;
+}
+
 export async function requireAdmin(
   req: NextApiRequest,
   res: NextApiResponse
 ): Promise<AdminSession | null> {
+  if (!requireSameOriginAdminRequest(req, res)) return null;
   const { session, error } = await getAdminSession(req);
   if (error) {
     res.status(503).json({ error: "Service unavailable" });

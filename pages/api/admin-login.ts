@@ -4,12 +4,14 @@ import { RL_AUTH, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import {
   createAdminSession,
+  requireSameOriginAdminRequest,
   setSessionCookie,
   type AdminRole,
 } from '../../lib/adminAuth';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireSameOriginAdminRequest(req, res)) return;
 
   const { allowed } = RL_AUTH(getClientIp(req));
   if (!allowed) return res.status(429).json({ error: 'Too many login attempts. Try again in 15 minutes.' });
