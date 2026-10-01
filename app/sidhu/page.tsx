@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import dynamic from "next/dynamic";
 import { toEditorHtml } from "@/lib/contentHtml";
 import { CLOUDINARY_FOLDER, SITE_NAME, SITE_NAME_CAPS, SITE_URL, formatPrice, parsePrice } from "@/lib/site";
+import RedirectManager from "../../components/admin/RedirectManager";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
 const styles = `
@@ -193,7 +194,7 @@ const demoCustomers = [
   { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026" },
 ];
 
-type Tab = "dashboard"|"orders"|"products"|"customers"|"leads"|"training"|"blog"|"settings"|"pages"|"coupons"|"builder"|"faqadmin"|"staff";
+type Tab = "dashboard"|"orders"|"products"|"customers"|"leads"|"training"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff";
 type AdminRole = "super_admin"|"manager"|"writer";
 type OrderStatus = "pending"|"confirmed"|"dispatched"|"delivered";
 type BlogPost = { id:number; title:string; slug:string; excerpt:string; content:string; category:string; emoji:string; badge:string; badgeText:string; featured_image:string; meta_title:string; meta_description:string; focus_keyword:string; status:"published"|"draft"; featured:boolean; canonical_url:string; faqs:Array<{question:string;answer:string}>; };
@@ -1281,6 +1282,7 @@ export default function AdminPage() {
               { id:"builder",   icon:"🎨", label:"Page Builder", roles:["super_admin"] },
               { id:"faqadmin",  icon:"❓", label:"FAQs",         roles:["super_admin","manager"] },
               { id:"pages",     icon:"✏️", label:"Content Editor", roles:["super_admin","manager"] },
+              { id:"redirects", icon:"🔀", label:"Redirects",    roles:["super_admin","manager"] },
               { id:"staff",     icon:"👤", label:"Staff Users",  roles:["super_admin"] },
               { id:"settings",  icon:"⚙️", label:"Site Settings",roles:["super_admin"] },
             ] as const).filter(item => ([...item.roles] as string[]).includes(adminRole)).map(item => (
@@ -1315,6 +1317,7 @@ export default function AdminPage() {
                 {tab==="builder" && <>Page <span>Builder</span></>}
                 {tab==="faqadmin" && <>Manage <span>FAQs</span></>}
                 {tab==="pages" && <>Content <span>Editor</span></>}
+                {tab==="redirects" && <>Manage <span>Redirects</span></>}
                 {tab==="settings" && <>Site <span>Settings</span></>}
               </h1>
             </div>
@@ -2846,6 +2849,10 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
+          )}
+
+          {tab==="redirects" && (
+            <RedirectManager />
           )}
         </main>
       </div>
