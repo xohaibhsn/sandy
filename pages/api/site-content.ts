@@ -9,8 +9,24 @@ import {
   WHATSAPP_DIGITS,
 } from '../../lib/site';
 import { requireAdmin } from '../../lib/adminAuth';
+import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 
+/** TipTap / rich-HTML site_content keys — write-time sanitize only these. */
+const RICH_HTML_CONTENT_KEYS = new Set([
+  'home_features_list',
+  'about_description',
+  'about_mission',
+  'privacy_content',
+  'terms_content',
+  'refund_content',
+]);
 
+function persistSiteContentValue(key: string, value: unknown): string {
+  if (RICH_HTML_CONTENT_KEYS.has(key)) {
+    return sanitizeRichHtml(value);
+  }
+  return String(value ?? '');
+}
 
 const DEFAULTS = [
   ['site_title', SITE_NAME,'text','settings','Website Title'],
@@ -424,10 +440,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (updates && Array.isArray(updates)) {
         for (const u of updates) {
           if (!u?.key) continue;
-          await upsert(String(u.key), String(u.value ?? ''));
+          const contentKey = String(u.key);
+          await upsert(contentKey, persistSiteContentValue(contentKey, u.value));
         }
       } else if (key) {
-        await upsert(String(key), String(value ?? ''));
+        const contentKey = String(key);
+        await upsert(contentKey, persistSiteContentValue(contentKey, value));
       } else {
         return res.status(400).json({ error: 'No content keys provided' });
       }
@@ -436,9 +454,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'PUT') {
       const { content_key, content_value, content_type, page_name, label } = req.body;
+      const key = String(content_key || '');
+      const safeValue = RICH_HTML_CONTENT_KEYS.has(key)
+        ? sanitizeRichHtml(content_value)
+        : (content_value || '');
       await pool.query(
         'INSERT INTO site_content (content_key,content_value,content_type,page_name,label) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE content_value=?,label=?',
-        [content_key, content_value||'', content_type||'text', page_name||'', label||content_key, content_value||'', label||content_key]
+        [content_key, safeValue, content_type||'text', page_name||'', label||content_key, safeValue, label||content_key]
       );
       return res.status(200).json({ success: true });
     }
