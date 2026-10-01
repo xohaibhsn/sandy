@@ -3,6 +3,7 @@ import pool from '../../lib/db';
 import { ensureProductsTable } from '../../lib/ensureShopTables';
 import { parsePrice } from '../../lib/site';
 import { requireAdmin, requireRole } from '../../lib/adminAuth';
+import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 
 function toSlug(value: string): string {
   return String(value || '')
@@ -45,14 +46,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const numericPrice = parsePrice(price);
       const finalSeoTitle = (seo_title || '').trim() || name;
       const finalMetaDesc = (meta_description || '').trim() || (short_description || '').trim() || '';
+      const safeDescription = sanitizeRichHtml(description || '');
+      const safeShortDescription = sanitizeRichHtml(short_description || '');
+      const safeFullDescription = sanitizeRichHtml(full_description || '');
 
       try {
         const [result]: any = await pool.query(
           `INSERT INTO products (name, slug, description, price, category, badge, image, stock, active,
             short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
-          [name, finalSlug, description || '', numericPrice, category, badge || null, image || null, stock || 'Digital',
-           short_description || '', full_description || '', finalSeoTitle, finalMetaDesc,
+          [name, finalSlug, safeDescription, numericPrice, category, badge || null, image || null, stock || 'Digital',
+           safeShortDescription, safeFullDescription, finalSeoTitle, finalMetaDesc,
            focus_keyword || '', features || '', og_image || '']
         );
         return res.status(200).json({ success: true, id: result.insertId, slug: finalSlug });
@@ -76,14 +80,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const numericPrice = parsePrice(price);
       const finalSeoTitle = (seo_title || '').trim() || name;
       const finalMetaDesc = (meta_description || '').trim() || (short_description || '').trim() || '';
+      const safeDescription = sanitizeRichHtml(description || '');
+      const safeShortDescription = sanitizeRichHtml(short_description || '');
+      const safeFullDescription = sanitizeRichHtml(full_description || '');
 
       try {
         await pool.query(
           `UPDATE products SET name=?, slug=?, description=?, price=?, category=?, badge=?, image=?, stock=?, active=?,
             short_description=?, full_description=?, seo_title=?, meta_description=?, focus_keyword=?, features=?, og_image=?
            WHERE id=?`,
-          [name, finalSlug, description || '', numericPrice, category, badge || null, image || null, stock, active ?? 1,
-           short_description || '', full_description || '', finalSeoTitle, finalMetaDesc,
+          [name, finalSlug, safeDescription, numericPrice, category, badge || null, image || null, stock, active ?? 1,
+           safeShortDescription, safeFullDescription, finalSeoTitle, finalMetaDesc,
            focus_keyword || '', features || '', og_image || '', id]
         );
         return res.status(200).json({ success: true, slug: finalSlug });
