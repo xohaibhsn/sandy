@@ -1,10 +1,109 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import nodemailer from 'nodemailer';
 import { getContactConfig } from '../../lib/contact-config';
-import { ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL, TAX_LABEL, formatPrice } from '../../lib/site';
+import { ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL, TAX_LABEL, TAX_RATE, formatPrice } from '../../lib/site';
 import { ensureShopTables } from '../../lib/ensureShopTables';
+import {
+  normalizeRequestItems,
+  calculateSubtotal,
+  calculateCouponDiscount,
+  calculateOrderTotals,
+  type PricedLineItem,
+} from '../../lib/orderPricing';
+
+const ALLOWED_PAYMENT_METHODS = new Set(['cod', 'jazzcash', 'easypaisa', 'bank']);
+
+const FIELD_MAX = {
+  customer_name: 255,
+  customer_email: 255,
+  customer_phone: 50,
+  city: 100,
+  postcode: 100,
+  payment_reference: 255,
+  receipt_path: 500,
+  delivery_address: 2000,
+  notes: 4000,
+  coupon_code: 50,
+} as const;
+
+class OrderHttpError extends Error {
+  status: number;
+  clientError: string;
+
+  constructor(status: number, clientError: string) {
+    super(clientError);
+    this.name = 'OrderHttpError';
+    this.status = status;
+    this.clientError = clientError;
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Accept string or nullish; reject objects/arrays/numbers. */
+function readStringField(
+  value: unknown,
+  max: number
+): { ok: true; value: string } | { ok: false } {
+  if (value === undefined || value === null) {
+    return { ok: true, value: '' };
+  }
+  if (typeof value !== 'string') return { ok: false };
+  const trimmed = value.trim();
+  if (trimmed.length > max) return { ok: false };
+  return { ok: true, value: trimmed };
+}
+
+/** Convert MySQL DECIMAL (number|string) to a finite non-negative number. */
+function parseDbMoney(raw: unknown): number | null {
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || raw < 0) return null;
+    return raw;
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!/^\d+(\.\d+)?$/.test(t)) return null;
+    const n = Number(t);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n;
+  }
+  return null;
+}
+
+function isActiveFlag(value: unknown): boolean {
+  return Number(value) === 1;
+}
+
+function normalizePaymentMethod(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const method = raw.trim().toLowerCase();
+  if (method === 'bank_transfer') return 'bank';
+  if (ALLOWED_PAYMENT_METHODS.has(method)) return method;
+  return null;
+}
+
+type ProductRow = RowDataPacket & {
+  id: number;
+  name: string;
+  price: unknown;
+  active: unknown;
+};
+
+type CouponRow = RowDataPacket & {
+  code: string;
+  type: string;
+  value: unknown;
+  minimum_order: unknown;
+  usage_limit: number | null;
+  used_count: number;
+  expires_at: unknown;
+  is_active: unknown;
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -13,49 +112,296 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!allowed) return res.status(429).json({ error: 'Too many requests' });
 
   try {
+    if (!isPlainObject(req.body)) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    const body = req.body as Record<string, unknown>;
+
+    // Legacy client may still send total / vat_amount / discount_amount / item.name / item.price.
+    // Those fields are intentionally ignored for financial authority.
+
+    const customer_name = readStringField(body.customer_name, FIELD_MAX.customer_name);
+    const customer_email = readStringField(body.customer_email, FIELD_MAX.customer_email);
+    const customer_phone = readStringField(body.customer_phone, FIELD_MAX.customer_phone);
+    const delivery_address = readStringField(body.delivery_address, FIELD_MAX.delivery_address);
+    const city = readStringField(body.city, FIELD_MAX.city);
+    const postcode = readStringField(body.postcode, FIELD_MAX.postcode);
+    const notes = readStringField(body.notes, FIELD_MAX.notes);
+    const receipt_path = readStringField(body.receipt_path, FIELD_MAX.receipt_path);
+    const payment_reference = readStringField(body.payment_reference, FIELD_MAX.payment_reference);
+
+    if (
+      !customer_name.ok ||
+      !customer_email.ok ||
+      !customer_phone.ok ||
+      !delivery_address.ok ||
+      !city.ok ||
+      !postcode.ok ||
+      !notes.ok ||
+      !receipt_path.ok ||
+      !payment_reference.ok
+    ) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    const payment_method = normalizePaymentMethod(body.payment_method);
+    if (!payment_method) {
+      return res.status(400).json({ error: 'Invalid payment method' });
+    }
+
+    const normalizedItems = normalizeRequestItems(body.items);
+    if (!normalizedItems.ok) {
+      return res.status(400).json({ error: 'Invalid cart items' });
+    }
+
+    let couponInput: string | null = null;
+    if (body.coupon_code !== undefined && body.coupon_code !== null && body.coupon_code !== '') {
+      if (typeof body.coupon_code !== 'string') {
+        return res.status(400).json({ error: 'Invalid request' });
+      }
+      const code = body.coupon_code.trim().toUpperCase();
+      if (code.length > FIELD_MAX.coupon_code) {
+        return res.status(400).json({ error: 'Invalid request' });
+      }
+      if (code.length > 0) couponInput = code;
+    }
+
     await ensureShopTables();
 
-    const { customer_name, customer_email, customer_phone, delivery_address, city, postcode, notes,
-      payment_method, receipt_path, items, total, coupon_code, discount_amount, vat_amount,
-      payment_reference } = req.body;
-
-    const order_id = 'ORD-' + Date.now();
+    // Fail before creating an order if contact config cannot be retrieved.
     const contact = await getContactConfig();
 
-    await pool.query(
-      'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      [order_id, customer_name, customer_email, customer_phone, delivery_address, city, postcode, notes||'', payment_method, receipt_path||'', total, coupon_code||null, discount_amount||0, vat_amount||0, payment_reference||null, 'pending']
-    );
+    const shipping = 0;
+    const order_id = 'ORD-' + Date.now();
 
-    for (const item of items) {
-      await pool.query(
-        'INSERT INTO order_items (order_id,product_id,product_name,price,quantity) VALUES (?,?,?,?,?)',
-        [order_id, item.id, item.name, item.price, item.qty]
+    let authoritativeItems: PricedLineItem[] = [];
+    let subtotal = 0;
+    let vat_amount = 0;
+    let discount_amount = 0;
+    let total = 0;
+    let persistedCoupon: string | null = null;
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const ids = normalizedItems.items.map((item) => item.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const [productRows] = await connection.query<ProductRow[]>(
+        `SELECT id, name, price, active FROM products WHERE id IN (${placeholders})`,
+        ids
       );
-    }
 
-    if (coupon_code) {
-      await pool.query('UPDATE coupons SET used_count=used_count+1 WHERE code=?', [coupon_code]).catch(()=>{});
-    }
+      const byId = new Map<number, ProductRow>();
+      for (const row of productRows) {
+        byId.set(Number(row.id), row);
+      }
 
-    // Fire-and-forget email notification — never delays or breaks the order response
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      const transporter = nodemailer.createTransport({
-        host: 'smtp.hostinger.com',
-        port: 465,
-        secure: true,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      if (byId.size !== ids.length) {
+        throw new OrderHttpError(400, 'One or more products are unavailable');
+      }
+
+      authoritativeItems = [];
+      for (const reqItem of normalizedItems.items) {
+        const product = byId.get(reqItem.id);
+        if (!product) {
+          throw new OrderHttpError(400, 'One or more products are unavailable');
+        }
+        if (!isActiveFlag(product.active)) {
+          throw new OrderHttpError(400, 'One or more products are unavailable');
+        }
+
+        const price = parseDbMoney(product.price);
+        if (price === null) {
+          throw new OrderHttpError(500, 'Unable to place order');
+        }
+
+        authoritativeItems.push({
+          product_id: reqItem.id,
+          product_name: String(product.name ?? ''),
+          price,
+          quantity: reqItem.qty,
+        });
+      }
+
+      const subtotalResult = calculateSubtotal(authoritativeItems);
+      if (!subtotalResult.ok) {
+        throw new OrderHttpError(500, 'Unable to place order');
+      }
+      subtotal = subtotalResult.amount;
+
+      if (couponInput) {
+        const [couponRows] = await connection.query<CouponRow[]>(
+          `SELECT code, type, value, minimum_order, usage_limit, used_count, expires_at, is_active
+           FROM coupons WHERE code = ? FOR UPDATE`,
+          [couponInput]
+        );
+
+        if (!couponRows.length) {
+          throw new OrderHttpError(400, 'Coupon is invalid or unavailable');
+        }
+
+        const coupon = couponRows[0];
+        if (!isActiveFlag(coupon.is_active)) {
+          throw new OrderHttpError(400, 'Coupon is invalid or unavailable');
+        }
+
+        if (coupon.expires_at && new Date(coupon.expires_at as string | Date) < new Date()) {
+          throw new OrderHttpError(400, 'Coupon is invalid or unavailable');
+        }
+
+        if (coupon.usage_limit !== null && coupon.usage_limit !== undefined) {
+          const usedCount = Number(coupon.used_count);
+          const usageLimit = Number(coupon.usage_limit);
+          if (!Number.isFinite(usedCount) || !Number.isFinite(usageLimit)) {
+            throw new OrderHttpError(500, 'Unable to place order');
+          }
+          if (usedCount >= usageLimit) {
+            throw new OrderHttpError(400, 'Coupon is invalid or unavailable');
+          }
+        }
+
+        const couponBase = subtotal + shipping;
+        const minimumOrder = parseDbMoney(coupon.minimum_order ?? 0);
+        if (minimumOrder === null) {
+          throw new OrderHttpError(500, 'Unable to place order');
+        }
+        if (couponBase < minimumOrder) {
+          throw new OrderHttpError(400, 'Coupon is invalid or unavailable');
+        }
+
+        const couponValue = parseDbMoney(coupon.value);
+        if (couponValue === null) {
+          throw new OrderHttpError(500, 'Unable to place order');
+        }
+
+        const discountResult = calculateCouponDiscount(
+          couponBase,
+          coupon.type,
+          couponValue
+        );
+        if (!discountResult.ok) {
+          throw new OrderHttpError(500, 'Unable to place order');
+        }
+
+        discount_amount = discountResult.discount_amount;
+        persistedCoupon = String(coupon.code);
+      } else {
+        discount_amount = 0;
+        persistedCoupon = null;
+      }
+
+      const totalsResult = calculateOrderTotals({
+        subtotal,
+        shipping,
+        taxRate: TAX_RATE,
+        discountAmount: discount_amount,
       });
+      if (!totalsResult.ok) {
+        throw new OrderHttpError(500, 'Unable to place order');
+      }
 
-      const itemRows = (items as any[]).map((i: any) =>
-        `<tr>
-          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:14px">${i.name}</td>
-          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:14px">${i.qty}</td>
-          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:14px;font-weight:600;color:#5B21B6">${formatPrice(Number(i.price) * Number(i.qty))}</td>
+      vat_amount = totalsResult.totals.vat_amount;
+      total = totalsResult.totals.total;
+      discount_amount = totalsResult.totals.discount_amount;
+      subtotal = totalsResult.totals.subtotal;
+
+      await connection.query(
+        'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [
+          order_id,
+          customer_name.value,
+          customer_email.value,
+          customer_phone.value,
+          delivery_address.value,
+          city.value,
+          postcode.value,
+          notes.value,
+          payment_method,
+          receipt_path.value,
+          total,
+          persistedCoupon,
+          discount_amount,
+          vat_amount,
+          payment_reference.value || null,
+          'pending',
+        ]
+      );
+
+      for (const item of authoritativeItems) {
+        await connection.query(
+          'INSERT INTO order_items (order_id,product_id,product_name,price,quantity) VALUES (?,?,?,?,?)',
+          [order_id, item.product_id, item.product_name, item.price, item.quantity]
+        );
+      }
+
+      if (persistedCoupon) {
+        const [updateResult] = await connection.query<ResultSetHeader>(
+          'UPDATE coupons SET used_count = used_count + 1 WHERE code = ?',
+          [persistedCoupon]
+        );
+        if (updateResult.affectedRows !== 1) {
+          throw new OrderHttpError(500, 'Unable to place order');
+        }
+      }
+
+      await connection.commit();
+    } catch (txError) {
+      try {
+        await connection.rollback();
+      } catch {
+        /* ignore rollback failure */
+      }
+
+      if (txError instanceof OrderHttpError) {
+        return res.status(txError.status).json({ error: txError.clientError });
+      }
+
+      console.error('[orders] Transaction failed:', txError);
+      return res.status(500).json({ error: 'Unable to place order' });
+    } finally {
+      try {
+        connection.release();
+      } catch (releaseErr) {
+        // Never let release failure turn a committed order into a client 500.
+        console.error('[orders] Connection release failed:', releaseErr);
+      }
+    }
+
+    // Fire-and-forget email AFTER commit — notification failure must not roll back or 500.
+    try {
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const transporter = nodemailer.createTransport({
+          host: 'smtp.hostinger.com',
+          port: 465,
+          secure: true,
+          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        });
+
+        const itemRows = authoritativeItems
+          .map(
+            (i) =>
+              `<tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:14px">${i.product_name}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:14px">${i.quantity}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:14px;font-weight:600;color:#5B21B6">${formatPrice(i.price * i.quantity)}</td>
         </tr>`
-      ).join('');
+          )
+          .join('');
 
-      const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5">
+        const paymentLabel =
+          payment_method === 'cod'
+            ? 'Cash on Delivery'
+            : payment_method === 'jazzcash'
+              ? 'JazzCash'
+              : payment_method === 'easypaisa'
+                ? 'Easypaisa'
+                : payment_method === 'bank'
+                  ? 'Bank Transfer'
+                  : payment_method;
+
+        const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5">
 <div style="max-width:620px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
   <div style="background:#5B21B6;padding:28px 32px">
     <h2 style="color:#fff;margin:0;font-size:22px;letter-spacing:1px">🛍️ New Order Received</h2>
@@ -68,19 +414,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     </div>
     <h3 style="color:#111;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Customer Details</h3>
     <table style="width:100%;margin-bottom:24px;border-collapse:collapse">
-      <tr><td style="padding:5px 0;color:#888;font-size:13px;width:110px">Name</td><td style="color:#111;font-size:13px;font-weight:600">${customer_name}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Email</td><td style="color:#111;font-size:13px">${customer_email}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Phone</td><td style="color:#111;font-size:13px">${customer_phone}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Address</td><td style="color:#111;font-size:13px">${[delivery_address, city, postcode].filter(Boolean).join(', ')}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Payment</td><td style="color:#111;font-size:13px;font-weight:600">${
-        payment_method === 'cod' ? 'Cash on Delivery'
-        : payment_method === 'jazzcash' ? 'JazzCash'
-        : payment_method === 'easypaisa' ? 'Easypaisa'
-        : payment_method === 'bank' || payment_method === 'bank_transfer' ? 'Bank Transfer'
-        : String(payment_method || '')
-      }</td></tr>
-      ${payment_reference ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Reference</td><td style="color:#111;font-size:13px">${payment_reference}</td></tr>` : ''}
-      ${notes ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Notes</td><td style="color:#111;font-size:13px">${notes}</td></tr>` : ''}
+      <tr><td style="padding:5px 0;color:#888;font-size:13px;width:110px">Name</td><td style="color:#111;font-size:13px;font-weight:600">${customer_name.value}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Email</td><td style="color:#111;font-size:13px">${customer_email.value}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Phone</td><td style="color:#111;font-size:13px">${customer_phone.value}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Address</td><td style="color:#111;font-size:13px">${[delivery_address.value, city.value, postcode.value].filter(Boolean).join(', ')}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Payment</td><td style="color:#111;font-size:13px;font-weight:600">${paymentLabel}</td></tr>
+      ${payment_reference.value ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Reference</td><td style="color:#111;font-size:13px">${payment_reference.value}</td></tr>` : ''}
+      ${notes.value ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Notes</td><td style="color:#111;font-size:13px">${notes.value}</td></tr>` : ''}
     </table>
     <h3 style="color:#111;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Order Items</h3>
     <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
@@ -93,7 +433,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     </table>
     <div style="background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:16px 20px">
       ${vat_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">${TAX_LABEL}</span><span style="color:#111">${formatPrice(vat_amount)}</span></div>` : ''}
-      ${discount_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#16A34A"><span>Discount${coupon_code ? ` (${coupon_code})` : ''}</span><span>−${formatPrice(discount_amount)}</span></div>` : ''}
+      ${discount_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#16A34A"><span>Discount${persistedCoupon ? ` (${persistedCoupon})` : ''}</span><span>−${formatPrice(discount_amount)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:10px 0 4px;font-size:18px;font-weight:700;border-top:1px solid #e5e5e5;margin-top:6px"><span style="color:#111">Grand Total</span><span style="color:#5B21B6">${formatPrice(total)}</span></div>
     </div>
   </div>
@@ -102,12 +442,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   </div>
 </div></body></html>`;
 
-      transporter.sendMail({
-        from: `"${SITE_NAME} Orders" <${ORDERS_FROM_EMAIL}>`,
-        to: contact.email,
-        subject: `🛍️ New Order ${order_id} — ${customer_name}`,
-        html,
-      }).catch((err: any) => console.error('[orders] Email notification failed:', err));
+        transporter
+          .sendMail({
+            from: `"${SITE_NAME} Orders" <${ORDERS_FROM_EMAIL}>`,
+            to: contact.email,
+            subject: `🛍️ New Order ${order_id} — ${customer_name.value}`,
+            html,
+          })
+          .catch((err: unknown) => console.error('[orders] Email notification failed:', err));
+      }
+    } catch (emailErr) {
+      console.error('[orders] Email notification setup failed:', emailErr);
     }
 
     return res.status(200).json({
@@ -115,8 +460,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       order_id,
       whatsappUrl: contact.whatsappUrl,
       telegramUrl: contact.telegramUrl,
+      subtotal,
+      shipping,
+      vat_amount,
+      discount_amount,
+      total,
+      coupon_code: persistedCoupon,
+      items: authoritativeItems.map((item) => ({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        price: item.price,
+        quantity: item.quantity,
+      })),
     });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    if (error instanceof OrderHttpError) {
+      return res.status(error.status).json({ error: error.clientError });
+    }
+    console.error('[orders] Unexpected failure:', error);
+    return res.status(500).json({ error: 'Unable to place order' });
   }
 }
