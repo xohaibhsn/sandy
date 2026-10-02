@@ -109,9 +109,11 @@ const styles = `
 `;
 
 type OrderResult = {
-  id: string; status: "pending" | "confirmed" | "dispatched" | "delivered";
+  id: string;
+  status: "pending" | "confirmed" | "dispatched" | "delivered";
   items: { name: string; price: number; qty: number }[];
-  total: number; name: string; email: string; phone: string; address: string; date: string;
+  total: number;
+  date: string;
 };
 
 const statusSteps = [
@@ -125,6 +127,7 @@ const statusOrder = ["pending", "confirmed", "dispatched", "delivered"];
 
 export default function OrderTrackingPage() {
   const [query, setQuery] = useState("");
+  const [contactHint, setContactHint] = useState("");
   const [result, setResult] = useState<OrderResult | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -133,30 +136,39 @@ export default function OrderTrackingPage() {
 
   const handleSearch = async () => {
     const trimmed = query.trim();
-    if (!trimmed) return;
+    const verifier = contactHint.trim();
+    if (!trimmed || !verifier) return;
     setSearching(true);
     setResult(null);
     setNotFound(false);
     try {
-      const res = await fetch(`/api/track?order_id=${encodeURIComponent(trimmed)}`);
+      const body: { order_id: string; email?: string; phone?: string } = { order_id: trimmed };
+      if (verifier.includes("@")) body.email = verifier;
+      else body.phone = verifier;
+
+      const res = await fetch("/api/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const data = await res.json();
       if (res.ok && data.order) {
         const o = data.order;
-        const items = (data.items || []).map((it: any) => ({
-          name: it.product_name,
-          price: parseFloat(it.price),
-          qty: it.quantity,
-        }));
+        const items = (Array.isArray(data.items) ? data.items : []).map(
+          (it: { product_name: string; price: string | number; quantity: number }) => ({
+            name: it.product_name,
+            price: parseFloat(String(it.price)),
+            qty: it.quantity,
+          })
+        );
         setResult({
           id: o.order_id,
           status: o.status,
           items,
-          total: parseFloat(o.total),
-          name: o.customer_name,
-          email: o.customer_email,
-          phone: o.customer_phone,
-          address: [o.delivery_address, o.city, o.postcode].filter(Boolean).join(", "),
-          date: o.created_at ? new Date(o.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" }) : "",
+          total: parseFloat(String(o.total)),
+          date: o.created_at
+            ? new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+            : "",
         });
       } else {
         setNotFound(true);
@@ -197,7 +209,7 @@ export default function OrderTrackingPage() {
         </div>
 
         <div className="search-section">
-          <div className="search-box">
+          <div className="search-box" style={{ flexDirection: "column", alignItems: "stretch" }}>
             <input
               className="search-input"
               type="text"
@@ -205,10 +217,26 @@ export default function OrderTrackingPage() {
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
+              autoComplete="off"
             />
-            <button className="search-btn" onClick={handleSearch} disabled={searching}>{searching ? "Searching..." : cmsText(sc, "tracking_btn", "Track Order")}</button>
+            <input
+              className="search-input"
+              type="text"
+              placeholder="Email or phone used at checkout"
+              value={contactHint}
+              onChange={e => setContactHint(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}
+              autoComplete="off"
+            />
+            <button className="search-btn" onClick={handleSearch} disabled={searching} style={{ width: "100%" }}>
+              {searching ? "Searching..." : cmsText(sc, "tracking_btn", "Track Order")}
+            </button>
           </div>
-          {notFound && <p className="error-msg">❌ Order not found. Please check your Order ID and try again.</p>}
+          {notFound && (
+            <p className="error-msg">
+              Order not found or the details do not match. Please check your Order ID and the email or phone used at checkout.
+            </p>
+          )}
         </div>
 
         {result && (
@@ -266,16 +294,6 @@ export default function OrderTrackingPage() {
                       );
                     })}
                   </div>
-                </div>
-
-                {/* Customer Info */}
-                <div className="customer-info">
-                  <h4>Delivery Details</h4>
-                  <div className="info-row"><span>Name</span><span>{result.name}</span></div>
-                  <div className="info-row"><span>Email</span><span>{result.email}</span></div>
-                  <div className="info-row"><span>Phone</span><span>{result.phone}</span></div>
-                  <div className="info-row"><span>Address</span><span>{result.address}</span></div>
-                  <div className="info-row"><span>Order Date</span><span>{result.date}</span></div>
                 </div>
               </div>
             </div>
