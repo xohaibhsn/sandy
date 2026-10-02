@@ -3,6 +3,30 @@ import pool from '../../lib/db';
 import { SITE_URL } from '../../lib/site';
 import { getAdminSession, requireAdmin } from '../../lib/adminAuth';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
+import {
+  assertSafeCanonicalUrl,
+  assertSafeImageUrl,
+  UrlValidationError,
+} from '../../lib/urlValidation';
+
+function resolveBlogFeaturedImage(raw: unknown): string {
+  if (raw === undefined || raw === null) {
+    return assertSafeImageUrl('');
+  }
+  return assertSafeImageUrl(raw);
+}
+
+function resolveBlogCanonical(raw: unknown, slug: unknown): string {
+  if (raw !== undefined && raw !== null && typeof raw !== 'string') {
+    throw new UrlValidationError('Invalid URL or path');
+  }
+  const custom = typeof raw === 'string' ? raw.trim() : '';
+  if (custom) {
+    return assertSafeCanonicalUrl(custom, SITE_URL);
+  }
+  const slugPart = typeof slug === 'string' ? slug : '';
+  return assertSafeCanonicalUrl(`${SITE_URL}/blog/${slugPart || ''}`, SITE_URL);
+}
 
 let initializationPromise: Promise<void> | null = null;
 
@@ -129,22 +153,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'POST') {
       const { title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs } = req.body;
-      const finalCanonical = (canonical_url || '').trim() || `${SITE_URL}/blog/${slug || ''}`;
+      const safeFeaturedImage = resolveBlogFeaturedImage(featured_image);
+      const finalCanonical = resolveBlogCanonical(canonical_url, slug);
       const safeContent = sanitizeRichHtml(content || '');
       const [result]: any = await pool.query(
         'INSERT INTO blog_posts (title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
-        [title, slug || '', excerpt || '', safeContent, category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', featured_image || '', meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null]
+        [title, slug || '', excerpt || '', safeContent, category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', safeFeaturedImage, meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null]
       );
       return res.status(200).json({ success: true, id: result.insertId });
     }
 
     if (req.method === 'PUT') {
       const { id, title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs } = req.body;
-      const finalCanonical = (canonical_url || '').trim() || `${SITE_URL}/blog/${slug || ''}`;
+      const safeFeaturedImage = resolveBlogFeaturedImage(featured_image);
+      const finalCanonical = resolveBlogCanonical(canonical_url, slug);
       const safeContent = sanitizeRichHtml(content || '');
       await pool.query(
         'UPDATE blog_posts SET title=?, slug=?, excerpt=?, content=?, category=?, emoji=?, badge=?, badgeText=?, featured_image=?, meta_title=?, meta_description=?, focus_keyword=?, status=?, featured=?, canonical_url=?, faqs=? WHERE id=?',
-        [title, slug || '', excerpt || '', safeContent, category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', featured_image || '', meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null, id]
+        [title, slug || '', excerpt || '', safeContent, category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', safeFeaturedImage, meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null, id]
       );
       return res.status(200).json({ success: true });
     }
@@ -157,6 +183,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
+    if (error instanceof UrlValidationError) {
+      return res.status(400).json({ error: 'Invalid URL or path' });
+    }
     return res.status(500).json({ error: error.message });
   }
 }

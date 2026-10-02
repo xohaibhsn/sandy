@@ -10,6 +10,12 @@ import {
 } from '../../lib/site';
 import { requireAdmin } from '../../lib/adminAuth';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
+import {
+  assertSafeHttpUrl,
+  assertSafeImageUrl,
+  assertSafeInternalPath,
+  UrlValidationError,
+} from '../../lib/urlValidation';
 
 /** TipTap / rich-HTML site_content keys — write-time sanitize only these. */
 const RICH_HTML_CONTENT_KEYS = new Set([
@@ -21,10 +27,62 @@ const RICH_HTML_CONTENT_KEYS = new Set([
   'refund_content',
 ]);
 
-function persistSiteContentValue(key: string, value: unknown): string {
+/** CMS navigation links that render into href — internal paths only. */
+const INTERNAL_LINK_CONTENT_KEYS = new Set([
+  'home_hero_btn_link',
+  'home_hero_btn2_link',
+  'home_view_all_link',
+  'cart_empty_link',
+  'order_success_track_link',
+  'about_cta_btn1_link',
+  'about_cta_btn2_link',
+  'blog_post_cta_link',
+]);
+
+/** External social profile URLs — HTTPS only. */
+const SOCIAL_URL_CONTENT_KEYS = new Set([
+  'social_instagram',
+  'social_facebook',
+  'social_tiktok',
+]);
+
+/**
+ * Authoritative write-time value validation for site_content.
+ * Known key policy beats caller-supplied content_type.
+ */
+function persistSiteContentValue(
+  key: string,
+  value: unknown,
+  callerContentType?: unknown
+): string {
   if (RICH_HTML_CONTENT_KEYS.has(key)) {
     return sanitizeRichHtml(value);
   }
+
+  if (INTERNAL_LINK_CONTENT_KEYS.has(key)) {
+    if (typeof value !== 'string') {
+      throw new UrlValidationError('Invalid URL or path');
+    }
+    return assertSafeInternalPath(value);
+  }
+
+  if (SOCIAL_URL_CONTENT_KEYS.has(key)) {
+    return assertSafeHttpUrl(value, { allowEmpty: true });
+  }
+
+  const defaults = DEFAULTS.find((d) => d[0] === key);
+  const defaultType = (defaults?.[2] as string) || '';
+  const suppliedType =
+    typeof callerContentType === 'string' ? callerContentType.toLowerCase() : '';
+
+  if (defaultType === 'image' || (!defaults && suppliedType === 'image')) {
+    return assertSafeImageUrl(value);
+  }
+
+  if (!defaults && suppliedType === 'url') {
+    return assertSafeHttpUrl(value, { allowEmpty: true });
+  }
+
   return String(value ?? '');
 }
 
@@ -438,14 +496,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       if (updates && Array.isArray(updates)) {
+        const prepared: { contentKey: string; safeValue: string }[] = [];
         for (const u of updates) {
           if (!u?.key) continue;
           const contentKey = String(u.key);
-          await upsert(contentKey, persistSiteContentValue(contentKey, u.value));
+          prepared.push({
+            contentKey,
+            safeValue: persistSiteContentValue(contentKey, u.value),
+          });
+        }
+        for (const row of prepared) {
+          await upsert(row.contentKey, row.safeValue);
         }
       } else if (key) {
         const contentKey = String(key);
-        await upsert(contentKey, persistSiteContentValue(contentKey, value));
+        const safeValue = persistSiteContentValue(contentKey, value);
+        await upsert(contentKey, safeValue);
       } else {
         return res.status(400).json({ error: 'No content keys provided' });
       }
@@ -455,9 +521,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'PUT') {
       const { content_key, content_value, content_type, page_name, label } = req.body;
       const key = String(content_key || '');
-      const safeValue = RICH_HTML_CONTENT_KEYS.has(key)
-        ? sanitizeRichHtml(content_value)
-        : (content_value || '');
+      const safeValue = persistSiteContentValue(key, content_value, content_type);
       await pool.query(
         'INSERT INTO site_content (content_key,content_value,content_type,page_name,label) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE content_value=?,label=?',
         [content_key, safeValue, content_type||'text', page_name||'', label||content_key, safeValue, label||content_key]
@@ -473,6 +537,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
+    if (error instanceof UrlValidationError) {
+      return res.status(400).json({ error: 'Invalid URL or path' });
+    }
     return res.status(500).json({ error: error.message });
   }
 }

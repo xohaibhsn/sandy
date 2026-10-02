@@ -13,6 +13,7 @@ import {
   calculateOrderTotals,
   type PricedLineItem,
 } from '../../lib/orderPricing';
+import { assertSafeReceiptUrl, UrlValidationError } from '../../lib/urlValidation';
 
 const ALLOWED_PAYMENT_METHODS = new Set(['cod', 'jazzcash', 'easypaisa', 'bank']);
 
@@ -167,6 +168,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (code.length > 0) couponInput = code;
     }
 
+    let safeReceiptPath = '';
+    try {
+      safeReceiptPath = assertSafeReceiptUrl(receipt_path.value);
+    } catch (err) {
+      if (err instanceof UrlValidationError) {
+        return res.status(400).json({ error: 'Invalid receipt reference' });
+      }
+      throw err;
+    }
+
     await ensureShopTables();
 
     // Fail before creating an order if contact config cannot be retrieved.
@@ -319,7 +330,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           postcode.value,
           notes.value,
           payment_method,
-          receipt_path.value,
+          safeReceiptPath,
           total,
           persistedCoupon,
           discount_amount,
