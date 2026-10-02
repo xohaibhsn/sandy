@@ -28,6 +28,44 @@ function paymentLabel(method: string): string {
   return PAYMENT_OPTIONS.find((p) => p.val === method)?.label || method;
 }
 
+/** Authoritative /api/orders success item (Phase B contract). */
+type OrderSuccessSnapshotItem = {
+  id: string;
+  name: string;
+  price: number;
+  qty: number;
+};
+
+function parseNonNegMoney(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+function mapAuthoritativeOrderItems(raw: unknown): OrderSuccessSnapshotItem[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const items: OrderSuccessSnapshotItem[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+    const rec = row as Record<string, unknown>;
+    const productId = rec.product_id;
+    const name = rec.product_name;
+    const price = Number(rec.price);
+    const qty = rec.quantity;
+    if (typeof productId !== "number" && typeof productId !== "string") return null;
+    if (typeof name !== "string" || !name.trim()) return null;
+    if (!Number.isFinite(price) || price < 0) return null;
+    if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1) return null;
+    items.push({
+      id: String(productId),
+      name: name.trim(),
+      price,
+      qty,
+    });
+  }
+  return items;
+}
+
 const navStyles = `
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
   body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow-x:hidden; }
@@ -257,25 +295,70 @@ export default function CartPage() {
           payment_method: paymentMethod,
           receipt_path: receiptPath,
           payment_reference: paymentReference || null,
-          items: cart,
-          total: grandTotal,
+          items: cart.map((item) => ({ id: item.id, qty: item.qty })),
           coupon_code: couponApplied?.code || null,
-          discount_amount: discountAmount,
-          vat_amount: vatAmount,
         })
       });
 
-      const data = await res.json();
-      if (data.order_id) {
-        const oid = data.order_id;
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
+      const orderId =
+        res.ok && data && typeof (data as { order_id?: unknown }).order_id === "string"
+          ? (data as { order_id: string }).order_id
+          : null;
+
+      if (orderId) {
+        const payload = data as {
+          subtotal?: unknown;
+          shipping?: unknown;
+          vat_amount?: unknown;
+          discount_amount?: unknown;
+          total?: unknown;
+          coupon_code?: unknown;
+          items?: unknown;
+        };
+
+        const serverItems = mapAuthoritativeOrderItems(payload.items);
+        const serverSubtotal = parseNonNegMoney(payload.subtotal);
+        const serverShipping = parseNonNegMoney(payload.shipping);
+        const serverVatAmount = parseNonNegMoney(payload.vat_amount);
+        const serverDiscountAmount = parseNonNegMoney(payload.discount_amount);
+        const serverGrandTotal = parseNonNegMoney(payload.total);
+
+        if (
+          !serverItems ||
+          serverSubtotal === null ||
+          serverShipping === null ||
+          serverVatAmount === null ||
+          serverDiscountAmount === null ||
+          serverGrandTotal === null
+        ) {
+          // Order is already committed — do not present as placement failure / retry.
+          clearCart();
+          setOrderError(
+            `Your order ${orderId} was placed successfully, but we couldn't load the full confirmation details. Please contact support with this Order ID. Do not place the order again.`
+          );
+          setPlacing(false);
+          return;
+        }
+
+        const serverCouponCode =
+          typeof payload.coupon_code === "string" && payload.coupon_code.trim()
+            ? payload.coupon_code.trim()
+            : null;
+        const successCouponApplied =
+          serverCouponCode && serverDiscountAmount > 0
+            ? { code: serverCouponCode }
+            : null;
 
         const host = SITE_URL.replace(/^https?:\/\//, "");
-        const itemsList = cart.map(i => `• ${i.name} x${i.qty} — ${formatPrice(i.price * i.qty)}`).join('\n');
+        const itemsList = serverItems
+          .map((i) => `• ${i.name} x${i.qty} — ${formatPrice(i.price * i.qty)}`)
+          .join("\n");
         const fullAddress = [form.address, form.area, form.city, form.province, form.postcode].filter(Boolean).join(', ');
         const waMessage = [
           `🛍️ *NEW ORDER — ${host}*`,
           '',
-          `📋 *Order ID:* ${oid}`,
+          `📋 *Order ID:* ${orderId}`,
           `👤 *Name:* ${form.name}`,
           `📧 *Email:* ${form.email}`,
           `📱 *Phone:* ${form.phone}`,
@@ -285,11 +368,11 @@ export default function CartPage() {
           '🛒 *Items:*',
           itemsList,
           '',
-          `💰 *Subtotal:* ${formatPrice(subtotal)}`,
-          `🚚 *Shipping:* ${shipping === 0 ? 'Free' : formatPrice(shipping)}`,
-          `🧾 *${TAX_LABEL}:* ${formatPrice(vatAmount)}`,
-          couponApplied ? `🎟️ *Discount (${couponApplied.code}):* -${formatPrice(discountAmount)}` : null,
-          `💵 *Total: ${formatPrice(grandTotal)}*`,
+          `💰 *Subtotal:* ${formatPrice(serverSubtotal)}`,
+          `🚚 *Shipping:* ${serverShipping === 0 ? 'Free' : formatPrice(serverShipping)}`,
+          `🧾 *${TAX_LABEL}:* ${formatPrice(serverVatAmount)}`,
+          successCouponApplied ? `🎟️ *Discount (${successCouponApplied.code}):* -${formatPrice(serverDiscountAmount)}` : null,
+          `💵 *Total: ${formatPrice(serverGrandTotal)}*`,
           '',
           `💳 *Payment:* ${paymentLabel(paymentMethod)}`,
           isPrepaid && receiptFile ? '✅ Payment receipt uploaded' : '',
@@ -300,15 +383,29 @@ export default function CartPage() {
         ].filter(Boolean).join('\n');
 
         sessionStorage.setItem('orderSuccess', JSON.stringify({
-          orderId: oid, items: cart, subtotal, shipping, vatAmount,
-          discountAmount, grandTotal, couponApplied, form, paymentMethod, waMessage,
+          orderId,
+          items: serverItems,
+          subtotal: serverSubtotal,
+          shipping: serverShipping,
+          vatAmount: serverVatAmount,
+          discountAmount: serverDiscountAmount,
+          grandTotal: serverGrandTotal,
+          couponApplied: successCouponApplied,
+          form,
+          paymentMethod,
+          waMessage,
         }));
         clearCart();
         window.location.href = '/cart/success';
       } else {
-        setOrderError(data.error?.includes("connect") || data.error?.includes("timeout")
-          ? "Our system is temporarily unavailable. Please try again in a moment."
-          : "Order could not be placed. Please try again or contact us on WhatsApp.");
+        const serverError =
+          data && typeof (data as { error?: unknown }).error === "string"
+            ? (data as { error: string }).error.trim()
+            : "";
+        setOrderError(
+          serverError ||
+            "Order could not be placed. Please try again or contact us on WhatsApp."
+        );
       }
     } catch {
       setOrderError("Network error. Please check your connection and try again.");
