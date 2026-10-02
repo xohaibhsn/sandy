@@ -7,6 +7,44 @@ export const config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
 };
 
+const ALLOWED_UPLOAD_FOLDERS = new Set([
+  'sandy/products',
+  'sandy/logo',
+  'sandy/hero-slides',
+  'sandy/whatsapp-icon',
+  'sandy/og',
+  'sandy/receipts',
+]);
+
+const DEFAULT_UPLOAD_FOLDER = 'sandy/products';
+
+function resolveUploadFolder(folder: unknown): string | null {
+  if (folder === undefined || folder === null || folder === '') {
+    return DEFAULT_UPLOAD_FOLDER;
+  }
+  if (typeof folder !== 'string') return null;
+  const trimmed = folder.trim();
+  if (!ALLOWED_UPLOAD_FOLDERS.has(trimmed)) return null;
+  return trimmed;
+}
+
+function assertSafeUploadDataUrl(file: unknown, isReceipt: boolean): string {
+  if (typeof file !== 'string' || !file) {
+    throw new Error('INVALID_FILE_DATA');
+  }
+  const imagePrefixOk = file.startsWith('data:image/') && file.includes(';base64,');
+  const pdfPrefixOk =
+    isReceipt && file.startsWith('data:application/pdf;base64,');
+  if (!imagePrefixOk && !pdfPrefixOk) {
+    throw new Error('INVALID_FILE_DATA');
+  }
+  const comma = file.indexOf(',');
+  if (comma < 0 || file.slice(comma + 1).length === 0) {
+    throw new Error('INVALID_FILE_DATA');
+  }
+  return file;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const session = await requireAdmin(req, res);
@@ -14,16 +52,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const { file, name, folder } = req.body;
-    if (!file || !name) return res.status(400).json({ error: 'No file provided' });
 
-    // Determine Cloudinary folder — caller can override, default to products
-    const cloudinaryFolder = (folder as string) || 'sandy/products';
-    const isReceipt = cloudinaryFolder.includes('receipt');
-    const isLogo = cloudinaryFolder.includes('logo');
-    const isWhatsAppIcon = cloudinaryFolder.includes('whatsapp');
-    const isHeroSlide = cloudinaryFolder.includes('hero-slides');
-    const isOg = cloudinaryFolder.includes('sandy/og') || cloudinaryFolder.endsWith('/og');
+    const cloudinaryFolder = resolveUploadFolder(folder);
+    if (!cloudinaryFolder) {
+      return res.status(400).json({ error: 'Invalid upload folder' });
+    }
+
+    if (typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const isReceipt = cloudinaryFolder === 'sandy/receipts';
+    const isLogo = cloudinaryFolder === 'sandy/logo';
+    const isWhatsAppIcon = cloudinaryFolder === 'sandy/whatsapp-icon';
+    const isHeroSlide = cloudinaryFolder === 'sandy/hero-slides';
+    const isOg = cloudinaryFolder === 'sandy/og';
     const preserveImage = isReceipt || isLogo || isWhatsAppIcon || isHeroSlide || isOg;
+
+    let safeFile: string;
+    try {
+      safeFile = assertSafeUploadDataUrl(file, isReceipt);
+    } catch {
+      return res.status(400).json({ error: 'Invalid file data' });
+    }
 
     // Use Cloudinary if credentials are configured
     if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
@@ -64,12 +115,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ];
       }
 
-      const result = await cloudinary.uploader.upload(file, uploadOptions);
+      const result = await cloudinary.uploader.upload(safeFile, uploadOptions);
       return res.status(200).json({ path: result.secure_url });
     }
 
     // Fallback: save locally (localhost dev without Cloudinary creds)
-    const base64Data = file.replace(/^data:[^;]+;base64,/, '');
+    const base64Data = safeFile.replace(/^data:[^;]+;base64,/, '');
     const localSub = isReceipt ? 'receipts' : isLogo ? 'logo' : isWhatsAppIcon ? 'whatsapp' : '';
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads', localSub);
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });

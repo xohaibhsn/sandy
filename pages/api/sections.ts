@@ -1,8 +1,35 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { requireAdmin } from '../../lib/adminAuth';
+import {
+  assertSafeImageUrl,
+  assertSafeInternalPath,
+  UrlValidationError,
+} from '../../lib/urlValidation';
 
-
+/** Exact section JSON keys that carry navigable URLs or image refs. */
+function validateSectionValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => validateSectionValue(item));
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === 'button_link' || k === 'secondary_button_link') {
+        if (typeof v !== 'string') {
+          throw new UrlValidationError('Invalid URL or path');
+        }
+        out[k] = assertSafeInternalPath(v);
+      } else if (k === 'hero_image') {
+        out[k] = assertSafeImageUrl(v);
+      } else {
+        out[k] = validateSectionValue(v);
+      }
+    }
+    return out;
+  }
+  return value;
+}
 
 const DEFAULTS = [
   ['home_hero','{"title":"Quality products, delivered across Pakistan","subtitle":"S&Y is your Pakistani online store for accessories, gadgets and everyday essentials.","button_text":"Shop Now","button_link":"/products","secondary_button_text":"Learn More","secondary_button_link":"/about"}','json','home','Hero Section',1,1],
@@ -117,7 +144,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'POST') {
       const { key, value } = req.body;
       if (!key) return res.status(400).json({ error: 'Key required' });
-      const json = typeof value === 'string' ? value : JSON.stringify(value);
+
+      let parsed: unknown;
+      if (typeof value === 'string') {
+        try {
+          parsed = JSON.parse(value);
+        } catch {
+          return res.status(400).json({ error: 'Invalid section data' });
+        }
+      } else {
+        parsed = value;
+      }
+
+      const validated = validateSectionValue(parsed);
+      const json = JSON.stringify(validated);
       await pool.query('UPDATE site_content SET content_value=? WHERE content_key=?', [json, key]);
       return res.status(200).json({ success: true });
     }
@@ -141,6 +181,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
+    if (error instanceof UrlValidationError) {
+      return res.status(400).json({ error: 'Invalid URL or path' });
+    }
     return res.status(500).json({ error: error.message });
   }
 }
