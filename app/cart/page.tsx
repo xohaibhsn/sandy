@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = 'force-dynamic';
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useCart } from "../lib/cartContext";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
@@ -71,61 +71,14 @@ const CHECKOUT_RECEIPT_SIG = "sandyCheckoutReceiptSignature";
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function getOrCreateCheckoutIdempotencyKey(): string {
-  try {
-    const existing = sessionStorage.getItem(CHECKOUT_IDEM_KEY);
-    if (existing && UUID_V4_RE.test(existing.trim())) {
-      return existing.trim().toLowerCase();
-    }
-  } catch {
-    /* ignore */
-  }
-  const key = crypto.randomUUID();
-  try {
-    sessionStorage.setItem(CHECKOUT_IDEM_KEY, key);
-  } catch {
-    /* ignore */
-  }
-  return key;
-}
-
-function clearCheckoutAttemptState(): void {
-  try {
-    sessionStorage.removeItem(CHECKOUT_IDEM_KEY);
-    sessionStorage.removeItem(CHECKOUT_RECEIPT_PATH);
-    sessionStorage.removeItem(CHECKOUT_RECEIPT_SIG);
-  } catch {
-    /* ignore */
-  }
+function normalizeUuidV4(value: string | null | undefined): string {
+  if (!value) return "";
+  const trimmed = value.trim().toLowerCase();
+  return UUID_V4_RE.test(trimmed) ? trimmed : "";
 }
 
 function receiptFileSignature(file: File): string {
   return `${file.name}|${file.size}|${file.type}|${file.lastModified}`;
-}
-
-function readCachedReceiptPath(): string {
-  try {
-    return sessionStorage.getItem(CHECKOUT_RECEIPT_PATH) || "";
-  } catch {
-    return "";
-  }
-}
-
-function readCachedReceiptSignature(): string {
-  try {
-    return sessionStorage.getItem(CHECKOUT_RECEIPT_SIG) || "";
-  } catch {
-    return "";
-  }
-}
-
-function cacheReceiptPath(path: string, signature: string): void {
-  try {
-    sessionStorage.setItem(CHECKOUT_RECEIPT_PATH, path);
-    sessionStorage.setItem(CHECKOUT_RECEIPT_SIG, signature);
-  } catch {
-    /* ignore */
-  }
 }
 
 const navStyles = `
@@ -303,6 +256,87 @@ export default function CartPage() {
   const [couponApplied, setCouponApplied] = useState<{code:string;type:string;value:number;discount_amount:number;message:string}|null>(null);
   const [couponError, setCouponError] = useState("");
   const [couponChecking, setCouponChecking] = useState(false);
+
+  // Same-page fallback when sessionStorage is unavailable/blocked.
+  const idempotencyKeyRef = useRef("");
+  const receiptPathRef = useRef("");
+  const receiptSignatureRef = useRef("");
+
+  const getOrCreateCheckoutIdempotencyKey = (): string => {
+    try {
+      const existing = normalizeUuidV4(sessionStorage.getItem(CHECKOUT_IDEM_KEY));
+      if (existing) {
+        idempotencyKeyRef.current = existing;
+        return existing;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const memoryKey = normalizeUuidV4(idempotencyKeyRef.current);
+    if (memoryKey) {
+      return memoryKey;
+    }
+
+    const key = crypto.randomUUID();
+    idempotencyKeyRef.current = key;
+    try {
+      sessionStorage.setItem(CHECKOUT_IDEM_KEY, key);
+    } catch {
+      /* ignore — memory fallback remains authoritative for this mount */
+    }
+    return key;
+  };
+
+  const readCachedReceiptPath = (): string => {
+    try {
+      const stored = sessionStorage.getItem(CHECKOUT_RECEIPT_PATH) || "";
+      if (stored) {
+        receiptPathRef.current = stored;
+        return stored;
+      }
+    } catch {
+      /* ignore */
+    }
+    return receiptPathRef.current || "";
+  };
+
+  const readCachedReceiptSignature = (): string => {
+    try {
+      const stored = sessionStorage.getItem(CHECKOUT_RECEIPT_SIG) || "";
+      if (stored) {
+        receiptSignatureRef.current = stored;
+        return stored;
+      }
+    } catch {
+      /* ignore */
+    }
+    return receiptSignatureRef.current || "";
+  };
+
+  const cacheReceiptPath = (path: string, signature: string): void => {
+    receiptPathRef.current = path;
+    receiptSignatureRef.current = signature;
+    try {
+      sessionStorage.setItem(CHECKOUT_RECEIPT_PATH, path);
+      sessionStorage.setItem(CHECKOUT_RECEIPT_SIG, signature);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const clearCheckoutAttemptState = (): void => {
+    idempotencyKeyRef.current = "";
+    receiptPathRef.current = "";
+    receiptSignatureRef.current = "";
+    try {
+      sessionStorage.removeItem(CHECKOUT_IDEM_KEY);
+      sessionStorage.removeItem(CHECKOUT_RECEIPT_PATH);
+      sessionStorage.removeItem(CHECKOUT_RECEIPT_SIG);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const shipping = 0;
   const subtotal = total;
