@@ -5,7 +5,6 @@ import { useCart } from "../lib/cartContext";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import {
-  CLOUDINARY_FOLDER,
   PAKISTAN_PROVINCES,
   SITE_URL,
   TAX_LABEL,
@@ -266,19 +265,32 @@ export default function CartPage() {
     try {
       let receiptPath = "";
       if (receiptFile) {
+        if (!/^(image\/(jpeg|png|webp|gif)|application\/pdf)$/i.test(receiptFile.type)) {
+          setOrderError("Please upload a JPG, PNG, WEBP, GIF or PDF receipt.");
+          setPlacing(false);
+          return;
+        }
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result as string);
           reader.onerror = reject;
           reader.readAsDataURL(receiptFile);
         });
-        const uploadRes = await fetch("/api/upload", {
+        const uploadRes = await fetch("/api/upload-receipt", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file: base64, name: receiptFile.name, folder: `${CLOUDINARY_FOLDER}/receipts` }),
+          body: JSON.stringify({ file: base64, name: receiptFile.name }),
         });
-        const uploadData = await uploadRes.json();
-        receiptPath = uploadData.path || "";
+        const uploadData = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok || !uploadData.path) {
+          setOrderError(
+            (typeof uploadData.error === "string" && uploadData.error.trim()) ||
+              "Receipt upload failed. Please try a JPG, PNG, WEBP, GIF or PDF under 5MB."
+          );
+          setPlacing(false);
+          return;
+        }
+        receiptPath = uploadData.path;
       }
 
       const res = await fetch("/api/orders", {
@@ -570,7 +582,7 @@ export default function CartPage() {
                           <div className="upload-text">
                             {receiptFile ? <strong>{receiptFile.name}</strong> : <><strong>Click to upload</strong> your receipt</>}
                           </div>
-                          <input type="file" accept="image/*,.pdf" onChange={e => setReceiptFile(e.target.files?.[0] || null)} />
+                          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf" onChange={e => setReceiptFile(e.target.files?.[0] || null)} />
                         </div>
                       </div>
                       <div className="form-group">
