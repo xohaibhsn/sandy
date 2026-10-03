@@ -53,9 +53,9 @@ async function backfillProductSlugs() {
   await addColumn('ALTER TABLE products ADD UNIQUE KEY unique_slug (slug)');
 }
 
-async function activateAllProducts() {
+async function fillNullActive() {
   try {
-    await pool.query('UPDATE products SET active=1 WHERE active IS NULL OR active=0');
+    await pool.query('UPDATE products SET active=1 WHERE active IS NULL');
   } catch {
     // ignore
   }
@@ -142,7 +142,7 @@ async function ensureProductsOnce() {
   }
 
   await backfillProductSlugs();
-  await activateAllProducts();
+  await fillNullActive();
   await seedCatalogIfEmpty();
   productsReady = true;
 }
