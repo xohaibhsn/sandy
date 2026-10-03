@@ -1,17 +1,20 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
+import crypto from 'crypto';
 import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import nodemailer from 'nodemailer';
 import { getContactConfig } from '../../lib/contact-config';
 import { ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL, TAX_LABEL, TAX_RATE, formatPrice } from '../../lib/site';
 import { ensureShopTables } from '../../lib/ensureShopTables';
+import { ensureOrderIdempotencyTable } from '../../lib/ensureOrderIdempotency';
 import {
   normalizeRequestItems,
   calculateSubtotal,
   calculateCouponDiscount,
   calculateOrderTotals,
   type PricedLineItem,
+  type RequestLineItem,
 } from '../../lib/orderPricing';
 import { assertSafeReceiptUrl, UrlValidationError } from '../../lib/urlValidation';
 
@@ -29,6 +32,9 @@ const FIELD_MAX = {
   notes: 4000,
   coupon_code: 50,
 } as const;
+
+const UUID_V4_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 class OrderHttpError extends Error {
   status: number;
@@ -88,6 +94,55 @@ function normalizePaymentMethod(raw: unknown): string | null {
   return null;
 }
 
+function parseIdempotencyKey(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const key = raw.trim().toLowerCase();
+  if (!UUID_V4_RE.test(key)) return null;
+  return key;
+}
+
+function isMysqlDupEntry(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { errno?: number; code?: string };
+  return e.errno === 1062 || e.code === 'ER_DUP_ENTRY';
+}
+
+function buildCheckoutFingerprint(input: {
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
+  delivery_address: string;
+  city: string;
+  postcode: string;
+  notes: string;
+  payment_method: string;
+  payment_reference: string;
+  receipt_path: string;
+  coupon_code: string;
+  items: RequestLineItem[];
+}): string {
+  const items = [...input.items]
+    .sort((a, b) => a.id - b.id)
+    .map((item) => ({ id: item.id, qty: item.qty }));
+
+  const canonical = {
+    customer_name: input.customer_name,
+    customer_email: input.customer_email,
+    customer_phone: input.customer_phone,
+    delivery_address: input.delivery_address,
+    city: input.city,
+    postcode: input.postcode,
+    notes: input.notes,
+    payment_method: input.payment_method,
+    payment_reference: input.payment_reference,
+    receipt_path: input.receipt_path,
+    coupon_code: input.coupon_code,
+    items,
+  };
+
+  return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
 type ProductRow = RowDataPacket & {
   id: number;
   name: string;
@@ -105,6 +160,96 @@ type CouponRow = RowDataPacket & {
   expires_at: unknown;
   is_active: unknown;
 };
+
+type AttemptRow = RowDataPacket & {
+  idempotency_key: string;
+  request_fingerprint: string;
+  order_id: string | null;
+};
+
+type OrderRow = RowDataPacket & {
+  order_id: string;
+  total: unknown;
+  coupon_code: unknown;
+  discount_amount: unknown;
+  vat_amount: unknown;
+};
+
+type OrderItemRow = RowDataPacket & {
+  product_id: unknown;
+  product_name: unknown;
+  price: unknown;
+  quantity: unknown;
+};
+
+type ContactConfig = Awaited<ReturnType<typeof getContactConfig>>;
+
+async function buildAuthoritativeReplayResponse(
+  orderId: string,
+  contact: ContactConfig
+): Promise<Record<string, unknown> | null> {
+  const [orderRows] = await pool.query<OrderRow[]>(
+    `SELECT order_id, total, coupon_code, discount_amount, vat_amount
+     FROM orders WHERE order_id = ? LIMIT 1`,
+    [orderId]
+  );
+  if (!orderRows.length) return null;
+
+  const order = orderRows[0];
+  const [itemRows] = await pool.query<OrderItemRow[]>(
+    `SELECT product_id, product_name, price, quantity
+     FROM order_items WHERE order_id = ? ORDER BY id ASC`,
+    [orderId]
+  );
+  if (!itemRows.length) return null;
+
+  const items: PricedLineItem[] = [];
+  for (const row of itemRows) {
+    const productId = Number(row.product_id);
+    const quantity = Number(row.quantity);
+    const price = parseDbMoney(row.price);
+    if (!Number.isInteger(productId) || productId <= 0) return null;
+    if (!Number.isInteger(quantity) || quantity <= 0) return null;
+    if (price === null) return null;
+    items.push({
+      product_id: productId,
+      product_name: String(row.product_name ?? ''),
+      price,
+      quantity,
+    });
+  }
+
+  const subtotalResult = calculateSubtotal(items);
+  if (!subtotalResult.ok) return null;
+
+  const vat_amount = parseDbMoney(order.vat_amount);
+  const discount_amount = parseDbMoney(order.discount_amount);
+  const total = parseDbMoney(order.total);
+  if (vat_amount === null || discount_amount === null || total === null) return null;
+
+  const couponRaw = order.coupon_code;
+  const coupon_code =
+    typeof couponRaw === 'string' && couponRaw.trim() ? couponRaw.trim() : null;
+
+  return {
+    success: true,
+    order_id: String(order.order_id),
+    whatsappUrl: contact.whatsappUrl,
+    telegramUrl: contact.telegramUrl,
+    subtotal: subtotalResult.amount,
+    shipping: 0,
+    vat_amount,
+    discount_amount,
+    total,
+    coupon_code,
+    items: items.map((item) => ({
+      product_id: item.product_id,
+      product_name: item.product_name,
+      price: item.price,
+      quantity: item.quantity,
+    })),
+  };
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -191,13 +336,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw err;
     }
 
+    const idempotencyKey = parseIdempotencyKey(body.idempotency_key);
+    if (!idempotencyKey) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    const fingerprint = buildCheckoutFingerprint({
+      customer_name: customer_name.value,
+      customer_email: customer_email.value,
+      customer_phone: customer_phone.value,
+      delivery_address: delivery_address.value,
+      city: city.value,
+      postcode: postcode.value,
+      notes: notes.value,
+      payment_method,
+      payment_reference: payment_reference.value,
+      receipt_path: safeReceiptPath,
+      coupon_code: couponInput || '',
+      items: normalizedItems.items,
+    });
+
     await ensureShopTables();
+    await ensureOrderIdempotencyTable();
 
     // Fail before creating an order if contact config cannot be retrieved.
     const contact = await getContactConfig();
 
     const shipping = 0;
-    const order_id = 'ORD-' + Date.now();
+    let order_id = '';
+    let createdNewOrder = false;
 
     let authoritativeItems: PricedLineItem[] = [];
     let subtotal = 0;
@@ -209,6 +376,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
+
+      try {
+        await connection.query(
+          `INSERT INTO order_checkout_attempts (idempotency_key, request_fingerprint, order_id)
+           VALUES (?, ?, NULL)`,
+          [idempotencyKey, fingerprint]
+        );
+      } catch (claimErr) {
+        if (!isMysqlDupEntry(claimErr)) {
+          throw claimErr;
+        }
+
+        try {
+          await connection.rollback();
+        } catch {
+          /* ignore */
+        }
+
+        const [attemptRows] = await pool.query<AttemptRow[]>(
+          `SELECT idempotency_key, request_fingerprint, order_id
+           FROM order_checkout_attempts WHERE idempotency_key = ? LIMIT 1`,
+          [idempotencyKey]
+        );
+
+        if (!attemptRows.length) {
+          return res.status(409).json({ error: 'Checkout attempt conflict. Please try again.' });
+        }
+
+        const attempt = attemptRows[0];
+        if (String(attempt.request_fingerprint) !== fingerprint) {
+          return res.status(409).json({
+            error: 'Checkout attempt does not match the original request',
+          });
+        }
+
+        const existingOrderId =
+          typeof attempt.order_id === 'string' ? attempt.order_id.trim() : '';
+        if (!existingOrderId) {
+          return res.status(409).json({ error: 'Checkout attempt conflict. Please try again.' });
+        }
+
+        const replay = await buildAuthoritativeReplayResponse(existingOrderId, contact);
+        if (!replay) {
+          return res.status(500).json({ error: 'Unable to place order' });
+        }
+        return res.status(200).json(replay);
+      }
+
+      // First-create path only — product/coupon validation after successful claim.
+      order_id = 'ORD-' + Date.now();
 
       const ids = normalizedItems.items.map((item) => item.id);
       const placeholders = ids.map(() => '?').join(',');
@@ -370,7 +587,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
 
+      const [mapResult] = await connection.query<ResultSetHeader>(
+        `UPDATE order_checkout_attempts SET order_id = ? WHERE idempotency_key = ?`,
+        [order_id, idempotencyKey]
+      );
+      if (mapResult.affectedRows !== 1) {
+        throw new OrderHttpError(500, 'Unable to place order');
+      }
+
       await connection.commit();
+      createdNewOrder = true;
     } catch (txError) {
       try {
         await connection.rollback();
@@ -393,39 +619,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Fire-and-forget email AFTER commit — notification failure must not roll back or 500.
-    try {
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const transporter = nodemailer.createTransport({
-          host: 'smtp.hostinger.com',
-          port: 465,
-          secure: true,
-          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-        });
+    // Fire-and-forget email AFTER commit — only for newly created orders.
+    if (createdNewOrder) {
+      try {
+        if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+          const transporter = nodemailer.createTransport({
+            host: 'smtp.hostinger.com',
+            port: 465,
+            secure: true,
+            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+          });
 
-        const itemRows = authoritativeItems
-          .map(
-            (i) =>
-              `<tr>
+          const itemRows = authoritativeItems
+            .map(
+              (i) =>
+                `<tr>
           <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:14px">${i.product_name}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:14px">${i.quantity}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:14px;font-weight:600;color:#5B21B6">${formatPrice(i.price * i.quantity)}</td>
         </tr>`
-          )
-          .join('');
+            )
+            .join('');
 
-        const paymentLabel =
-          payment_method === 'cod'
-            ? 'Cash on Delivery'
-            : payment_method === 'jazzcash'
-              ? 'JazzCash'
-              : payment_method === 'easypaisa'
-                ? 'Easypaisa'
-                : payment_method === 'bank'
-                  ? 'Bank Transfer'
-                  : payment_method;
+          const paymentLabel =
+            payment_method === 'cod'
+              ? 'Cash on Delivery'
+              : payment_method === 'jazzcash'
+                ? 'JazzCash'
+                : payment_method === 'easypaisa'
+                  ? 'Easypaisa'
+                  : payment_method === 'bank'
+                    ? 'Bank Transfer'
+                    : payment_method;
 
-        const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5">
+          const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5">
 <div style="max-width:620px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
   <div style="background:#5B21B6;padding:28px 32px">
     <h2 style="color:#fff;margin:0;font-size:22px;letter-spacing:1px">🛍️ New Order Received</h2>
@@ -466,17 +693,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   </div>
 </div></body></html>`;
 
-        transporter
-          .sendMail({
-            from: `"${SITE_NAME} Orders" <${ORDERS_FROM_EMAIL}>`,
-            to: contact.email,
-            subject: `🛍️ New Order ${order_id} — ${customer_name.value}`,
-            html,
-          })
-          .catch((err: unknown) => console.error('[orders] Email notification failed:', err));
+          transporter
+            .sendMail({
+              from: `"${SITE_NAME} Orders" <${ORDERS_FROM_EMAIL}>`,
+              to: contact.email,
+              subject: `🛍️ New Order ${order_id} — ${customer_name.value}`,
+              html,
+            })
+            .catch((err: unknown) => console.error('[orders] Email notification failed:', err));
+        }
+      } catch (emailErr) {
+        console.error('[orders] Email notification setup failed:', emailErr);
       }
-    } catch (emailErr) {
-      console.error('[orders] Email notification setup failed:', emailErr);
     }
 
     return res.status(200).json({

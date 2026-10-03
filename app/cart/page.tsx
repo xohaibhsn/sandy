@@ -65,6 +65,69 @@ function mapAuthoritativeOrderItems(raw: unknown): OrderSuccessSnapshotItem[] | 
   return items;
 }
 
+const CHECKOUT_IDEM_KEY = "sandyCheckoutIdempotencyKey";
+const CHECKOUT_RECEIPT_PATH = "sandyCheckoutReceiptPath";
+const CHECKOUT_RECEIPT_SIG = "sandyCheckoutReceiptSignature";
+const UUID_V4_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function getOrCreateCheckoutIdempotencyKey(): string {
+  try {
+    const existing = sessionStorage.getItem(CHECKOUT_IDEM_KEY);
+    if (existing && UUID_V4_RE.test(existing.trim())) {
+      return existing.trim().toLowerCase();
+    }
+  } catch {
+    /* ignore */
+  }
+  const key = crypto.randomUUID();
+  try {
+    sessionStorage.setItem(CHECKOUT_IDEM_KEY, key);
+  } catch {
+    /* ignore */
+  }
+  return key;
+}
+
+function clearCheckoutAttemptState(): void {
+  try {
+    sessionStorage.removeItem(CHECKOUT_IDEM_KEY);
+    sessionStorage.removeItem(CHECKOUT_RECEIPT_PATH);
+    sessionStorage.removeItem(CHECKOUT_RECEIPT_SIG);
+  } catch {
+    /* ignore */
+  }
+}
+
+function receiptFileSignature(file: File): string {
+  return `${file.name}|${file.size}|${file.type}|${file.lastModified}`;
+}
+
+function readCachedReceiptPath(): string {
+  try {
+    return sessionStorage.getItem(CHECKOUT_RECEIPT_PATH) || "";
+  } catch {
+    return "";
+  }
+}
+
+function readCachedReceiptSignature(): string {
+  try {
+    return sessionStorage.getItem(CHECKOUT_RECEIPT_SIG) || "";
+  } catch {
+    return "";
+  }
+}
+
+function cacheReceiptPath(path: string, signature: string): void {
+  try {
+    sessionStorage.setItem(CHECKOUT_RECEIPT_PATH, path);
+    sessionStorage.setItem(CHECKOUT_RECEIPT_SIG, signature);
+  } catch {
+    /* ignore */
+  }
+}
+
 const navStyles = `
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
   body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow-x:hidden; }
@@ -263,40 +326,56 @@ export default function CartPage() {
     setOrderError("");
 
     try {
+      const idempotencyKey = getOrCreateCheckoutIdempotencyKey();
       let receiptPath = "";
+
       if (receiptFile) {
         if (!/^(image\/(jpeg|png|webp|gif)|application\/pdf)$/i.test(receiptFile.type)) {
           setOrderError("Please upload a JPG, PNG, WEBP, GIF or PDF receipt.");
           setPlacing(false);
           return;
         }
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(receiptFile);
-        });
-        const uploadRes = await fetch("/api/upload-receipt", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file: base64, name: receiptFile.name }),
-        });
-        const uploadData = await uploadRes.json().catch(() => ({}));
-        if (!uploadRes.ok || !uploadData.path) {
-          setOrderError(
-            (typeof uploadData.error === "string" && uploadData.error.trim()) ||
-              "Receipt upload failed. Please try a JPG, PNG, WEBP, GIF or PDF under 5MB."
-          );
-          setPlacing(false);
-          return;
+
+        const signature = receiptFileSignature(receiptFile);
+        const cachedPath = readCachedReceiptPath();
+        const cachedSig = readCachedReceiptSignature();
+
+        if (cachedPath && cachedSig === signature) {
+          receiptPath = cachedPath;
+        } else {
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(receiptFile);
+          });
+          const uploadRes = await fetch("/api/upload-receipt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file: base64, name: receiptFile.name }),
+          });
+          const uploadData = await uploadRes.json().catch(() => ({}));
+          if (!uploadRes.ok || !uploadData.path) {
+            setOrderError(
+              (typeof uploadData.error === "string" && uploadData.error.trim()) ||
+                "Receipt upload failed. Please try a JPG, PNG, WEBP, GIF or PDF under 5MB."
+            );
+            setPlacing(false);
+            return;
+          }
+          receiptPath = String(uploadData.path);
+          cacheReceiptPath(receiptPath, signature);
         }
-        receiptPath = uploadData.path;
+      } else {
+        // Refresh / lost File object: reuse prior path so fingerprint stays stable for retries.
+        receiptPath = readCachedReceiptPath();
       }
 
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          idempotency_key: idempotencyKey,
           customer_name: form.name,
           customer_email: form.email,
           customer_phone: form.phone,
@@ -345,6 +424,7 @@ export default function CartPage() {
           serverGrandTotal === null
         ) {
           // Order is already committed — do not present as placement failure / retry.
+          clearCheckoutAttemptState();
           clearCart();
           setOrderError(
             `Your order ${orderId} was placed successfully, but we couldn't load the full confirmation details. Please contact support with this Order ID. Do not place the order again.`
@@ -387,7 +467,7 @@ export default function CartPage() {
           `💵 *Total: ${formatPrice(serverGrandTotal)}*`,
           '',
           `💳 *Payment:* ${paymentLabel(paymentMethod)}`,
-          isPrepaid && receiptFile ? '✅ Payment receipt uploaded' : '',
+          isPrepaid && (receiptFile || receiptPath) ? '✅ Payment receipt uploaded' : '',
           paymentReference ? `🏷️ *Payment Reference:* ${paymentReference}` : isPrepaid ? '💳 *Payment Reference:* Not provided' : null,
           '',
           '📦 *Status:* Pending ⏳',
@@ -407,6 +487,7 @@ export default function CartPage() {
           paymentMethod,
           waMessage,
         }));
+        clearCheckoutAttemptState();
         clearCart();
         window.location.href = '/cart/success';
       } else {
@@ -414,10 +495,17 @@ export default function CartPage() {
           data && typeof (data as { error?: unknown }).error === "string"
             ? (data as { error: string }).error.trim()
             : "";
-        setOrderError(
-          serverError ||
-            "Order could not be placed. Please try again or contact us on WhatsApp."
-        );
+        if (res.status === 409) {
+          setOrderError(
+            serverError ||
+              "This checkout attempt differs from an earlier submission. Do not resubmit blindly — start a fresh checkout or contact support."
+          );
+        } else {
+          setOrderError(
+            serverError ||
+              "Order could not be placed. Please try again or contact us on WhatsApp."
+          );
+        }
       }
     } catch {
       setOrderError("Network error. Please check your connection and try again.");
