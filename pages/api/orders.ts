@@ -146,6 +146,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid request' });
     }
 
+    // Committed checkout UI requires these contact/address fields (postal code + notes optional).
+    // readStringField already trims, so empty / whitespace-only values are rejected here.
+    if (
+      !customer_name.value ||
+      !customer_email.value ||
+      !customer_phone.value ||
+      !delivery_address.value ||
+      !city.value ||
+      !postcode.value
+    ) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
     const payment_method = normalizePaymentMethod(body.payment_method);
     if (!payment_method) {
       return res.status(400).json({ error: 'Invalid payment method' });
