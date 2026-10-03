@@ -21,7 +21,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { slug, id, category, minPrice, maxPrice, sort } = req.query;
 
     if (id) {
-      const [rows]: any = await pool.query('SELECT * FROM products WHERE id=?', [id]);
+      const [rows]: any = await pool.query(
+        'SELECT * FROM products WHERE id=? AND active=1',
+        [id]
+      );
       return res.status(200).json(rows[0] || null);
     }
 
@@ -29,15 +32,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const s = String(slug).toLowerCase();
       const [rows]: any = await pool.query(
         `SELECT * FROM products
-         WHERE slug = ?
+         WHERE active=1 AND (
+            slug = ?
             OR LOWER(REPLACE(REPLACE(name,' ','-'),'/','')) = ?
+         )
          LIMIT 1`,
         [s, s]
       );
       return res.status(200).json(rows[0] || null);
     }
 
-    const extra: string[] = [];
+    const extra: string[] = ['active=1'];
     const params: any[] = [];
 
     if (category && category !== 'All') {
@@ -53,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       params.push(Number(maxPrice));
     }
 
-    const where = extra.length ? `WHERE ${extra.join(' AND ')}` : '';
+    const where = `WHERE ${extra.join(' AND ')}`;
     const order = sortSql(sort);
 
     try {
@@ -64,13 +69,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json(Array.isArray(rows) ? rows : []);
     } catch (err: any) {
       console.error('[api/products] filtered query', err?.message || err);
-      const [rows] = await pool.query('SELECT * FROM products');
+      const [rows] = await pool.query('SELECT * FROM products WHERE active=1');
       return res.status(200).json(Array.isArray(rows) ? rows : []);
     }
   } catch (error: any) {
     console.error('[api/products]', error?.message || error);
     try {
-      const [rows] = await pool.query('SELECT * FROM products');
+      const [rows] = await pool.query('SELECT * FROM products WHERE active=1');
       return res.status(200).json(Array.isArray(rows) ? rows : []);
     } catch {
       if (!req.query.id && !req.query.slug) {

@@ -18,8 +18,8 @@ export function parseBlogRedirectSlug(normalizedPath: string): string | null {
 
 /**
  * Live/resolvable product existence matching CURRENT TRACKED
- * app/products/[slug] semantics (HEAD): slug OR legacy name-derived slug.
- * Does NOT filter active — Proxy must not shadow a route the page can resolve.
+ * app/products/[slug] semantics: slug OR legacy name-derived slug,
+ * AND active=1 (inactive products are not public / not live).
  * Throws on DB failure so Proxy can fail-open.
  */
 export async function isLiveProductSlug(slug: string): Promise<boolean> {
@@ -28,8 +28,11 @@ export async function isLiveProductSlug(slug: string): Promise<boolean> {
   const [rows] = await pool.query(
     `SELECT 1 AS ok
      FROM products
-     WHERE slug = ?
-        OR LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', '')) = ?
+     WHERE active = 1
+       AND (
+         slug = ?
+         OR LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', '')) = ?
+       )
      LIMIT 1`,
     [s, s]
   );

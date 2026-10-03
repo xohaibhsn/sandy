@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import ProductDetail from "./ProductDetail";
 import pool from "../../../lib/db";
 import { ensureShopTables } from "@/lib/ensureShopTables";
@@ -20,8 +21,10 @@ async function getProduct(slug: string): Promise<Product | null> {
     const s = slug.toLowerCase();
     const [rows]: any = await pool.query(
       `SELECT * FROM products
-       WHERE slug = ?
-          OR LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', '')) = ?
+       WHERE (active = 1) AND (
+            slug = ?
+            OR LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', '')) = ?
+         )
        LIMIT 1`,
       [s, s]
     );
@@ -77,34 +80,34 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = await getProduct(slug);
+  if (!product) notFound();
+
   const productUrl = `${SITE_URL}/products/${slug}`;
 
-  const productLd = product
-    ? {
-        "@context": "https://schema.org",
-        "@type": "Product",
-        name: product.name,
-        description: stripHtml(
-          product.short_description || product.description || product.full_description || ""
-        ),
-        image: product.image || product.og_image || "",
-        brand: {
-          "@type": "Brand",
-          name: SITE_NAME,
-        },
-        offers: {
-          "@type": "Offer",
-          price: String(Number(product.price).toFixed(2)),
-          priceCurrency: CURRENCY_CODE,
-          availability: "https://schema.org/InStock",
-          url: productUrl,
-          seller: {
-            "@type": "Organization",
-            name: SITE_NAME,
-          },
-        },
-      }
-    : null;
+  const productLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: stripHtml(
+      product.short_description || product.description || product.full_description || ""
+    ),
+    image: product.image || product.og_image || "",
+    brand: {
+      "@type": "Brand",
+      name: SITE_NAME,
+    },
+    offers: {
+      "@type": "Offer",
+      price: String(Number(product.price).toFixed(2)),
+      priceCurrency: CURRENCY_CODE,
+      availability: "https://schema.org/InStock",
+      url: productUrl,
+      seller: {
+        "@type": "Organization",
+        name: SITE_NAME,
+      },
+    },
+  };
 
   return (
     <>
@@ -112,7 +115,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         items={[
           { name: "Home", url: SITE_URL },
           { name: "Products", url: `${SITE_URL}/products` },
-          { name: product?.name || slug, url: productUrl },
+          { name: product.name, url: productUrl },
         ]}
       />
       <JsonLd data={productLd} />
