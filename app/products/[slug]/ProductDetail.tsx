@@ -33,7 +33,7 @@ interface Product {
   features: string | null; seo_title: string | null; og_image: string | null;
 }
 
-export default function ProductDetail({ slug, initialProduct }: { slug: string; initialProduct: Product | null }) {
+export default function ProductDetail({ slug, initialProduct, categorySlug = null }: { slug: string; initialProduct: Product | null; categorySlug?: string | null }) {
   const [product, setProduct] = useState<Product | null>(initialProduct);
   const [loading, setLoading] = useState(!initialProduct);
   const [added, setAdded] = useState(false);
@@ -151,7 +151,13 @@ export default function ProductDetail({ slug, initialProduct }: { slug: string; 
                 }
               </div>
               <div>
-                <div className="product-category">{product.category}</div>
+                {categorySlug ? (
+                  <a className="product-category" href={`/category/${categorySlug}`} style={{ textDecoration: "none" }}>
+                    {product.category}
+                  </a>
+                ) : (
+                  <div className="product-category">{product.category}</div>
+                )}
                 {product.badge && <div className="badge-tag">{product.badge}</div>}
                 <h1 className="product-name">{product.name}</h1>
                 {product.short_description && (

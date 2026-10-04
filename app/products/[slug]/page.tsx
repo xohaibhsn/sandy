@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import ProductDetail from "./ProductDetail";
 import pool from "../../../lib/db";
 import { ensureShopTables } from "@/lib/ensureShopTables";
+import { ensureCategoriesTable } from "@/lib/ensureCategories";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import JsonLd from "@/components/JsonLd";
 import { CURRENCY_CODE, SITE_NAME, SITE_URL } from "@/lib/site";
@@ -13,6 +14,23 @@ interface Product {
   short_description: string | null; full_description: string | null;
   features: string | null; seo_title: string | null; meta_description: string | null;
   focus_keyword: string | null; og_image: string | null; slug: string | null;
+}
+
+async function getActiveCategorySlug(categoryName: string): Promise<string | null> {
+  const name = String(categoryName || "").trim();
+  if (!name) return null;
+  try {
+    await ensureCategoriesTable();
+    const [rows] = await pool.query(
+      `SELECT slug FROM categories WHERE name = ? AND active = 1 LIMIT 1`,
+      [name]
+    );
+    const row = Array.isArray(rows) ? (rows as Array<{ slug?: string }>)[0] : null;
+    const slug = row?.slug ? String(row.slug) : "";
+    return slug || null;
+  } catch {
+    return null;
+  }
 }
 
 async function getProduct(slug: string): Promise<Product | null> {
@@ -82,6 +100,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const product = await getProduct(slug);
   if (!product) notFound();
 
+  const categorySlug = await getActiveCategorySlug(product.category);
   const productUrl = `${SITE_URL}/products/${slug}`;
 
   const productLd = {
@@ -119,7 +138,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         ]}
       />
       <JsonLd data={productLd} />
-      <ProductDetail slug={slug} initialProduct={product as any} />
+      <ProductDetail slug={slug} initialProduct={product as any} categorySlug={categorySlug} />
     </>
   );
 }

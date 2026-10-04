@@ -9,8 +9,10 @@ import {
 } from "./lib/redirects";
 import {
   isLiveBlogSlug,
+  isLiveCategorySlug,
   isLiveProductSlug,
   parseBlogRedirectSlug,
+  parseCategoryRedirectSlug,
   parseProductRedirectSlug,
 } from "./lib/redirectRuntime";
 
@@ -87,6 +89,17 @@ export async function proxy(request: NextRequest) {
   if (blogSlug) {
     try {
       if (await isLiveBlogSlug(blogSlug)) {
+        return passThrough();
+      }
+    } catch {
+      return passThrough();
+    }
+  }
+
+  const categorySlug = parseCategoryRedirectSlug(normalizedPath);
+  if (categorySlug) {
+    try {
+      if (await isLiveCategorySlug(categorySlug)) {
         return passThrough();
       }
     } catch {

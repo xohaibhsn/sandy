@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import pool, { isDatabaseConfigured } from "@/lib/db";
+import { ensureCategoriesTable } from "@/lib/ensureCategories";
 import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   let productPages: MetadataRoute.Sitemap = [];
   let blogPages: MetadataRoute.Sitemap = [];
+  let categoryPages: MetadataRoute.Sitemap = [];
 
   if (isDatabaseConfigured()) {
     try {
@@ -52,6 +54,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
 
     try {
+      await ensureCategoriesTable();
+      const [cats] = await pool.query(
+        `SELECT slug, updated_at, created_at
+         FROM categories
+         WHERE active = 1 AND slug IS NOT NULL AND slug != ''`
+      );
+      categoryPages = (Array.isArray(cats) ? cats : [])
+        .filter((c: { slug?: string }) => !!c.slug)
+        .map((c: { slug: string; updated_at?: string | Date; created_at?: string | Date }) => ({
+          url: `${baseUrl}/category/${c.slug}`,
+          lastModified: c.updated_at
+            ? new Date(c.updated_at)
+            : c.created_at
+              ? new Date(c.created_at)
+              : now,
+          changeFrequency: "weekly" as const,
+          priority: 0.7,
+        }));
+    } catch {
+      // Keep existing sitemap pages if categories query fails
+    }
+
+    try {
       const [posts]: any = await pool.query(
         `SELECT slug, created_at
          FROM blog_posts
@@ -72,5 +97,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  return [...staticPages, ...productPages, ...blogPages];
+  return [...staticPages, ...categoryPages, ...productPages, ...blogPages];
 }

@@ -22,9 +22,33 @@ export default function Navbar({
   children,
 }: NavbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [catsOpen, setCatsOpen] = useState(false);
   const sc = useSiteContent();
   const [logo, setLogo] = useState(logoUrl || "");
+  const [categories, setCategories] = useState<{ name: string; slug: string }[]>([]);
   const brand = cmsText(sc, "site_title", SITE_NAME).toUpperCase() || SITE_NAME_CAPS;
+
+  useEffect(() => {
+    fetch("/api/public-categories")
+      .then((r) => {
+        if (!r.ok) throw new Error("categories unavailable");
+        return r.json();
+      })
+      .then((data) => {
+        if (!Array.isArray(data)) {
+          setCategories([]);
+          return;
+        }
+        setCategories(
+          data
+            .filter((c: { name?: string; slug?: string }) => c?.name && c?.slug)
+            .map((c: { name: string; slug: string }) => ({ name: c.name, slug: c.slug }))
+        );
+      })
+      .catch(() => {
+        setCategories([]);
+      });
+  }, []);
 
   useEffect(() => {
     if (logoUrl !== undefined) {
@@ -35,7 +59,10 @@ export default function Navbar({
     if (fromCms) setLogo(fromCms);
   }, [logoUrl, sc]);
 
-  const close = () => setMenuOpen(false);
+  const close = () => {
+    setMenuOpen(false);
+    setCatsOpen(false);
+  };
 
   const logoEl = logo ? (
     <a href="/" className="nav-logo nav-logo-img">
@@ -94,6 +121,25 @@ export default function Navbar({
           display: block; width: 25px; height: 2px; background: #111111; border-radius: 2px;
         }
         .site-nav .nav-end { display: flex; align-items: center; gap: 12px; }
+        .site-nav .nav-cats { position: relative; }
+        .site-nav .nav-cats-trigger {
+          font-family: var(--font-body), 'Inter', system-ui, sans-serif;
+          color: #3F3A36; background: none; border: none; padding: 0; cursor: pointer;
+          font-size: 12px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+        }
+        .site-nav .nav-cats-trigger:hover { color: #111111; opacity: 0.7; }
+        .site-nav .nav-cats-panel {
+          display: none; position: absolute; top: calc(100% + 14px); left: 0;
+          min-width: 200px; background: #FFFFFF; border: 1px solid #E8E4DF;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 10px 0; z-index: 120;
+        }
+        .site-nav .nav-cats.open .nav-cats-panel { display: block; }
+        .site-nav .nav-cats-panel a {
+          display: block; padding: 10px 16px; letter-spacing: 0.08em; text-transform: none;
+          font-size: 13px; color: #3F3A36; text-decoration: none;
+        }
+        .site-nav .nav-cats-panel a:hover { background: #F7F5F2; color: #111111; }
+        .site-nav .nav-cats-mobile { display: none; flex-direction: column; gap: 14px; align-items: center; }
         @media (max-width: 768px) {
           .site-nav { padding: 16px 24px; }
           .site-nav .nav-links { display: none; }
@@ -101,10 +147,16 @@ export default function Navbar({
             display: flex; flex-direction: column; position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh; background: #FFFFFF;
             align-items: center; justify-content: center; gap: 28px; z-index: 9999;
-            margin: 0; padding: 0;
+            margin: 0; padding: 0; overflow-y: auto;
           }
-          .site-nav .nav-links.open a { color: #111111; font-size: 18px; }
+          .site-nav .nav-links.open a, .site-nav .nav-links.open .nav-cats-trigger { color: #111111; font-size: 18px; }
           .site-nav .hamburger { display: flex; }
+          .site-nav .nav-cats-panel {
+            position: static; display: none; box-shadow: none; border: none;
+            background: transparent; min-width: 0; padding: 0;
+          }
+          .site-nav .nav-cats.open .nav-cats-panel { display: flex; flex-direction: column; gap: 14px; align-items: center; margin-top: 8px; }
+          .site-nav .nav-cats-panel a { padding: 0; font-size: 16px; }
         }
       `}</style>
 
@@ -113,6 +165,30 @@ export default function Navbar({
         <ul className={`nav-links ${menuOpen ? "open" : ""}`}>
           <li><a href="/" onClick={close}>{cmsText(sc, "nav_home", "Home")}</a></li>
           <li><a href="/products" onClick={close}>{cmsText(sc, "nav_products", "Products")}</a></li>
+          {categories.length > 0 && (
+            <li
+              className={`nav-cats ${catsOpen ? "open" : ""}`}
+              onMouseEnter={() => setCatsOpen(true)}
+              onMouseLeave={() => setCatsOpen(false)}
+            >
+              <button
+                type="button"
+                className="nav-cats-trigger"
+                aria-expanded={catsOpen}
+                aria-haspopup="true"
+                onClick={() => setCatsOpen((v) => !v)}
+              >
+                Categories
+              </button>
+              <div className="nav-cats-panel" role="menu">
+                {categories.map((c) => (
+                  <a key={c.slug} href={`/category/${c.slug}`} onClick={close} role="menuitem">
+                    {c.name}
+                  </a>
+                ))}
+              </div>
+            </li>
+          )}
           <li><a href="/order-tracking" onClick={close}>{cmsText(sc, "nav_track", "Track Order")}</a></li>
           <li><a href="/blog" onClick={close}>{cmsText(sc, "nav_blog", "Blog")}</a></li>
           <li><a href="/contact" onClick={close}>{cmsText(sc, "nav_contact", "Contact")}</a></li>
