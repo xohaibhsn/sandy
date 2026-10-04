@@ -247,7 +247,7 @@ export default function AdminPage() {
   const [receiptModal, setReceiptModal] = useState<string|null>(null);
   const [orderModal, setOrderModal] = useState<typeof demoOrders[0]|null>(null);
   const [productModal, setProductModal] = useState<any|null|"new">(null);
-  const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", stock:"", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"" });
+  const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", stock:"", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number });
   const [imageUploading, setImageUploading] = useState(false);
   const [heroImgUploading, setHeroImgUploading] = useState(false);
   const [customers, setCustomers] = useState(demoCustomers);
@@ -879,7 +879,9 @@ export default function AdminPage() {
       features: editProduct.features || "",
       seo_title: editProduct.seo_title || "",
       meta_description: editProduct.meta_description || "",
-      focus_keyword: editProduct.focus_keyword || "" };
+      focus_keyword: editProduct.focus_keyword || "",
+      active: editProduct.active === 0 ? 0 : 1
+    };
     if (productModal === "new") {
       const res = await fetch("/api/admin-products", {
         method: "POST",
@@ -892,7 +894,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin-products", {
         method: "PUT",
         credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, id: productModal.id, active: 1 }) }).then(r => r.json()).catch(() => ({}));
+        body: JSON.stringify({ ...payload, id: productModal.id, active: editProduct.active === 0 ? 0 : 1 }) }).then(r => r.json()).catch(() => ({}));
       if (res.error) { alert(res.error); return; }
       setProducts(products.map(p => p.id === productModal.id ? { ...p, ...editProduct, slug } : p));
     }
@@ -901,13 +903,36 @@ export default function AdminPage() {
 
   const openEditProduct = (p: any) => {
     const rawPrice = p.price != null && p.price !== "" ? String(parsePrice(p.price)) : "";
-    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||"Subscription", price:rawPrice, stock:p.stock||"Digital", image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"" });
+    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||"Subscription", price:rawPrice, stock:p.stock||"Digital", image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1 });
     setProductModal(p);
   };
 
   const openNewProduct = () => {
-    setEditProduct({ name:"", slug:"", category:"Subscription", price:"", stock:"Digital", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"" });
+    setEditProduct({ name:"", slug:"", category:"Subscription", price:"", stock:"Digital", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 });
     setProductModal("new");
+  };
+
+
+  const toggleProductActive = async (p: { id: number; active?: number | boolean | string }) => {
+    const currentlyInactive = p.active === 0 || p.active === false || p.active === "0";
+    const next = currentlyInactive ? 1 : 0;
+    try {
+      const response = await fetch("/api/admin-products", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: p.id, active: next }),
+      });
+      const res = await response.json().catch(() => ({}));
+      if (!response.ok || res.error || !res.success) {
+        alert(res.error || "Failed to update product status");
+        return;
+      }
+      const confirmed = res.active === 0 || res.active === 1 ? res.active : next;
+      setProducts(products.map(x => x.id === p.id ? { ...x, active: confirmed } : x));
+    } catch {
+      alert("Failed to update product status");
+    }
   };
 
   const filteredOrders = statusFilter === "all" ? orders : orders.filter(o => o.status === statusFilter);
@@ -1143,6 +1168,11 @@ export default function AdminPage() {
                 <div className="char-bar" style={{background:"rgba(255,255,255,0.08)",width:"100%"}}><div className="char-bar" style={{width:`${Math.min(100,(editProduct.meta_description.length/180)*100)}%`,background:editProduct.meta_description.length>=175?"#ff6666":editProduct.meta_description.length>=140?"#00c864":"rgba(139,0,255,0.5)"}} /></div>
               </div>
               <div className="modal-field" style={{marginBottom:0}}><label>Focus Keyword</label><input placeholder="e.g. phone case pakistan" value={editProduct.focus_keyword} onChange={e => setEditProduct({...editProduct,focus_keyword:e.target.value})} /></div>
+            </div>
+
+            <div className="modal-field" style={{display:"flex",alignItems:"center",gap:10,marginTop:8,marginBottom:4}}>
+              <input type="checkbox" id="product-active" checked={editProduct.active !== 0} onChange={e => setEditProduct({...editProduct, active: e.target.checked ? 1 : 0})} />
+              <label htmlFor="product-active" style={{margin:0}}>Active (visible on the public site)</label>
             </div>
 
             <div className="modal-actions">
@@ -1472,10 +1502,10 @@ export default function AdminPage() {
               </div>
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
                     {products.length === 0 && (
-                      <tr><td colSpan={6} style={{textAlign:"center",color:"#999",padding:"24px"}}>No products in the database yet. Click + Add Product.</td></tr>
+                      <tr><td colSpan={7} style={{textAlign:"center",color:"#999",padding:"24px"}}>No products in the database yet. Click + Add Product.</td></tr>
                     )}
                     {products.map(p => (
                       <tr key={p.id}>
@@ -1490,6 +1520,17 @@ export default function AdminPage() {
                         <td><span style={{background:"rgba(139,0,255,0.1)",border:"1px solid rgba(139,0,255,0.2)",padding:"3px 10px",borderRadius:"10px",fontSize:"12px"}}>{p.category}</span></td>
                         <td style={{fontWeight:700,color:"#5B21B6"}}>{formatPrice(parsePrice(p.price))}</td>
                         <td>{p.stock}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className={`status-badge ${p.active === 0 || p.active === false || p.active === "0" ? "status-pending" : "status-delivered"}`}
+                            style={{cursor:"pointer"}}
+                            onClick={() => toggleProductActive(p)}
+                            title="Click to toggle active status"
+                          >
+                            {p.active === 0 || p.active === false || p.active === "0" ? "Inactive" : "Active"}
+                          </button>
+                        </td>
                         <td>
                           <button className="action-btn btn-edit" onClick={() => openEditProduct(p)}>Edit</button>
                           <button className="action-btn btn-delete" onClick={() => deleteProduct(p.id)}>Delete</button>

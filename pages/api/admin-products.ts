@@ -107,6 +107,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
+
+    if (req.method === 'PATCH') {
+      const { id, active } = req.body || {};
+      const productId = typeof id === 'number' ? id : Number(id);
+      if (!Number.isInteger(productId) || productId <= 0) {
+        return res.status(400).json({ error: 'Valid product id is required' });
+      }
+
+      let normalized = null;
+      if (active === true || active === 1 || active === '1') normalized = 1;
+      else if (active === false || active === 0 || active === '0') normalized = 0;
+      if (normalized === null) {
+        return res.status(400).json({ error: 'active must be 0 or 1' });
+      }
+
+      const updateResult = await pool.query(
+        'UPDATE products SET active = ? WHERE id = ?',
+        [normalized, productId]
+      );
+      const result = Array.isArray(updateResult) ? updateResult[0] as { affectedRows?: number } : updateResult as { affectedRows?: number };
+      if (!result || result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Product not found' });
+      }
+      return res.status(200).json({ success: true, id: productId, active: normalized });
+    }
+
     if (req.method === 'DELETE') {
       const { id } = req.query;
       await pool.query('DELETE FROM products WHERE id = ?', [id]);
