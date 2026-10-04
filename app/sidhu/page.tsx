@@ -194,7 +194,8 @@ const demoCustomers = [
   { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026" },
 ];
 
-type Tab = "dashboard"|"orders"|"products"|"customers"|"leads"|"training"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff";
+type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"leads"|"training"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff";
+type StoreCategory = { id:number; name:string; slug:string; description:string; image:string; parent_id:number|null; active:number; sort_order:number; };
 type AdminRole = "super_admin"|"manager"|"writer";
 type OrderStatus = "pending"|"confirmed"|"dispatched"|"delivered";
 type BlogPost = { id:number; title:string; slug:string; excerpt:string; content:string; category:string; emoji:string; badge:string; badgeText:string; featured_image:string; meta_title:string; meta_description:string; focus_keyword:string; status:"published"|"draft"; featured:boolean; canonical_url:string; faqs:Array<{question:string;answer:string}>; };
@@ -248,6 +249,11 @@ export default function AdminPage() {
   const [orderModal, setOrderModal] = useState<typeof demoOrders[0]|null>(null);
   const [productModal, setProductModal] = useState<any|null|"new">(null);
   const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", stock:"", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number });
+  const [categories, setCategories] = useState<StoreCategory[]>([]);
+  const [categoryModal, setCategoryModal] = useState<StoreCategory|"new"|null>(null);
+  const [editCategory, setEditCategory] = useState({ name:"", slug:"", description:"", image:"", active:1 as number, sort_order:"0" });
+  const [catImgUploading, setCatImgUploading] = useState(false);
+  const [categoryMsg, setCategoryMsg] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
   const [heroImgUploading, setHeroImgUploading] = useState(false);
   const [customers, setCustomers] = useState(demoCustomers);
@@ -332,6 +338,13 @@ export default function AdminPage() {
       .then(r => r.json())
       .then(data => { setProducts(Array.isArray(data) ? data : []); })
       .catch(() => { setProducts([]); });
+    fetch("/api/categories", { credentials: "same-origin" })
+      .then(async r => {
+        if (!r.ok) throw new Error("Failed to load categories");
+        return r.json();
+      })
+      .then(d => { if (Array.isArray(d)) setCategories(d); })
+      .catch(() => { setCategoryMsg("Could not load categories from server."); setCategories([]); });
     fetch("/api/admin-orders", { credentials: "same-origin" })
       .then(r => r.json())
       .then(data => {
@@ -903,12 +916,12 @@ export default function AdminPage() {
 
   const openEditProduct = (p: any) => {
     const rawPrice = p.price != null && p.price !== "" ? String(parsePrice(p.price)) : "";
-    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||"Subscription", price:rawPrice, stock:p.stock||"Digital", image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1 });
+    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||defaultProductCategory(), price:rawPrice, stock:p.stock||"Digital", image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1 });
     setProductModal(p);
   };
 
   const openNewProduct = () => {
-    setEditProduct({ name:"", slug:"", category:"Subscription", price:"", stock:"Digital", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 });
+    setEditProduct({ name:"", slug:"", category:defaultProductCategory(), price:"", stock:"Digital", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 });
     setProductModal("new");
   };
 
@@ -933,6 +946,131 @@ export default function AdminPage() {
     } catch {
       alert("Failed to update product status");
     }
+  };
+
+
+  const reloadCategories = async () => {
+    try {
+      const r = await fetch("/api/categories", { credentials: "same-origin" });
+      if (!r.ok) throw new Error("Failed to load categories");
+      const d = await r.json();
+      if (Array.isArray(d)) setCategories(d);
+    } catch {
+      setCategoryMsg("Could not load categories from server.");
+    }
+  };
+
+  const productCategoryOptions = (currentName: string) => {
+    const active = categories.filter(c => Number(c.active) !== 0);
+    const current = String(currentName || "").trim();
+    const hasCurrent = current && categories.some(c => c.name === current);
+    const currentInactive = hasCurrent && !active.some(c => c.name === current);
+    const opts = [...active];
+    if (currentInactive) {
+      const row = categories.find(c => c.name === current);
+      if (row) opts.unshift(row);
+    }
+    return opts;
+  };
+
+  const defaultProductCategory = () =>
+    categories.find(c => Number(c.active) !== 0)?.name || "";
+
+  const handleCategoryImage = async (file: File) => {
+    setCatImgUploading(true);
+    try {
+      const reader = new FileReader();
+      const base64: string = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: base64, name: file.name }),
+      }).then(r => r.json());
+      if (res.path) setEditCategory(c => ({ ...c, image: res.path }));
+      else if (res.error) alert(res.error);
+    } catch {
+      alert("Image upload failed");
+    }
+    setCatImgUploading(false);
+  };
+
+  const saveCategory = async () => {
+    const name = editCategory.name.trim();
+    if (!name) return;
+    const isNew = categoryModal === "new";
+    const payload: Record<string, unknown> = {
+      name,
+      description: editCategory.description || "",
+      image: editCategory.image || "",
+      active: editCategory.active === 0 ? 0 : 1,
+      sort_order: Number(editCategory.sort_order) || 0,
+    };
+    if (isNew) {
+      if (editCategory.slug.trim()) payload.slug = editCategory.slug.trim();
+    } else {
+      // Preserve slug identity unless operator edited it
+      const original = categoryModal as StoreCategory;
+      if (editCategory.slug.trim() && editCategory.slug.trim() !== original.slug) {
+        payload.slug = editCategory.slug.trim();
+      }
+      payload.id = original.id;
+    }
+    const res = await fetch("/api/categories", {
+      credentials: "same-origin",
+      method: isNew ? "POST" : "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async r => {
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, status: r.status, data };
+    }).catch(() => ({ ok: false, status: 0, data: { error: "Request failed" } }));
+    if (!res.ok || res.data.error) {
+      alert(res.data.error || "Failed to save category");
+      return;
+    }
+    setCategoryModal(null);
+    setCategoryMsg(isNew ? "Category created." : "Category updated.");
+    await reloadCategories();
+  };
+
+  const deleteCategory = async (id: number) => {
+    if (!confirm("Delete this category?")) return;
+    const res = await fetch(`/api/categories?id=${id}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+    }).then(async r => {
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, data };
+    }).catch(() => ({ ok: false, data: { error: "Request failed" } }));
+    if (!res.ok || res.data.error) {
+      alert(res.data.error || "Failed to delete category");
+      return;
+    }
+    setCategoryMsg("Category deleted.");
+    await reloadCategories();
+  };
+
+  const toggleCategoryActive = async (c: StoreCategory) => {
+    const next = Number(c.active) === 0 ? 1 : 0;
+    const res = await fetch("/api/categories", {
+      credentials: "same-origin",
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: c.id, active: next }),
+    }).then(async r => {
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, data };
+    }).catch(() => ({ ok: false, data: { error: "Request failed" } }));
+    if (!res.ok || res.data.error) {
+      alert(res.data.error || "Failed to update category status");
+      return;
+    }
+    await reloadCategories();
   };
 
   const filteredOrders = statusFilter === "all" ? orders : orders.filter(o => o.status === statusFilter);
@@ -1086,7 +1224,12 @@ export default function AdminPage() {
               <div className="modal-field">
                 <label>Category</label>
                 <select value={editProduct.category} onChange={e => setEditProduct({...editProduct,category:e.target.value})}>
-                  <option>Subscription</option><option>Device</option><option>Bundle</option>
+                  {!editProduct.category && <option value="">Select a category</option>}
+                  {productCategoryOptions(editProduct.category).map(c => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}{Number(c.active) === 0 ? " (Inactive)" : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1178,6 +1321,67 @@ export default function AdminPage() {
             <div className="modal-actions">
               <button className="modal-cancel" onClick={() => setProductModal(null)}>Cancel</button>
               <button className="modal-save" onClick={saveProduct} disabled={imageUploading}>Save Product</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CATEGORY MODAL */}
+      {categoryModal && (
+        <div className="modal-overlay">
+          <div className="modal" onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()}>
+            <div className="modal-title">{categoryModal === "new" ? "Add Category" : "Edit Category"}</div>
+            <div className="modal-field">
+              <label>Name *</label>
+              <input
+                value={editCategory.name}
+                onChange={e => {
+                  const name = e.target.value;
+                  setEditCategory(c => ({
+                    ...c,
+                    name,
+                    slug: categoryModal === "new" || !c.slug || c.slug === toSlug(c.name) ? toSlug(name) : c.slug,
+                  }));
+                }}
+                placeholder="e.g. Accessories"
+              />
+            </div>
+            <div className="modal-field">
+              <label>Slug (optional)</label>
+              <input
+                value={editCategory.slug}
+                onChange={e => setEditCategory({ ...editCategory, slug: e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") })}
+                placeholder="accessories"
+              />
+            </div>
+            <div className="modal-field">
+              <label>Description</label>
+              <textarea rows={3} value={editCategory.description} onChange={e => setEditCategory({ ...editCategory, description: e.target.value })} placeholder="Internal notes / future category page copy" />
+            </div>
+            <div className="modal-field">
+              <label>Image</label>
+              <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                {editCategory.image
+                  ? <img src={editCategory.image} alt="" style={{width:60,height:60,objectFit:"cover",borderRadius:8}} />
+                  : <div style={{width:60,height:60,background:"#F5F5F5",borderRadius:8}} />}
+                <label style={{cursor:"pointer",background:"rgba(139,0,255,0.15)",border:"1px solid rgba(139,0,255,0.35)",padding:"8px 16px",borderRadius:8,fontSize:13,color:"#5B21B6"}}>
+                  {catImgUploading ? "Uploading..." : "Upload Image"}
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={e => e.target.files?.[0] && handleCategoryImage(e.target.files[0])} disabled={catImgUploading} />
+                </label>
+                {editCategory.image && <button style={{background:"none",border:"none",color:"rgba(255,100,100,0.7)",cursor:"pointer",fontSize:13}} onClick={() => setEditCategory(c=>({...c,image:""}))}>Remove</button>}
+              </div>
+            </div>
+            <div className="modal-field">
+              <label>Sort order</label>
+              <input type="number" value={editCategory.sort_order} onChange={e => setEditCategory({ ...editCategory, sort_order: e.target.value })} />
+            </div>
+            <div className="modal-field" style={{display:"flex",alignItems:"center",gap:10}}>
+              <input type="checkbox" id="cat-active" checked={editCategory.active !== 0} onChange={e => setEditCategory({ ...editCategory, active: e.target.checked ? 1 : 0 })} />
+              <label htmlFor="cat-active" style={{margin:0}}>Active</label>
+            </div>
+            <div className="modal-actions">
+              <button className="modal-cancel" onClick={() => setCategoryModal(null)}>Cancel</button>
+              <button className="modal-save" onClick={saveCategory} disabled={catImgUploading || !editCategory.name.trim()}>Save Category</button>
             </div>
           </div>
         </div>
@@ -1304,6 +1508,7 @@ export default function AdminPage() {
               { id:"dashboard", icon:"📊", label:"Dashboard", roles:["super_admin","manager","writer"] },
               { id:"orders",    icon:"🛒", label:"Orders",       badge: pendingCount > 0 ? String(pendingCount) : null, badgeColor:"orange", roles:["super_admin","manager"] },
               { id:"products",  icon:"📦", label:"Products",     roles:["super_admin","manager"] },
+              { id:"categories",icon:"🗂️", label:"Categories",   roles:["super_admin","manager"] },
               { id:"customers", icon:"👥", label:"Customers",    roles:["super_admin","manager"] },
               { id:"leads",     icon:"💬", label:"Leads",        badge: leadsLast24 > 0 ? String(leadsLast24) : null, badgeColor:"orange", roles:["super_admin","manager"] },
               { id:"training",  icon:"🧠", label:"Berlin Training", roles:["super_admin","manager"] },
@@ -1339,6 +1544,7 @@ export default function AdminPage() {
                 {tab==="dashboard" && <>Dashboard <span>Overview</span></>}
                 {tab==="orders" && <>Manage <span>Orders</span></>}
                 {tab==="products" && <>Manage <span>Products</span></>}
+                {tab==="categories" && <>Manage <span>Categories</span></>}
                 {tab==="customers" && <>Customer <span>Data</span></>}
                 {tab==="leads" && <>Berlin <span>Leads</span></>}
                 {tab==="training" && <>Berlin <span>Training</span></>}
@@ -1492,6 +1698,62 @@ export default function AdminPage() {
             </div>
             );
           })()}
+
+          {/* CATEGORIES */}
+          {tab==="categories" && (
+            <div className="section-card">
+              {categoryMsg && (
+                <div style={{marginBottom:16,padding:"10px 16px",background:"rgba(22,163,74,0.1)",border:"1px solid rgba(22,163,74,0.3)",borderRadius:10,fontSize:13,color:"#16A34A"}}>
+                  {categoryMsg}
+                </div>
+              )}
+              <div className="section-header">
+                <div className="section-title">Categories ({categories.length})</div>
+                <button className="add-btn" onClick={() => {
+                  setCategoryMsg("");
+                  setEditCategory({ name:"", slug:"", description:"", image:"", active:1, sort_order:String((categories.length + 1) * 10) });
+                  setCategoryModal("new");
+                }}>+ Add Category</button>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Image</th><th>Name</th><th>Slug</th><th>Sort</th><th>Status</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {categories.length === 0 && (
+                      <tr><td colSpan={6} style={{textAlign:"center",color:"#999",padding:"24px"}}>No categories yet. Click + Add Category.</td></tr>
+                    )}
+                    {categories.map(c => (
+                      <tr key={c.id}>
+                        <td>{c.image ? <img src={c.image} alt="" style={{width:44,height:44,objectFit:"cover",borderRadius:6}} /> : "🗂️"}</td>
+                        <td style={{fontWeight:600}}>{c.name}</td>
+                        <td style={{fontSize:12,color:"#888"}}>{c.slug}</td>
+                        <td>{c.sort_order}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className={`status-badge ${Number(c.active) === 0 ? "status-pending" : "status-delivered"}`}
+                            style={{cursor:"pointer"}}
+                            onClick={() => toggleCategoryActive(c)}
+                            title="Click to toggle active status"
+                          >
+                            {Number(c.active) === 0 ? "Inactive" : "Active"}
+                          </button>
+                        </td>
+                        <td>
+                          <button className="action-btn btn-edit" onClick={() => {
+                            setCategoryMsg("");
+                            setEditCategory({ name:c.name||"", slug:c.slug||"", description:c.description||"", image:c.image||"", active:Number(c.active) === 0 ? 0 : 1, sort_order:String(c.sort_order||0) });
+                            setCategoryModal(c);
+                          }}>Edit</button>
+                          <button className="action-btn btn-delete" onClick={() => deleteCategory(c.id)}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* PRODUCTS */}
           {tab==="products" && (

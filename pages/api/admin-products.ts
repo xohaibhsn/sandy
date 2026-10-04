@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { RowDataPacket } from 'mysql2';
 import pool from '../../lib/db';
 import { ensureProductsTable } from '../../lib/ensureShopTables';
+import { ensureCategoriesTable } from '../../lib/ensureCategories';
 import { parsePrice } from '../../lib/site';
 import { requireAdmin, requireRole } from '../../lib/adminAuth';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
@@ -11,6 +13,50 @@ function toSlug(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
+}
+
+
+type CategoryLookupRow = RowDataPacket & { name: string; active: number };
+type ProductCategoryRow = RowDataPacket & { category: string | null };
+
+async function resolveProductCategory(
+  requestedRaw: unknown,
+  existingCategory: string | null | undefined,
+  isCreate: boolean
+): Promise<{ ok: true; category: string } | { ok: false; error: string }> {
+  if (typeof requestedRaw !== 'string') {
+    return { ok: false, error: 'Please choose an active category' };
+  }
+  const category = requestedRaw.trim();
+  if (!category || category.length > 100) {
+    return { ok: false, error: 'Please choose an active category' };
+  }
+
+  await ensureCategoriesTable();
+  const [rows] = await pool.query<CategoryLookupRow[]>(
+    'SELECT name, active FROM categories WHERE name = ? LIMIT 1',
+    [category]
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) {
+    return { ok: false, error: 'Please choose an active category' };
+  }
+
+  const existing =
+    existingCategory == null || existingCategory === undefined
+      ? ''
+      : String(existingCategory).trim();
+  const unchanged = !isCreate && existing !== '' && category === existing;
+
+  if (unchanged) {
+    return { ok: true, category };
+  }
+
+  if (Number(row.active) === 0) {
+    return { ok: false, error: 'Please choose an active category' };
+  }
+
+  return { ok: true, category };
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -45,6 +91,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       const numericPrice = parsePrice(price);
+      const categoryResult = await resolveProductCategory(category, null, true);
+      if (!categoryResult.ok) {
+        return res.status(400).json({ error: categoryResult.error });
+      }
+      const finalCategory = categoryResult.category;
       const finalSeoTitle = (seo_title || '').trim() || name;
       const finalMetaDesc = (meta_description || '').trim() || (short_description || '').trim() || '';
       const safeDescription = sanitizeRichHtml(description || '');
@@ -58,7 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           `INSERT INTO products (name, slug, description, price, category, badge, image, stock, active,
             short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
-          [name, finalSlug, safeDescription, numericPrice, category, badge || null, safeImage || null, stock || 'Digital',
+          [name, finalSlug, safeDescription, numericPrice, finalCategory, badge || null, safeImage || null, stock || 'Digital',
            safeShortDescription, safeFullDescription, finalSeoTitle, finalMetaDesc,
            focus_keyword || '', features || '', safeOgImage]
         );
@@ -81,6 +132,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       const numericPrice = parsePrice(price);
+      const [existingRows] = await pool.query<ProductCategoryRow[]>(
+        'SELECT category FROM products WHERE id = ? LIMIT 1',
+        [id]
+      );
+      const existingProduct = Array.isArray(existingRows) ? existingRows[0] : null;
+      if (!existingProduct) {
+        return res.status(404).json({ error: 'Product not found' });
+      }
+      const categoryResult = await resolveProductCategory(
+        category,
+        existingProduct.category,
+        false
+      );
+      if (!categoryResult.ok) {
+        return res.status(400).json({ error: categoryResult.error });
+      }
+      const finalCategory = categoryResult.category;
       const finalSeoTitle = (seo_title || '').trim() || name;
       const finalMetaDesc = (meta_description || '').trim() || (short_description || '').trim() || '';
       const safeDescription = sanitizeRichHtml(description || '');
@@ -94,7 +162,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           `UPDATE products SET name=?, slug=?, description=?, price=?, category=?, badge=?, image=?, stock=?, active=?,
             short_description=?, full_description=?, seo_title=?, meta_description=?, focus_keyword=?, features=?, og_image=?
            WHERE id=?`,
-          [name, finalSlug, safeDescription, numericPrice, category, badge || null, safeImage || null, stock, active ?? 1,
+          [name, finalSlug, safeDescription, numericPrice, finalCategory, badge || null, safeImage || null, stock, active ?? 1,
            safeShortDescription, safeFullDescription, finalSeoTitle, finalMetaDesc,
            focus_keyword || '', features || '', safeOgImage, id]
         );
