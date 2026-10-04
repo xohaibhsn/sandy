@@ -55,7 +55,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     try {
       await ensureCategoriesTable();
-      const [cats] = await pool.query(
+      const [cats]: any = await pool.query(
         `SELECT slug, updated_at, created_at
          FROM categories
          WHERE active = 1 AND slug IS NOT NULL AND slug != ''`
