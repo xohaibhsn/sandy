@@ -36,6 +36,8 @@ const FIELD_MAX = {
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+const MAX_STOCK_QUANTITY = 1_000_000;
+
 class OrderHttpError extends Error {
   status: number;
   clientError: string;
@@ -84,6 +86,31 @@ function parseDbMoney(raw: unknown): number | null {
 
 function isActiveFlag(value: unknown): boolean {
   return Number(value) === 1;
+}
+
+/** Canonical DB track_inventory: only 0 / 1 (and numeric-string equivalents). */
+function parseDbTrackInventory(value: unknown): 0 | 1 | null {
+  if (value === true || value === 1 || value === '1') return 1;
+  if (value === false || value === 0 || value === '0') return 0;
+  return null;
+}
+
+/** Canonical DB stock_quantity for tracked products: integer 0..MAX. */
+function parseDbStockQuantity(value: unknown): number | null {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0 || value > MAX_STOCK_QUANTITY) {
+      return null;
+    }
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    if (!Number.isInteger(n) || n < 0 || n > MAX_STOCK_QUANTITY) return null;
+    return n;
+  }
+  return null;
 }
 
 function normalizePaymentMethod(raw: unknown): string | null {
@@ -148,6 +175,8 @@ type ProductRow = RowDataPacket & {
   name: string;
   price: unknown;
   active: unknown;
+  track_inventory: unknown;
+  stock_quantity: unknown;
 };
 
 type CouponRow = RowDataPacket & {
@@ -430,7 +459,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const ids = normalizedItems.items.map((item) => item.id);
       const placeholders = ids.map(() => '?').join(',');
       const [productRows] = await connection.query<ProductRow[]>(
-        `SELECT id, name, price, active FROM products WHERE id IN (${placeholders})`,
+        `SELECT id, name, price, active, track_inventory, stock_quantity
+         FROM products
+         WHERE id IN (${placeholders})
+         ORDER BY id ASC
+         FOR UPDATE`,
         ids
       );
 
@@ -442,6 +475,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (byId.size !== ids.length) {
         throw new OrderHttpError(400, 'One or more products are unavailable');
       }
+
+      type InventoryDecrement = {
+        productId: number;
+        previousQty: number;
+        newQty: number;
+      };
+      const inventoryDecrements: InventoryDecrement[] = [];
 
       authoritativeItems = [];
       for (const reqItem of normalizedItems.items) {
@@ -456,6 +496,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const price = parseDbMoney(product.price);
         if (price === null) {
           throw new OrderHttpError(500, 'Unable to place order');
+        }
+
+        const track = parseDbTrackInventory(product.track_inventory);
+        if (track === null) {
+          throw new OrderHttpError(500, 'Unable to place order');
+        }
+
+        if (track === 1) {
+          const stockQty = parseDbStockQuantity(product.stock_quantity);
+          if (stockQty === null) {
+            throw new OrderHttpError(500, 'Unable to place order');
+          }
+          if (reqItem.qty > stockQty) {
+            throw new OrderHttpError(409, 'Insufficient stock for one or more products');
+          }
+          inventoryDecrements.push({
+            productId: reqItem.id,
+            previousQty: stockQty,
+            newQty: stockQty - reqItem.qty,
+          });
         }
 
         authoritativeItems.push({
@@ -575,6 +635,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           'INSERT INTO order_items (order_id,product_id,product_name,price,quantity) VALUES (?,?,?,?,?)',
           [order_id, item.product_id, item.product_name, item.price, item.quantity]
         );
+      }
+
+      for (const dec of inventoryDecrements) {
+        const [stockUpdate] = await connection.query<ResultSetHeader>(
+          `UPDATE products
+           SET stock_quantity = ?, stock = ?
+           WHERE id = ?
+             AND track_inventory = 1
+             AND stock_quantity = ?`,
+          [dec.newQty, String(dec.newQty), dec.productId, dec.previousQty]
+        );
+        if (stockUpdate.affectedRows !== 1) {
+          throw new OrderHttpError(409, 'Insufficient stock for one or more products');
+        }
       }
 
       if (persistedCoupon) {
