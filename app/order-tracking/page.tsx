@@ -51,6 +51,7 @@ const styles = `
   .status-confirmed { background:#EDE9FE; border:1px solid rgba(91,33,182,0.3); color:#5B21B6; }
   .status-dispatched { background:#DBEAFE; border:1px solid rgba(37,99,235,0.3); color:#1E3A8A; }
   .status-delivered { background:#DCFCE7; border:1px solid rgba(22,163,74,0.3); color:#166534; }
+  .status-cancelled { background:#FEE2E2; border:1px solid rgba(220,38,38,0.3); color:#DC2626; }
   .order-card-body { padding:24px 28px; }
   .order-items { margin-bottom:24px; }
   .order-items h4 { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#666666; margin-bottom:14px; font-weight:600; }
@@ -110,7 +111,7 @@ const styles = `
 
 type OrderResult = {
   id: string;
-  status: "pending" | "confirmed" | "dispatched" | "delivered";
+  status: "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled";
   items: { name: string; price: number; qty: number }[];
   total: number;
   date: string;
@@ -185,6 +186,7 @@ export default function OrderTrackingPage() {
     if (status === "pending") return "order-status-badge status-pending";
     if (status === "confirmed") return "order-status-badge status-confirmed";
     if (status === "dispatched") return "order-status-badge status-dispatched";
+    if (status === "cancelled") return "order-status-badge status-cancelled";
     return "order-status-badge status-delivered";
   };
 
@@ -192,6 +194,7 @@ export default function OrderTrackingPage() {
     if (status === "pending") return "⏳ Pending Verification";
     if (status === "confirmed") return "✅ Confirmed";
     if (status === "dispatched") return "🚚 Dispatched";
+    if (status === "cancelled") return "Cancelled";
     return "📦 Delivered";
   };
 

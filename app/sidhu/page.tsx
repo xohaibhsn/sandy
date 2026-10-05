@@ -92,6 +92,7 @@ const styles = `
   .status-confirmed { background:rgba(91,33,182,0.1); border:1px solid rgba(91,33,182,0.3); color:#5B21B6; }
   .status-dispatched { background:rgba(37,99,235,0.1); border:1px solid rgba(37,99,235,0.25); color:#2563EB; }
   .status-delivered { background:rgba(22,163,74,0.1); border:1px solid rgba(22,163,74,0.3); color:#16A34A; }
+  .status-cancelled { background:rgba(220,38,38,0.1); border:1px solid rgba(220,38,38,0.25); color:#DC2626; }
 
   .action-btn { padding:5px 11px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; border:none; transition:all 0.15s; margin-right:4px; }
   .btn-view { background:#F5F5F5; color:#5B21B6; border:1px solid #E5E5E5; }
@@ -197,7 +198,7 @@ const demoCustomers = [
 type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"leads"|"training"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff";
 type StoreCategory = { id:number; name:string; slug:string; description:string; image:string; parent_id:number|null; active:number; sort_order:number; };
 type AdminRole = "super_admin"|"manager"|"writer";
-type OrderStatus = "pending"|"confirmed"|"dispatched"|"delivered";
+type OrderStatus = "pending"|"confirmed"|"dispatched"|"delivered"|"cancelled";
 type BlogPost = { id:number; title:string; slug:string; excerpt:string; content:string; category:string; emoji:string; badge:string; badgeText:string; featured_image:string; meta_title:string; meta_description:string; focus_keyword:string; status:"published"|"draft"; featured:boolean; canonical_url:string; faqs:Array<{question:string;answer:string}>; };
 type ChatLead = { id:number; customer_name:string; customer_whatsapp:string; customer_email:string|null; interested_in:string; chat_history:string; ip_address:string; created_at:string; };
 type BerlinTraining = { id:number; title:string; content:string; is_active:number; created_at:string; updated_at:string; };
@@ -1165,6 +1166,7 @@ export default function AdminPage() {
                 <option value="confirmed">✅ Confirmed</option>
                 <option value="dispatched">🚚 Dispatched</option>
                 <option value="delivered">📦 Delivered</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </div>
             <div className="modal-actions" style={{justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
@@ -1687,6 +1689,7 @@ export default function AdminPage() {
                     <option value="confirmed">Confirmed</option>
                     <option value="dispatched">Dispatched</option>
                     <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
               </div>

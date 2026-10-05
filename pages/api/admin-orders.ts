@@ -33,9 +33,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (req.method === 'PATCH') {
-      const { order_id, status } = req.body;
-      await pool.query('UPDATE orders SET status = ? WHERE order_id = ?', [status, order_id]);
-      return res.status(200).json({ success: true });
+      const ALLOWED_STATUSES = ['pending', 'confirmed', 'dispatched', 'delivered', 'cancelled'] as const;
+      const { order_id, status } = req.body ?? {};
+
+      if (typeof order_id !== 'string' || !order_id.trim()) {
+        return res.status(400).json({ error: 'Valid order_id is required' });
+      }
+      if (typeof status !== 'string' || !(ALLOWED_STATUSES as readonly string[]).includes(status)) {
+        return res.status(400).json({ error: 'Invalid order status' });
+      }
+
+      const [result] = await pool.query(
+        'UPDATE orders SET status = ? WHERE order_id = ?',
+        [status, order_id.trim()]
+      );
+      if (!result || Number((result as { affectedRows?: number }).affectedRows) === 0) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+      return res.status(200).json({
+        success: true,
+        order_id: order_id.trim(),
+        status,
+      });
     }
 
     if (req.method === 'DELETE') {
