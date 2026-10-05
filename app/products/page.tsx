@@ -10,6 +10,7 @@ import { useContactConfig } from "@/hooks/useContactConfig";
 import { SITE_URL, formatPrice } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
 import { cmsFill, cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import { getPublicAvailability } from "@/lib/inventoryAvailability";
 
 const cardDescXss = {
   whiteList: {
@@ -30,6 +31,8 @@ interface Product {
   badge: string | null;
   image: string | null;
   category: string;
+  track_inventory?: number | string | null;
+  stock_quantity?: number | string | null;
 }
 
 const STARS = Array.from({length:50}).map((_,i) => ({
@@ -90,6 +93,7 @@ export default function ProductsPage() {
   }, []);
 
   const handleAddToCart = (p: Product) => {
+    if (!getPublicAvailability(p).available) return;
     addToCart({ id: p.id, name: p.name, price: Number(p.price), qty: 1 });
     setAdded(p.id);
     setTimeout(() => setAdded(null), 1500);
@@ -152,10 +156,13 @@ export default function ProductsPage() {
         .product-short-desc strong,.product-desc strong { font-weight:700; color:#333333; }
         .product-short-desc a,.product-desc a { color:#111; text-decoration:underline; }
         .product-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .product-availability { font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:#6B6560; margin-bottom:10px; }
         .product-price { font-size:1.05rem; font-weight:600; letter-spacing:-0.02em; color:#111111; font-family:var(--font-display); white-space:nowrap; }
         .add-btn { font-family:var(--font-body); background:#111111; color:#FFFFFF; border:none; padding:9px 16px; border-radius:2px; font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
         .add-btn:hover { background:#333; }
         .add-btn.added { background:#16A34A; }
+        .add-btn:disabled { background:#9CA3AF; cursor:not-allowed; opacity:0.85; }
+        .add-btn:disabled:hover { background:#9CA3AF; }
         .loading { text-align:center; padding:60px; color:#666666; font-size:18px; }
         footer { background:#111111; padding:50px 60px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px; }
         .footer-logo { font-family:var(--font-display); font-size:17px; font-weight:800; color:#FFFFFF; }
@@ -297,24 +304,53 @@ export default function ProductsPage() {
                       ),
                     }}
                   />
-                  <div className="product-footer">
-                    <div className="product-price">{formatPrice(p.price)}</div>
-                    {(()=>{
-                      const inCart=cart.some(i=>i.id===p.id);
-                      const hovering=hoveringId===p.id;
-                      return(
-                      <button
-                        className="add-btn"
-                        style={{background:inCart?(hovering?"#DC2626":"#16A34A"):"#111111",cursor:inCart&&!hovering?"default":"pointer"}}
-                        onMouseEnter={()=>inCart&&setHoveringId(p.id)}
-                        onMouseLeave={()=>setHoveringId(null)}
-                        onClick={e=>{e.stopPropagation();e.preventDefault();inCart?removeFromCart(p.id):handleAddToCart(p);}}
-                      >
-                        {inCart?(hovering?"Remove":"Added"):"Add"}
-                      </button>
-                      );
-                    })()}
-                  </div>
+                  {(() => {
+                    const availability = getPublicAvailability(p);
+                    const inCart = cart.some(i => i.id === p.id);
+                    const hovering = hoveringId === p.id;
+                    const canPurchase = availability.available;
+                    return (
+                      <>
+                        <div className="product-availability">{availability.label}</div>
+                        <div className="product-footer">
+                          <div className="product-price">{formatPrice(p.price)}</div>
+                          <button
+                            className="add-btn"
+                            disabled={!canPurchase && !inCart}
+                            style={{
+                              background: !canPurchase && !inCart
+                                ? "#9CA3AF"
+                                : inCart
+                                  ? (hovering ? "#DC2626" : "#16A34A")
+                                  : "#111111",
+                              cursor: !canPurchase && !inCart
+                                ? "not-allowed"
+                                : inCart && !hovering
+                                  ? "default"
+                                  : "pointer",
+                            }}
+                            onMouseEnter={() => inCart && setHoveringId(p.id)}
+                            onMouseLeave={() => setHoveringId(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (inCart) {
+                                removeFromCart(p.id);
+                                return;
+                              }
+                              handleAddToCart(p);
+                            }}
+                          >
+                            {!canPurchase && !inCart
+                              ? (availability.label === "Out of stock" ? "Out of stock" : "Unavailable")
+                              : inCart
+                                ? (hovering ? "Remove" : "Added")
+                                : "Add"}
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             ))

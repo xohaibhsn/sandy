@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
 import { useCart } from "../../lib/cartContext";
 import { formatPrice } from "@/lib/site";
+import { getPublicAvailability } from "@/lib/inventoryAvailability";
 
 type Category = {
   id: number;
@@ -24,6 +25,8 @@ type Product = {
   short_description?: string | null;
   description?: string | null;
   badge?: string | null;
+  track_inventory?: number | string | null;
+  stock_quantity?: number | string | null;
 };
 
 function productHref(p: Product): string {
@@ -58,9 +61,11 @@ export default function CategoryClient({
         .product-info { padding: 14px 4px 8px; }
         .product-name { font-weight:700; font-size:15px; color:#111; margin-bottom:6px; }
         .product-short { font-size:13px; color:#666; line-height:1.5; margin-bottom:10px; }
+        .product-availability { font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:#6B6560; margin-bottom:10px; }
         .product-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; }
         .product-price { color:#111; font-weight:700; font-size:14px; }
         .add-btn { background:#111; color:#fff; border:none; padding:8px 12px; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; cursor:pointer; }
+        .add-btn:disabled { background:#9CA3AF; cursor:not-allowed; opacity:0.85; }
         .cat-empty { grid-column: 1 / -1; color: #666; padding: 40px 0; font-size: 15px; line-height: 1.6; }
         @media (max-width: 768px) {
           .cat-header, .cat-grid { padding-left: 24px; padding-right: 24px; }
@@ -102,26 +107,41 @@ export default function CategoryClient({
                   {p.short_description ? (
                     <div className="product-short">{p.short_description}</div>
                   ) : null}
-                  <div className="product-footer">
-                    <div className="product-price">{formatPrice(p.price)}</div>
-                    <button
-                      type="button"
-                      className="add-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addToCart({
-                          id: p.id,
-                          name: p.name,
-                          price: Number(p.price),
-                          qty: 1,
-                        });
-                        setAdded(p.id);
-                        setTimeout(() => setAdded(null), 1200);
-                      }}
-                    >
-                      {added === p.id ? "Added" : "Add to cart"}
-                    </button>
-                  </div>
+                  {(() => {
+                    const availability = getPublicAvailability(p);
+                    const canPurchase = availability.available;
+                    return (
+                      <>
+                        <div className="product-availability">{availability.label}</div>
+                        <div className="product-footer">
+                          <div className="product-price">{formatPrice(p.price)}</div>
+                          <button
+                            type="button"
+                            className="add-btn"
+                            disabled={!canPurchase}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!canPurchase) return;
+                              addToCart({
+                                id: p.id,
+                                name: p.name,
+                                price: Number(p.price),
+                                qty: 1,
+                              });
+                              setAdded(p.id);
+                              setTimeout(() => setAdded(null), 1200);
+                            }}
+                          >
+                            {!canPurchase
+                              ? (availability.label === "Out of stock" ? "Out of stock" : "Unavailable")
+                              : added === p.id
+                                ? "Added"
+                                : "Add to cart"}
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             ))

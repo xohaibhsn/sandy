@@ -7,10 +7,13 @@ import { ensureCategoriesTable } from "@/lib/ensureCategories";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import JsonLd from "@/components/JsonLd";
 import { CURRENCY_CODE, SITE_NAME, SITE_URL } from "@/lib/site";
+import { getPublicAvailability, schemaAvailabilityUrl } from "@/lib/inventoryAvailability";
 
 interface Product {
   id: number; name: string; description: string;
   price: number; badge: string | null; image: string | null; category: string; stock: string;
+  track_inventory: number | null;
+  stock_quantity: number | null;
   short_description: string | null; full_description: string | null;
   features: string | null; seo_title: string | null; meta_description: string | null;
   focus_keyword: string | null; og_image: string | null; slug: string | null;
@@ -102,6 +105,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   const categorySlug = await getActiveCategorySlug(product.category);
   const productUrl = `${SITE_URL}/products/${slug}`;
+  const availability = getPublicAvailability(product);
 
   const productLd = {
     "@context": "https://schema.org",
@@ -119,7 +123,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       "@type": "Offer",
       price: String(Number(product.price).toFixed(2)),
       priceCurrency: CURRENCY_CODE,
-      availability: "https://schema.org/InStock",
+      availability: schemaAvailabilityUrl(availability),
       url: productUrl,
       seller: {
         "@type": "Organization",

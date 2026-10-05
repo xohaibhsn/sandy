@@ -26,6 +26,8 @@ type ProductRow = RowDataPacket & {
   short_description: string | null;
   description: string | null;
   badge: string | null;
+  track_inventory: number | null;
+  stock_quantity: number | null;
 };
 
 async function getActiveCategory(slug: string): Promise<CategoryRow | null> {
@@ -49,7 +51,8 @@ async function getCategoryProducts(categoryName: string): Promise<ProductRow[]> 
   try {
     await ensureProductsTable();
     const [rows] = await pool.query<ProductRow[]>(
-      `SELECT id, name, slug, price, image, category, short_description, description, badge
+      `SELECT id, name, slug, price, image, category, short_description, description, badge,
+              track_inventory, stock_quantity
        FROM products
        WHERE active = 1 AND category = ?
        ORDER BY id DESC`,

@@ -8,6 +8,7 @@ import { useContactConfig } from "@/hooks/useContactConfig";
 import { formatPrice } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
 import { cmsFill, cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import { getPublicAvailability } from "@/lib/inventoryAvailability";
 
 const xssOptions = {
   whiteList: {
@@ -29,6 +30,8 @@ const xssOptions = {
 interface Product {
   id: number; name: string; description: string;
   price: number; badge: string | null; image: string | null; category: string; stock: string;
+  track_inventory?: number | string | null;
+  stock_quantity?: number | string | null;
   short_description: string | null; full_description: string | null;
   features: string | null; seo_title: string | null; og_image: string | null;
 }
@@ -51,9 +54,11 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
   }, [slug, initialProduct]);
 
   const isInCart = product ? cart.some(i => i.id === product.id) : false;
+  const availability = product ? getPublicAvailability(product) : null;
+  const canPurchase = availability?.available === true;
 
   const handleAdd = () => {
-    if (!product || isInCart) return;
+    if (!product || isInCart || !canPurchase) return;
     addToCart({ id: product.id, name: product.name, price: Number(product.price), qty: 1 });
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
@@ -111,6 +116,8 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
         .add-btn{width:100%;background:#111111;color:#FFFFFF;border:none;padding:18px;border-radius:2px;font-size:13px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;transition:all 0.2s;}
         .add-btn:hover{background:#333;}
         .add-btn.added{background:#16A34A;}
+        .add-btn:disabled{background:#9CA3AF;cursor:not-allowed;opacity:0.85;}
+        .add-btn:disabled:hover{background:#9CA3AF;}
         .meta-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px;}
         .meta-pill{background:#F7F5F2;border:none;border-radius:0;padding:8px 12px;font-size:12px;letter-spacing:0.04em;color:#3F3A36;}
         .activation-note{background:transparent;border:none;border-top:1px solid #E8E4DF;border-radius:0;padding:14px 0;margin-bottom:18px;color:#6B6560;font-size:14px;line-height:1.6;}
@@ -170,7 +177,7 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
                 )}
                 <div className="product-price">{formatPrice(product.price)}</div>
                 <div className="meta-row">
-                  <span className="meta-pill">{product.stock || "In stock"}</span>
+                  <span className="meta-pill">{availability?.label ?? "Availability unavailable"}</span>
                   <span className="meta-pill">{cmsText(sc, "pdp_pill_cod", "Cash on Delivery")}</span>
                   <span className="meta-pill">{cmsText(sc, "pdp_pill_delivery", "Free delivery")}</span>
                   <span className="meta-pill">{cmsText(sc, "pdp_pill_region", "Pakistan-wide")}</span>
@@ -180,12 +187,35 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
                 </div>
                 <button
                   className="add-btn"
-                  style={{background: isInCart ? (hovering ? "#DC2626" : "#16A34A") : "#111111", cursor: isInCart && !hovering ? "default" : "pointer", transform: "none"}}
+                  disabled={!canPurchase && !isInCart}
+                  style={{
+                    background: !canPurchase && !isInCart
+                      ? "#9CA3AF"
+                      : isInCart
+                        ? (hovering ? "#DC2626" : "#16A34A")
+                        : "#111111",
+                    cursor: !canPurchase && !isInCart
+                      ? "not-allowed"
+                      : isInCart && !hovering
+                        ? "default"
+                        : "pointer",
+                    transform: "none",
+                  }}
                   onMouseEnter={() => isInCart && setHovering(true)}
                   onMouseLeave={() => setHovering(false)}
-                  onClick={() => isInCart ? removeFromCart(product!.id) : handleAdd()}
+                  onClick={() => {
+                    if (isInCart) {
+                      removeFromCart(product!.id);
+                      return;
+                    }
+                    handleAdd();
+                  }}
                 >
-                  {isInCart ? (hovering ? cmsText(sc, "pdp_remove", "Remove from cart") : cmsText(sc, "pdp_added", "Added to cart")) : cmsText(sc, "pdp_add", "Add to cart")}
+                  {!canPurchase && !isInCart
+                    ? (availability?.label === "Out of stock" ? "Out of stock" : "Unavailable")
+                    : isInCart
+                      ? (hovering ? cmsText(sc, "pdp_remove", "Remove from cart") : cmsText(sc, "pdp_added", "Added to cart"))
+                      : cmsText(sc, "pdp_add", "Add to cart")}
                 </button>
                 <a href="/cart" className="cart-link">{cmsText(sc, "pdp_view_cart", "View Cart & Checkout →")}</a>
               </div>
