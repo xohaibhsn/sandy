@@ -248,7 +248,7 @@ export default function AdminPage() {
   const [receiptModal, setReceiptModal] = useState<string|null>(null);
   const [orderModal, setOrderModal] = useState<typeof demoOrders[0]|null>(null);
   const [productModal, setProductModal] = useState<any|null|"new">(null);
-  const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", stock:"", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number });
+  const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", track_inventory:1 as number, stock_quantity:0 as number | null, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number });
   const [categories, setCategories] = useState<StoreCategory[]>([]);
   const [categoryModal, setCategoryModal] = useState<StoreCategory|"new"|null>(null);
   const [editCategory, setEditCategory] = useState({ name:"", slug:"", description:"", image:"", active:1 as number, sort_order:"0" });
@@ -878,6 +878,14 @@ export default function AdminPage() {
     const slug = (editProduct.slug || toSlug(editProduct.name)).trim();
     if (!editProduct.name.trim()) return;
     if (!slug) return;
+    const trackInventory = editProduct.track_inventory === 0 ? 0 : 1;
+    if (trackInventory === 1) {
+      const qty = editProduct.stock_quantity;
+      if (qty === null || qty === undefined || !Number.isInteger(Number(qty)) || Number(qty) < 0) {
+        alert("Stock quantity must be a whole number of 0 or greater");
+        return;
+      }
+    }
     const payload = {
       name: editProduct.name,
       slug,
@@ -886,7 +894,8 @@ export default function AdminPage() {
       category: editProduct.category,
       badge: null,
       image: editProduct.image || null,
-      stock: editProduct.stock || "Digital",
+      track_inventory: trackInventory,
+      stock_quantity: trackInventory === 1 ? Number(editProduct.stock_quantity ?? 0) : null,
       short_description: editProduct.short_description || "",
       full_description: editProduct.full_description || "",
       features: editProduct.features || "",
@@ -902,26 +911,29 @@ export default function AdminPage() {
         body: JSON.stringify(payload) }).then(r => r.json()).catch(() => ({}));
       if (res.error) { alert(res.error); return; }
       const newId = res.id || Date.now();
-      setProducts([...products, { ...editProduct, slug, id: newId, emoji: "" }]);
+      setProducts([...products, { ...editProduct, slug, id: newId, emoji: "", track_inventory: trackInventory, stock_quantity: trackInventory === 1 ? Number(editProduct.stock_quantity ?? 0) : null }]);
     } else if (productModal) {
       const res = await fetch("/api/admin-products", {
         method: "PUT",
         credentials: "same-origin", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...payload, id: productModal.id, active: editProduct.active === 0 ? 0 : 1 }) }).then(r => r.json()).catch(() => ({}));
       if (res.error) { alert(res.error); return; }
-      setProducts(products.map(p => p.id === productModal.id ? { ...p, ...editProduct, slug } : p));
+      setProducts(products.map(p => p.id === productModal.id ? { ...p, ...editProduct, slug, track_inventory: trackInventory, stock_quantity: trackInventory === 1 ? Number(editProduct.stock_quantity ?? 0) : null } : p));
     }
     setProductModal(null);
   };
 
   const openEditProduct = (p: any) => {
     const rawPrice = p.price != null && p.price !== "" ? String(parsePrice(p.price)) : "";
-    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||defaultProductCategory(), price:rawPrice, stock:p.stock||"Digital", image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1 });
+    const tracked = !(p.track_inventory === 0 || p.track_inventory === false || p.track_inventory === "0");
+    const qtyRaw = p.stock_quantity;
+    const qtyNum = qtyRaw === null || qtyRaw === undefined || qtyRaw === "" ? 0 : Number(qtyRaw);
+    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||defaultProductCategory(), price:rawPrice, track_inventory: tracked ? 1 : 0, stock_quantity: tracked ? (Number.isFinite(qtyNum) ? qtyNum : 0) : null, image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1 });
     setProductModal(p);
   };
 
   const openNewProduct = () => {
-    setEditProduct({ name:"", slug:"", category:defaultProductCategory(), price:"", stock:"Digital", image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 });
+    setEditProduct({ name:"", slug:"", category:defaultProductCategory(), price:"", track_inventory:1, stock_quantity:0, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 });
     setProductModal("new");
   };
 
@@ -1250,10 +1262,43 @@ export default function AdminPage() {
                 URL: {SITE_URL.replace(/^https?:\/\//, "")}/products/{editProduct.slug || "product-slug"}
               </small>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-              <div className="modal-field"><label>Price</label><input placeholder="e.g. Rs. 999" value={editProduct.price} onChange={e => setEditProduct({...editProduct,price:e.target.value})} /></div>
-              <div className="modal-field"><label>Stock / Type</label><input placeholder="e.g. 10 or Digital" value={editProduct.stock} onChange={e => setEditProduct({...editProduct,stock:e.target.value})} /></div>
+            <div className="modal-field"><label>Price</label><input placeholder="e.g. Rs. 999" value={editProduct.price} onChange={e => setEditProduct({...editProduct,price:e.target.value})} /></div>
+            <div className="modal-field">
+              <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                <input
+                  type="checkbox"
+                  checked={editProduct.track_inventory === 1}
+                  onChange={e => setEditProduct({
+                    ...editProduct,
+                    track_inventory: e.target.checked ? 1 : 0,
+                    stock_quantity: e.target.checked ? (editProduct.stock_quantity ?? 0) : null,
+                  })}
+                />
+                Track inventory
+              </label>
             </div>
+            {editProduct.track_inventory === 1 ? (
+              <div className="modal-field">
+                <label>Stock Quantity</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={editProduct.stock_quantity ?? 0}
+                  onChange={e => {
+                    const v = e.target.value;
+                    if (v === "") { setEditProduct({ ...editProduct, stock_quantity: 0 }); return; }
+                    const n = Number(v);
+                    if (!Number.isFinite(n)) return;
+                    setEditProduct({ ...editProduct, stock_quantity: Math.max(0, Math.trunc(n)) });
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="modal-field">
+                <small style={{display:"block",fontSize:12,color:"rgba(255,255,255,0.45)"}}>Inventory is not tracked for this product.</small>
+              </div>
+            )}
 
             {/* Image */}
             <div className="modal-field">
@@ -1764,7 +1809,7 @@ export default function AdminPage() {
               </div>
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Inventory</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
                     {products.length === 0 && (
                       <tr><td colSpan={7} style={{textAlign:"center",color:"#999",padding:"24px"}}>No products in the database yet. Click + Add Product.</td></tr>
@@ -1781,7 +1826,7 @@ export default function AdminPage() {
                         <td style={{fontWeight:600}}>{p.name}</td>
                         <td><span style={{background:"rgba(139,0,255,0.1)",border:"1px solid rgba(139,0,255,0.2)",padding:"3px 10px",borderRadius:"10px",fontSize:"12px"}}>{p.category}</span></td>
                         <td style={{fontWeight:700,color:"#5B21B6"}}>{formatPrice(parsePrice(p.price))}</td>
-                        <td>{p.stock}</td>
+                        <td>{(p.track_inventory === 0 || p.track_inventory === false || p.track_inventory === "0") ? "Inventory: Not tracked" : ("Stock: " + String(p.stock_quantity ?? 0))}</td>
                         <td>
                           <button
                             type="button"
