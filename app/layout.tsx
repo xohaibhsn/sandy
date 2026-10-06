@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { CartProvider } from "./lib/cartContext";
-// import ChatWidget from "@/components/ChatWidget"; // BERLIN TEMPORARILY HIDDEN
 import WhatsAppButton from "@/components/WhatsAppButton";
 import JsonLd from "@/components/JsonLd";
 import { getContactConfig } from "@/lib/contact-config";
@@ -180,9 +179,6 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <JsonLd data={organizationLd} />
         <CartProvider>{children}</CartProvider>
-        {/* BERLIN TEMPORARILY HIDDEN
-        <ChatWidget />
-        */}
         <WhatsAppButton />
       </body>
     </html>
