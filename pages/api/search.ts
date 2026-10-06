@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { RL_SEARCH, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
-import { ensureShopTables } from '../../lib/ensureShopTables';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -13,7 +12,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (q.length < 2) return res.status(200).json([]);
 
   try {
-    await ensureShopTables();
     const term = `%${q}%`;
     const [rows]: any = await pool.query(
       `SELECT id, name, price, image, category, badge,
