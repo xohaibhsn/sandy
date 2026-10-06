@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import BlogPostClient from "./BlogPostClient";
 import pool from "../../../lib/db";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
@@ -28,7 +29,12 @@ async function getPost(slug: string): Promise<Post | null> {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const post = await getPost(slug);
-  if (!post) return { title: `Post Not Found | ${SITE_NAME} Blog` };
+  if (!post) {
+    return {
+      title: `Page Not Found — ${SITE_NAME}`,
+      robots: { index: false, follow: false },
+    };
+  }
 
   const title = `${post.meta_title || post.title} | ${SITE_NAME} Blog`;
   const description = post.meta_description || post.excerpt || "";
@@ -54,37 +60,36 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function BlogSlugPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const post = await getPost(slug);
+  if (!post) notFound();
 
-  const canonical = post?.canonical_url || `${SITE_URL}/blog/${slug}`;
-  const faqsArr = post?.faqs
+  const canonical = post.canonical_url || `${SITE_URL}/blog/${slug}`;
+  const faqsArr = post.faqs
     ? (typeof post.faqs === "string" ? JSON.parse(post.faqs) : post.faqs) as Array<{question:string;answer:string}>
     : [];
 
-  const articleLd = post
-    ? {
-        "@context": "https://schema.org",
-        "@type": "Article",
-        headline: post.title,
-        description: post.excerpt || post.meta_description || "",
-        image: post.featured_image || "",
-        datePublished: post.created_at,
-        dateModified: post.updated_at || post.created_at,
-        author: {
-          "@type": "Organization",
-          name: SITE_NAME,
-          url: SITE_URL,
-        },
-        publisher: {
-          "@type": "Organization",
-          name: SITE_NAME,
-          logo: {
-            "@type": "ImageObject",
-            url: `${SITE_URL}/logo.png`,
-          },
-        },
-        mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
-      }
-    : null;
+  const articleLd = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: post.title,
+    description: post.excerpt || post.meta_description || "",
+    image: post.featured_image || "",
+    datePublished: post.created_at,
+    dateModified: post.updated_at || post.created_at,
+    author: {
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: SITE_NAME,
+      logo: {
+        "@type": "ImageObject",
+        url: `${SITE_URL}/logo.png`,
+      },
+    },
+    mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+  };
 
   const faqLd =
     faqsArr.length > 0
@@ -105,7 +110,7 @@ export default async function BlogSlugPage({ params }: { params: Promise<{ slug:
         items={[
           { name: "Home", url: SITE_URL },
           { name: "Blog", url: `${SITE_URL}/blog` },
-          { name: post?.title || slug, url: canonical },
+          { name: post.title, url: canonical },
         ]}
       />
       <JsonLd data={articleLd} />
