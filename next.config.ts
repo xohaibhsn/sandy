@@ -19,6 +19,17 @@ const nextConfig: NextConfig = {
     ],
   },
   compress: true,
+  async redirects() {
+    return [
+      // Canonical host: www → apex (path + query preserved by Next)
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.sandy.com.pk" }],
+        destination: "https://sandy.com.pk/:path*",
+        statusCode: 301,
+      },
+    ];
+  },
   async rewrites() {
     return [
       // Browsers auto-request /favicon.ico — serve dynamic DB favicon

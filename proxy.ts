@@ -17,9 +17,31 @@ import {
 } from "./lib/redirectRuntime";
 
 const ALLOWED_REDIRECT_STATUSES = new Set<number>([301, 302, 307, 308]);
+const APEX_ORIGIN = "https://sandy.com.pk";
+const WWW_HOST = "www.sandy.com.pk";
 
 function passThrough(): NextResponse {
   return NextResponse.next();
+}
+
+/** Prefer forwarded host behind reverse proxies; never trust arbitrary destinations. */
+function getIncomingHost(request: NextRequest): string {
+  const raw =
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host") ||
+    request.nextUrl.hostname ||
+    "";
+  return raw.split(",")[0].trim().toLowerCase().replace(/:\d+$/, "");
+}
+
+/** www.sandy.com.pk → https://sandy.com.pk (same path + query). */
+function redirectWwwToApex(request: NextRequest): NextResponse | null {
+  if (getIncomingHost(request) !== WWW_HOST) return null;
+  const dest = new URL(
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    APEX_ORIGIN
+  );
+  return NextResponse.redirect(dest, 301);
 }
 
 function buildRedirectTarget(destination: string, requestUrl: string): URL | null {
@@ -43,6 +65,9 @@ function buildRedirectTarget(destination: string, requestUrl: string): URL | nul
 }
 
 export async function proxy(request: NextRequest) {
+  const wwwRedirect = redirectWwwToApex(request);
+  if (wwwRedirect) return wwwRedirect;
+
   const method = request.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD") {
     return passThrough();
