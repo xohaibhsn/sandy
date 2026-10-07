@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { RowDataPacket } from "mysql2";
 import pool, { isDatabaseConfigured } from "@/lib/db";
-import { ensureCategoriesTable } from "@/lib/ensureCategories";
 import { ensureProductsTable } from "@/lib/ensureShopTables";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
@@ -33,7 +32,6 @@ type ProductRow = RowDataPacket & {
 async function getActiveCategory(slug: string): Promise<CategoryRow | null> {
   if (!isDatabaseConfigured()) return null;
   try {
-    await ensureCategoriesTable();
     const [rows] = await pool.query<CategoryRow[]>(
       `SELECT id, name, slug, description, image
        FROM categories

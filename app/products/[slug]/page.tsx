@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ProductDetail from "./ProductDetail";
 import pool from "../../../lib/db";
-import { ensureCategoriesTable } from "@/lib/ensureCategories";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import JsonLd from "@/components/JsonLd";
 import { CURRENCY_CODE, SITE_NAME, SITE_URL } from "@/lib/site";
@@ -22,7 +21,6 @@ async function getActiveCategorySlug(categoryName: string): Promise<string | nul
   const name = String(categoryName || "").trim();
   if (!name) return null;
   try {
-    await ensureCategoriesTable();
     const [rows] = await pool.query(
       `SELECT slug FROM categories WHERE name = ? AND active = 1 LIMIT 1`,
       [name]

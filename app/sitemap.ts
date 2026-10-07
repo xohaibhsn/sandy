@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
 import pool, { isDatabaseConfigured } from "@/lib/db";
-import { ensureCategoriesTable } from "@/lib/ensureCategories";
 import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +51,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
 
     try {
-      await ensureCategoriesTable();
       const [cats]: any = await pool.query(
         `SELECT slug, updated_at, created_at
          FROM categories

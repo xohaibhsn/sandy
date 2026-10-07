@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { RowDataPacket } from "mysql2";
 import pool from "../../lib/db";
-import { ensureCategoriesTable } from "../../lib/ensureCategories";
 
 type PublicCategoryRow = RowDataPacket & {
   id: number;
@@ -19,7 +18,6 @@ export default async function handler(
   }
 
   try {
-    await ensureCategoriesTable();
     const [rows] = await pool.query<PublicCategoryRow[]>(
       `SELECT id, name, slug
        FROM categories
