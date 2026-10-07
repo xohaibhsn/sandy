@@ -111,13 +111,6 @@ function ensureBlogInitialized(): Promise<void> {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    if (req.method !== 'GET') {
-      const session = await requireAdmin(req, res);
-      if (!session) return;
-    }
-
-    await ensureBlogInitialized();
-
     if (req.method === 'GET') {
       const { slug, id } = req.query;
       if (slug) {
@@ -137,19 +130,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ? 'SELECT * FROM blog_posts ORDER BY created_at DESC'
         : 'SELECT * FROM blog_posts WHERE active = 1 AND (status = "published" OR status IS NULL) ORDER BY created_at DESC';
       const [rows]: any = await pool.query(listSql);
-      if (!isAdmin && Array.isArray(rows) && rows.length === 0) {
-        await pool.query(`
-          INSERT INTO blog_posts (title, slug, excerpt, content, category, emoji, badge, badgeText, status)
-          VALUES
-          ('How to Shop on S&Y', 'how-to-shop-on-sandy', 'Getting started on S&Y is easy. Browse accessories and gadgets, add them to your cart, and checkout with COD or prepaid payment.', '<h2>Getting Started</h2><p>Browse products, add items to your cart, enter your delivery details, and place your order. We deliver across Pakistan.</p>', 'Guides', '🛒', 'guide', 'Guide', 'published'),
-          ('Paying on S&Y — COD, JazzCash and Bank Transfer', 'paying-on-sandy', 'Choose Cash on Delivery, JazzCash, Easypaisa or bank transfer at checkout. Account details for prepaid methods are shared after you order.', '<h2>Payment Options</h2><p>COD is the default. For JazzCash, Easypaisa or bank transfer, we share account details after you place the order.</p>', 'Tips', '💳', 'tips', 'Tips', 'published'),
-          ('What''s New at S&Y', 'whats-new-at-sandy', 'We have added new products, improved order tracking, and launched nationwide delivery.', '<h2>New This Month</h2><p>Check out our improved order tracking and new product range.</p>', 'News', '🚀', 'news', 'News', 'published')
-        `);
-        const [fresh] = await pool.query(listSql);
-        return res.status(200).json(Array.isArray(fresh) ? fresh : []);
-      }
       return res.status(200).json(Array.isArray(rows) ? rows : []);
     }
+
+    const session = await requireAdmin(req, res);
+    if (!session) return;
+
+    await ensureBlogInitialized();
 
     if (req.method === 'POST') {
       const { title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs } = req.body;
