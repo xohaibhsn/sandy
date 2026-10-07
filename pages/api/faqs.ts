@@ -93,13 +93,6 @@ function ensureFaqsInitialized(): Promise<void> {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    if (req.method !== 'GET') {
-      const session = await requireAdmin(req, res);
-      if (!session) return;
-    }
-
-    await ensureFaqsInitialized();
-
     if (req.method === 'GET') {
       const { admin } = req.query;
       let query = 'SELECT * FROM faqs';
@@ -113,6 +106,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const [rows] = await pool.query(query);
       return res.status(200).json(Array.isArray(rows)?rows:[]);
     }
+
+    const session = await requireAdmin(req, res);
+    if (!session) return;
+
+    await ensureFaqsInitialized();
 
     if (req.method === 'POST') {
       const { question, answer, category, sort_order } = req.body;
