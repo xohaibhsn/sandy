@@ -116,13 +116,6 @@ function ensureSectionsInitialized(): Promise<void> {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    if (req.method !== 'GET') {
-      const session = await requireAdmin(req, res);
-      if (!session) return;
-    }
-
-    await ensureSectionsInitialized();
-
     if (req.method === 'GET') {
       const { page, all } = req.query;
       let query = 'SELECT content_key,content_value,content_type,page_name,label,section_order,is_visible FROM site_content WHERE page_name=? AND content_type="json"';
@@ -140,6 +133,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }));
       return res.status(200).json(result);
     }
+
+    const session = await requireAdmin(req, res);
+    if (!session) return;
+
+    await ensureSectionsInitialized();
 
     if (req.method === 'POST') {
       const { key, value } = req.body;
