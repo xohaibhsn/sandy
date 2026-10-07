@@ -460,13 +460,6 @@ function ensureSiteContentInitialized(): Promise<void> {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    if (req.method !== 'GET') {
-      const session = await requireAdmin(req, res);
-      if (!session) return;
-    }
-
-    await ensureSiteContentInitialized();
-
     if (req.method === 'GET') {
       const { page } = req.query;
       let query = 'SELECT content_key, content_value, content_type, page_name, label FROM site_content';
@@ -478,6 +471,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       for (const r of rows) result[r.content_key] = r.content_value || '';
       return res.status(200).json(result);
     }
+
+    const session = await requireAdmin(req, res);
+    if (!session) return;
+
+    await ensureSiteContentInitialized();
 
     if (req.method === 'POST') {
       const { key, value, updates } = req.body;
