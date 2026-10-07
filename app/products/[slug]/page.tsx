@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ProductDetail from "./ProductDetail";
 import pool from "../../../lib/db";
-import { ensureShopTables } from "@/lib/ensureShopTables";
 import { ensureCategoriesTable } from "@/lib/ensureCategories";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import JsonLd from "@/components/JsonLd";
@@ -38,7 +37,6 @@ async function getActiveCategorySlug(categoryName: string): Promise<string | nul
 
 async function getProduct(slug: string): Promise<Product | null> {
   try {
-    await ensureShopTables();
     const s = slug.toLowerCase();
     const [rows]: any = await pool.query(
       `SELECT * FROM products
