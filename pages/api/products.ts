@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
-import { ensureProductsTable } from '../../lib/ensureShopTables';
 
 function sortSql(sort: unknown): string {
   const sortMap: Record<string, string> = {
@@ -16,8 +15,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    await ensureProductsTable();
-
     const { slug, id, category, minPrice, maxPrice, sort } = req.query;
 
     if (id) {
