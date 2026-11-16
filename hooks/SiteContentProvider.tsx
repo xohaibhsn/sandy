@@ -13,11 +13,12 @@ type SiteContentMap = Record<string, string>;
 
 const SiteContentCtx = createContext<SiteContentMap | null>(null);
 
-function normalizeMap(data: unknown): SiteContentMap {
-  if (data && typeof data === "object" && !Array.isArray(data)) {
-    return data as SiteContentMap;
-  }
-  return {};
+function isAcceptableContentMap(data: unknown): data is SiteContentMap {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const obj = data as Record<string, unknown>;
+  // API error bodies like { error: "..." } must not replace CMS maps.
+  if (Object.prototype.hasOwnProperty.call(obj, "error")) return false;
+  return Object.values(obj).every((v) => typeof v === "string");
 }
 
 /**
@@ -45,9 +46,13 @@ export function SiteContentProvider({
   useEffect(() => {
     let cancelled = false;
     fetch("/api/site-content?page=all", { cache: "no-store" })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) return null;
+        const data = await r.json();
+        return isAcceptableContentMap(data) ? data : null;
+      })
       .then((data) => {
-        if (!cancelled) setContent(normalizeMap(data));
+        if (!cancelled && data) setContent(data);
       })
       .catch(() => {
         /* keep prior map */

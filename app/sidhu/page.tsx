@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import dynamic from "next/dynamic";
 import { toEditorHtml } from "@/lib/contentHtml";
 import { CLOUDINARY_FOLDER, SITE_NAME, SITE_NAME_CAPS, SITE_URL, formatPrice, parsePrice } from "@/lib/site";
+import { adminFetchList, adminRequest } from "@/lib/adminRequest";
+import AdminBanner from "../../components/admin/AdminBanner";
 import RedirectManager from "../../components/admin/RedirectManager";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
@@ -185,11 +187,6 @@ const styles = `
 `;
 
 // DEMO DATA
-const demoOrders = [
-  { id:"SND-10001", customer:"Ahmed Khan", email:"ahmed@example.com", phone:"+923334800181", items:"Phone Case", total: formatPrice(2499), status:"confirmed", date:"17 Aug 2026", receipt:true },
-  { id:"SND-10002", customer:"Sara Ali", email:"sara@example.com", phone:"+923001112223", items:"Wireless Earbuds", total: formatPrice(4999), status:"pending", date:"17 Aug 2026", receipt:true },
-];
-
 const demoCustomers = [
   { name:"Ahmed Khan", email:"ahmed@example.com", phone:"+923334800181", orders:3, spent: formatPrice(7497), joined:"Jan 2026" },
   { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026" },
@@ -223,6 +220,41 @@ function CmsField({
   );
 }
 
+type AdminOrderRow = {
+  id: string;
+  customer: string;
+  email: string;
+  phone: string;
+  items: string;
+  total: string;
+  status: string;
+  date: string;
+  receipt: boolean;
+  receipt_path?: string;
+  address?: string;
+  payment?: string;
+  payment_reference?: string;
+};
+
+function mapAdminOrder(o: Record<string, unknown>): AdminOrderRow {
+  const created = o.created_at ? new Date(String(o.created_at)).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "—";
+  return {
+    id: String(o.order_id ?? ""),
+    customer: String(o.customer_name ?? ""),
+    email: String(o.customer_email ?? ""),
+    phone: String(o.customer_phone ?? ""),
+    items: String(o.items_list || o.payment_method || "—"),
+    total: formatPrice(Number(o.total || 0)),
+    status: String(o.status ?? "pending"),
+    date: created,
+    receipt: !!o.receipt_path,
+    receipt_path: String(o.receipt_path || ""),
+    address: [o.delivery_address, o.city, o.postcode].filter(Boolean).join(", "),
+    payment: String(o.payment_method || ""),
+    payment_reference: String(o.payment_reference || ""),
+  };
+}
+
 export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
@@ -238,13 +270,20 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [adminDropOpen, setAdminDropOpen] = useState(false);
-  const [orders, setOrders] = useState(demoOrders);
+  const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
+  const [ordersReady, setOrdersReady] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState("");
+  const [productsReady, setProductsReady] = useState(false);
+  const [adminBanner, setAdminBanner] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [ordersPage, setOrdersPage] = useState(1);
   const ORDERS_PER_PAGE = 20;
   const [receiptModal, setReceiptModal] = useState<string|null>(null);
-  const [orderModal, setOrderModal] = useState<typeof demoOrders[0]|null>(null);
+  const [orderModal, setOrderModal] = useState<AdminOrderRow|null>(null);
   const [productModal, setProductModal] = useState<any|null|"new">(null);
   const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", track_inventory:1 as number, stock_quantity:0 as number | null, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number });
   const [categories, setCategories] = useState<StoreCategory[]>([]);
@@ -316,12 +355,42 @@ export default function AdminPage() {
     };
   }, []);
 
+  const loadOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    setOrdersError("");
+    const res = await adminFetchList<Record<string, unknown>>("/api/admin-orders");
+    setOrdersLoading(false);
+    if (!res.ok) {
+      setOrdersError(res.errorMessage || "Could not load orders.");
+      setOrdersReady(false);
+      return false;
+    }
+    setOrders(res.data.map(mapAdminOrder));
+    setOrdersReady(true);
+    setOrdersError("");
+    return true;
+  }, []);
+
+  const loadProducts = useCallback(async () => {
+    setProductsLoading(true);
+    setProductsError("");
+    const res = await adminFetchList("/api/admin-products");
+    setProductsLoading(false);
+    if (!res.ok) {
+      setProductsError(res.errorMessage || "Could not load products.");
+      setProductsReady(false);
+      return false;
+    }
+    setProducts(res.data);
+    setProductsReady(true);
+    setProductsError("");
+    return true;
+  }, []);
+
   useEffect(() => {
     if (!loggedIn) return;
-    fetch("/api/admin-products", { credentials: "same-origin" })
-      .then(r => r.json())
-      .then(data => { setProducts(Array.isArray(data) ? data : []); })
-      .catch(() => { setProducts([]); });
+    void loadProducts();
+    void loadOrders();
     fetch("/api/categories", { credentials: "same-origin" })
       .then(async r => {
         if (!r.ok) throw new Error("Failed to load categories");
@@ -329,27 +398,6 @@ export default function AdminPage() {
       })
       .then(d => { if (Array.isArray(d)) setCategories(d); })
       .catch(() => { setCategoryMsg("Could not load categories from server."); setCategories([]); });
-    fetch("/api/admin-orders", { credentials: "same-origin" })
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setOrders(data.map((o: any) => ({
-            id: o.order_id,
-            customer: o.customer_name,
-            email: o.customer_email,
-            phone: o.customer_phone,
-            items: o.items_list || o.payment_method || "—",
-            total: formatPrice(o.total || 0),
-            status: o.status,
-            date: o.created_at ? new Date(o.created_at).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "—",
-            receipt: !!o.receipt_path,
-            receipt_path: o.receipt_path || "",
-            address: [o.delivery_address, o.city, o.postcode].filter(Boolean).join(", "),
-            payment: o.payment_method || "",
-            payment_reference: o.payment_reference || "" })));
-        }
-      })
-      .catch(() => {});
     fetch("/api/blog", { credentials: "same-origin" })
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setBlogPosts(data); })
@@ -379,7 +427,7 @@ export default function AdminPage() {
       fetch("/api/admin-staff", { credentials: "same-origin" })
         .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setStaffUsers(d); }).catch(()=>{});
     }
-  }, [loggedIn]);
+  }, [loggedIn, adminRole, loadOrders, loadProducts]);
 
 
   // Refresh all site_content (incl. OG + WhatsApp icon) when Site Settings opens
@@ -396,16 +444,25 @@ export default function AdminPage() {
   // Helper: pass role in all admin API headers (SSR-safe)
   const getRoleHeaders = () => ({});
 
+  const setSiteContentAndClearMsg = (fn: (s: Record<string, string>) => Record<string, string>) => {
+    setContentMsg("");
+    setSiteContent(fn);
+  };
+
   const saveContent = async (keys: string[]) => {
     setContentSaving(true); setContentMsg("");
     const updates = keys.map(k => ({ key: k, value: siteContent[k] || "" }));
-    const res = await fetch("/api/site-content", {
+    const res = await adminRequest("/api/site-content", {
       method: "POST",
-      credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ updates }) }).then(r => r.json()).catch(() => ({}));
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ updates }),
+    });
     setContentSaving(false);
-    setContentMsg(res.success ? "✅ Saved!" : `❌ ${res.error || "Save failed"}`);
-    setTimeout(() => setContentMsg(""), 3000);
+    if (res.ok) {
+      setContentMsg("Saved");
+    } else {
+      setContentMsg(res.errorMessage || "Save failed");
+    }
   };
 
   const uploadFaviconAdmin = async (file: File) => {
@@ -605,13 +662,22 @@ export default function AdminPage() {
     loadStaff();
   };
 
-  const updateStatus = (id: string, status: OrderStatus) => {
-    fetch("/api/admin-orders", {
-      method: "PATCH",
-      credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order_id: id, status }) }).catch(() => {});
+  const updateStatus = async (id: string, status: OrderStatus) => {
+    const previous = orders;
     setOrders(orders.map(o => o.id === id ? { ...o, status } : o));
     setOrderModal(null);
+    setAdminBanner("");
+    const res = await adminRequest("/api/admin-orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: id, status }),
+    });
+    if (!res.ok) {
+      setOrders(previous);
+      setAdminBanner(res.errorMessage || "Could not update order status.");
+      return;
+    }
+    await loadOrders();
   };
 
   const deleteOrder = async (orderId: string, total: string, status: string) => {
@@ -619,16 +685,18 @@ export default function AdminPage() {
     const isRevenue = ["confirmed","dispatched","delivered"].includes(status);
     const msg = `⚠️ Delete order ${orderId}?\n\nAmount: ${total}\nStatus: ${status.toUpperCase()}${isRevenue ? `\n\n💰 This will reverse ${formatPrice(amountNum)} from confirmed revenue.` : ""}\n\nThis cannot be undone.`;
     if (!confirm(msg)) return;
-    const res = await fetch("/api/admin-orders", {
+    setAdminBanner("");
+    const res = await adminRequest("/api/admin-orders", {
       method: "DELETE",
-      credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order_id: orderId }) }).then(r=>r.json()).catch(()=>({}));
-    if (res.success) {
-      setOrders(prev => prev.filter(o => o.id !== orderId));
-      setOrderModal(null);
-    } else {
-      alert(`❌ Delete failed: ${res.error || "Unknown error"}`);
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+    if (!res.ok) {
+      setAdminBanner(res.errorMessage || "Delete failed.");
+      return;
     }
+    setOrderModal(null);
+    await loadOrders();
   };
 
   const toSlug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
@@ -685,9 +753,14 @@ export default function AdminPage() {
     setTimeout(()=>setBlogMsg(""),3000);
   };
 
-  const deleteProduct = (id: number) => {
-    fetch(`/api/admin-products?id=${id}`, { method: "DELETE" }).catch(() => {});
-    setProducts(products.filter(p => p.id !== id));
+  const deleteProduct = async (id: number) => {
+    setAdminBanner("");
+    const res = await adminRequest(`/api/admin-products?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setAdminBanner(res.errorMessage || "Could not delete product.");
+      return;
+    }
+    await loadProducts();
   };
 
 
@@ -739,23 +812,24 @@ export default function AdminPage() {
       focus_keyword: editProduct.focus_keyword || "",
       active: editProduct.active === 0 ? 0 : 1
     };
+    setAdminBanner("");
     if (productModal === "new") {
-      const res = await fetch("/api/admin-products", {
+      const res = await adminRequest<{ id?: number }>("/api/admin-products", {
         method: "POST",
-        credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload) }).then(r => r.json()).catch(() => ({}));
-      if (res.error) { alert(res.error); return; }
-      const newId = res.id || Date.now();
-      setProducts([...products, { ...editProduct, slug, id: newId, emoji: "", track_inventory: trackInventory, stock_quantity: trackInventory === 1 ? Number(editProduct.stock_quantity ?? 0) : null }]);
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) { setAdminBanner(res.errorMessage || "Could not save product."); return; }
     } else if (productModal) {
-      const res = await fetch("/api/admin-products", {
+      const res = await adminRequest("/api/admin-products", {
         method: "PUT",
-        credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, id: productModal.id, active: editProduct.active === 0 ? 0 : 1 }) }).then(r => r.json()).catch(() => ({}));
-      if (res.error) { alert(res.error); return; }
-      setProducts(products.map(p => p.id === productModal.id ? { ...p, ...editProduct, slug, track_inventory: trackInventory, stock_quantity: trackInventory === 1 ? Number(editProduct.stock_quantity ?? 0) : null } : p));
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, id: productModal.id, active: editProduct.active === 0 ? 0 : 1 }),
+      });
+      if (!res.ok) { setAdminBanner(res.errorMessage || "Could not save product."); return; }
     }
     setProductModal(null);
+    await loadProducts();
   };
 
   const openEditProduct = (p: any) => {
@@ -776,23 +850,17 @@ export default function AdminPage() {
   const toggleProductActive = async (p: { id: number; active?: number | boolean | string }) => {
     const currentlyInactive = p.active === 0 || p.active === false || p.active === "0";
     const next = currentlyInactive ? 1 : 0;
-    try {
-      const response = await fetch("/api/admin-products", {
-        method: "PATCH",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: p.id, active: next }),
-      });
-      const res = await response.json().catch(() => ({}));
-      if (!response.ok || res.error || !res.success) {
-        alert(res.error || "Failed to update product status");
-        return;
-      }
-      const confirmed = res.active === 0 || res.active === 1 ? res.active : next;
-      setProducts(products.map(x => x.id === p.id ? { ...x, active: confirmed } : x));
-    } catch {
-      alert("Failed to update product status");
+    setAdminBanner("");
+    const res = await adminRequest<{ active?: number }>("/api/admin-products", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: p.id, active: next }),
+    });
+    if (!res.ok) {
+      setAdminBanner(res.errorMessage || "Failed to update product status");
+      return;
     }
+    await loadProducts();
   };
 
 
@@ -1425,6 +1493,10 @@ export default function AdminPage() {
             </div>
           </div>
 
+          {adminBanner && (
+            <AdminBanner message={adminBanner} tone="error" />
+          )}
+
           {/* DASHBOARD */}
           {tab==="dashboard" && (
             <>
@@ -1486,6 +1558,7 @@ export default function AdminPage() {
               <div className="section-header">
                 <div className="section-title">All Orders ({filteredOrders.length})</div>
                 <div className="section-actions">
+                  <button type="button" className="action-btn btn-view" data-refresh="orders" onClick={() => { void loadOrders(); }}>Refresh</button>
                   <select className="filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setOrdersPage(1); }}>
                     <option value="all">All Status</option>
                     <option value="pending">Pending</option>
@@ -1496,8 +1569,16 @@ export default function AdminPage() {
                   </select>
                 </div>
               </div>
+              {ordersError && (
+                <div style={{padding:"12px 20px"}}>
+                  <AdminBanner message={ordersError} tone="error" onRetry={() => { void loadOrders(); }} />
+                </div>
+              )}
+              {ordersLoading && !ordersReady && !ordersError && (
+                <div data-orders-loading="1" style={{padding:"24px 20px",color:"#666",fontSize:13}}>Loading orders…</div>
+              )}
               {/* Pagination info */}
-              {filteredOrders.length > 0 && (
+              {!ordersError && filteredOrders.length > 0 && (
                 <div style={{padding:"8px 20px",fontSize:12,color:"#888888",borderBottom:"1px solid #F0F0F0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span>Showing {from}–{to} of {filteredOrders.length} orders</span>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1512,12 +1593,16 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+              {!ordersError && ordersReady && (
               <div className="table-wrap">
                 <table>
                   <thead><tr><th>Order ID</th><th>Customer</th><th>Items</th><th>Total</th><th>Date</th><th>Payment</th><th>Receipt</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
+                    {pagedOrders.length === 0 && (
+                      <tr><td colSpan={9} data-orders-empty="1" style={{textAlign:"center",color:"#999",padding:"24px"}}>No orders yet.</td></tr>
+                    )}
                     {pagedOrders.map(o => (
-                      <tr key={o.id}>
+                      <tr key={o.id} data-order-id={o.id}>
                         <td style={{fontFamily:"monospace",color:"#5B21B6",whiteSpace:"nowrap"}}>{o.id}</td>
                         <td style={{whiteSpace:"nowrap"}}>{o.customer}</td>
                         <td style={{maxWidth:"140px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.items}</td>
@@ -1535,7 +1620,7 @@ export default function AdminPage() {
                             : <span style={{color:"rgba(255,255,255,0.25)",fontSize:"11px"}}>No Receipt</span>
                           }
                         </td>
-                        <td><span className={statusClass(o.status)}>{o.status}</span></td>
+                        <td><span className={statusClass(o.status)} data-order-status={o.status}>{o.status}</span></td>
                         <td style={{whiteSpace:"nowrap"}}>
                           <button className="action-btn btn-view" onClick={() => setOrderModal(o)}>View</button>
                           {o.status==="pending" && o.receipt && <button className="action-btn btn-verify" onClick={() => setReceiptModal(o.id)}>Verify</button>}
@@ -1546,6 +1631,7 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
             );
           })()}
@@ -1611,17 +1697,29 @@ export default function AdminPage() {
             <div className="section-card">
               <div className="section-header">
                 <div className="section-title">Products ({products.length})</div>
-                <button className="add-btn" onClick={openNewProduct}>+ Add Product</button>
+                <div className="section-actions">
+                  <button type="button" className="action-btn btn-view" data-refresh="products" onClick={() => { void loadProducts(); }}>Refresh</button>
+                  <button className="add-btn" onClick={openNewProduct}>+ Add Product</button>
+                </div>
               </div>
+              {productsError && (
+                <div style={{padding:"12px 20px"}}>
+                  <AdminBanner message={productsError} tone="error" onRetry={() => { void loadProducts(); }} />
+                </div>
+              )}
+              {productsLoading && !productsReady && !productsError && (
+                <div data-products-loading="1" style={{padding:"24px 20px",color:"#666",fontSize:13}}>Loading products…</div>
+              )}
+              {!productsError && productsReady && (
               <div className="table-wrap">
                 <table>
                   <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Inventory</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
                     {products.length === 0 && (
-                      <tr><td colSpan={7} style={{textAlign:"center",color:"#999",padding:"24px"}}>No products in the database yet. Click + Add Product.</td></tr>
+                      <tr><td colSpan={7} data-products-empty="1" style={{textAlign:"center",color:"#999",padding:"24px"}}>No products in the database yet. Click + Add Product.</td></tr>
                     )}
                     {products.map(p => (
-                      <tr key={p.id}>
+                      <tr key={p.id} data-product-id={String(p.id)}>
                         <td>
                           <div className="product-thumb">
                             {p.image
@@ -1653,6 +1751,7 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           )}
 
@@ -2062,7 +2161,7 @@ export default function AdminPage() {
             <div className="section-card" style={{padding:28}}>
               <div className="section-header" style={{marginBottom:24}}>
                 <div className="section-title">Site Settings</div>
-                {contentMsg && <span style={{fontSize:13,color:contentMsg.startsWith("✅")?"#00c864":"#ff6666"}}>{contentMsg}</span>}
+                {contentMsg && <span style={{fontSize:13,color:(contentMsg==="Saved"||contentMsg.startsWith("✅"))?"#00c864":"#ff6666"}}>{contentMsg}</span>}
               </div>
 
               <div style={{maxWidth:600}}>
@@ -2381,7 +2480,7 @@ export default function AdminPage() {
           {/* ✏️ CONTENT EDITOR */}
           {tab==="pages" && (
             <div>
-              {contentMsg && <div style={{marginBottom:16,padding:"10px 16px",background:contentMsg.startsWith("✅")?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",border:`1px solid ${contentMsg.startsWith("✅")?"rgba(0,200,100,0.3)":"rgba(255,68,68,0.25)"}`,borderRadius:10,fontSize:13,color:contentMsg.startsWith("✅")?"#00c864":"#ff6666"}}>{contentMsg}</div>}
+              {contentMsg && <div data-content-msg={contentMsg==="Saved"?"success":"error"} style={{marginBottom:16,padding:"10px 16px",background:(contentMsg==="Saved"||contentMsg.startsWith("✅"))?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",border:`1px solid ${(contentMsg==="Saved"||contentMsg.startsWith("✅"))?"rgba(0,200,100,0.3)":"rgba(255,68,68,0.25)"}`,borderRadius:10,fontSize:13,color:(contentMsg==="Saved"||contentMsg.startsWith("✅"))?"#00c864":"#ff6666"}}>{contentMsg}</div>}
 
               <div style={{marginBottom:18,padding:"14px 16px",background:"#F5F3FF",border:"1px solid #DDD6FE",borderRadius:12,fontSize:13,color:"#4C1D95",lineHeight:1.55}}>
                 <strong>Yahan se website ka saara text update hota hai</strong> (Products jaisa rich editor — bold, headings, links, lists).
@@ -2478,13 +2577,13 @@ export default function AdminPage() {
 
                   <div className="modal-field"><label>Tagline</label><input style={{width:"100%"}} value={siteContent.home_tagline||""} onChange={e=>setSiteContent(s=>({...s,home_tagline:e.target.value}))} placeholder="Fast. Reliable. Affordable." /></div>
                   <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>FEATURED PRODUCTS / SEARCH / NEWSLETTER CHROME</div>
-                  <CmsField label="View All Products Label" k="home_view_all_label" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="View All Products Link" k="home_view_all_link" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Search Placeholder" k="home_search_placeholder" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Search Button" k="home_search_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Why Choose Us Tag" k="home_features_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Newsletter Placeholder" k="home_newsletter_placeholder" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Newsletter Thank You" k="home_newsletter_thanks" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="View All Products Label" k="home_view_all_label" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="View All Products Link" k="home_view_all_link" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Search Placeholder" k="home_search_placeholder" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Search Button" k="home_search_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Why Choose Us Tag" k="home_features_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Newsletter Placeholder" k="home_newsletter_placeholder" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Newsletter Thank You" k="home_newsletter_thanks" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent([
                     "home_meta_title","home_meta_description",
                     "home_top_hero_title","home_top_hero_subtitle",
@@ -2535,32 +2634,32 @@ export default function AdminPage() {
                   <div className="modal-field"><label>CTA Title</label><input style={{width:"100%"}} value={siteContent.about_cta_title||""} onChange={e=>setSiteContent(s=>({...s,about_cta_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>CTA Subtitle</label><input style={{width:"100%"}} value={siteContent.about_cta_sub||""} onChange={e=>setSiteContent(s=>({...s,about_cta_sub:e.target.value}))} /></div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <CmsField label="CTA Button 1 Text" k="about_cta_btn1_text" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="CTA Button 1 Link" k="about_cta_btn1_link" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="CTA Button 2 Text" k="about_cta_btn2_text" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="CTA Button 2 Link" k="about_cta_btn2_link" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="CTA Button 1 Text" k="about_cta_btn1_text" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="CTA Button 1 Link" k="about_cta_btn1_link" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="CTA Button 2 Text" k="about_cta_btn2_text" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="CTA Button 2 Link" k="about_cta_btn2_link" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   </div>
-                  <CmsField label="Hero Tag" k="about_hero_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Story Tag" k="about_story_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Story Heading" k="about_story_heading" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Values Tag" k="about_values_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Journey Tag" k="about_journey_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Journey Title" k="about_journey_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Hero Tag" k="about_hero_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Story Tag" k="about_story_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Story Heading" k="about_story_heading" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Values Tag" k="about_values_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Journey Tag" k="about_journey_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Journey Title" k="about_journey_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>STORY POINTS (4)</div>
                   {[1,2,3,4].map(n=>(
                     <div key={n} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr",gap:10,marginBottom:8}}>
-                      <CmsField label={`Icon ${n}`} k={`about_point${n}_icon`} siteContent={siteContent} setSiteContent={setSiteContent} />
-                      <CmsField label={`Title ${n}`} k={`about_point${n}_title`} siteContent={siteContent} setSiteContent={setSiteContent} />
-                      <CmsField label={`Desc ${n}`} k={`about_point${n}_desc`} siteContent={siteContent} setSiteContent={setSiteContent} area />
+                      <CmsField label={`Icon ${n}`} k={`about_point${n}_icon`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                      <CmsField label={`Title ${n}`} k={`about_point${n}_title`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                      <CmsField label={`Desc ${n}`} k={`about_point${n}_desc`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
                     </div>
                   ))}
                   <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>TIMELINE (5)</div>
                   {[1,2,3,4,5].map(n=>(
                     <div key={n} style={{display:"grid",gridTemplateColumns:"80px 80px 1fr",gap:10,marginBottom:8}}>
-                      <CmsField label={`Year ${n}`} k={`about_tl${n}_year`} siteContent={siteContent} setSiteContent={setSiteContent} />
-                      <CmsField label={`Icon ${n}`} k={`about_tl${n}_icon`} siteContent={siteContent} setSiteContent={setSiteContent} />
-                      <CmsField label={`Title ${n}`} k={`about_tl${n}_title`} siteContent={siteContent} setSiteContent={setSiteContent} />
-                      <CmsField label={`Desc ${n}`} k={`about_tl${n}_desc`} siteContent={siteContent} setSiteContent={setSiteContent} area />
+                      <CmsField label={`Year ${n}`} k={`about_tl${n}_year`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                      <CmsField label={`Icon ${n}`} k={`about_tl${n}_icon`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                      <CmsField label={`Title ${n}`} k={`about_tl${n}_title`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                      <CmsField label={`Desc ${n}`} k={`about_tl${n}_desc`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
                     </div>
                   ))}
                   <p style={{fontSize:12,color:"#888",margin:"8px 0 16px"}}>Values / mission cards: edit in <strong>Page Builder → About</strong>.</p>
@@ -2588,20 +2687,20 @@ export default function AdminPage() {
                     <div className="modal-field"><label>Telegram Handle</label><input style={{width:"100%"}} value={siteContent.contact_telegram||""} onChange={e=>setSiteContent(s=>({...s,contact_telegram:e.target.value}))} placeholder="optional" /></div>
                     <div className="modal-field"><label>Business Hours</label><input style={{width:"100%"}} value={siteContent.contact_hours||""} onChange={e=>setSiteContent(s=>({...s,contact_hours:e.target.value}))} /></div>
                     <div className="modal-field"><label>Address</label><input style={{width:"100%"}} value={siteContent.contact_address||""} onChange={e=>setSiteContent(s=>({...s,contact_address:e.target.value}))} /></div>
-                    <CmsField label="Page Tag" k="contact_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="WhatsApp Card Title" k="contact_wa_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="WhatsApp Card Subtitle" k="contact_wa_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Telegram Card Title" k="contact_tg_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Telegram Card Subtitle" k="contact_tg_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Email Card Title" k="contact_email_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Email Card Subtitle" k="contact_email_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Hours Card Title" k="contact_hours_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Hours Card Subtitle" k="contact_hours_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Address Card Title" k="contact_address_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Address Card Subtitle" k="contact_address_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Form Title" k="contact_form_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Success Title" k="contact_success_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Success Message" k="contact_success_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                    <CmsField label="Page Tag" k="contact_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="WhatsApp Card Title" k="contact_wa_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="WhatsApp Card Subtitle" k="contact_wa_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Telegram Card Title" k="contact_tg_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Telegram Card Subtitle" k="contact_tg_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Email Card Title" k="contact_email_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Email Card Subtitle" k="contact_email_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Hours Card Title" k="contact_hours_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Hours Card Subtitle" k="contact_hours_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Address Card Title" k="contact_address_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Address Card Subtitle" k="contact_address_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Form Title" k="contact_form_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Success Title" k="contact_success_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Success Message" k="contact_success_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
                   </div>
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["contact_title","contact_subtitle","contact_phone","contact_email","contact_whatsapp","whatsapp_number","contact_telegram","contact_hours","contact_address","contact_tag","contact_wa_title","contact_wa_sub","contact_tg_title","contact_tg_sub","contact_email_title","contact_email_sub","contact_hours_title","contact_hours_sub","contact_address_title","contact_address_sub","contact_form_title","contact_success_title","contact_success_sub"])}>{contentSaving?"Saving...":"💾 Save Contact"}</button>
                 </div>
@@ -2610,13 +2709,13 @@ export default function AdminPage() {
               {activePage==="products" && (
                 <div className="section-card" style={{padding:24}}>
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">🛍️ Products Listing Copy</div></div>
-                  <CmsField label="Page Tag" k="products_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Page Title" k="products_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Banner (use {phone} for WhatsApp number)" k="products_banner" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Empty State" k="products_empty" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Min Price Placeholder" k="products_min" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Max Price Placeholder" k="products_max" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Apply Button" k="products_apply" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Page Tag" k="products_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Page Title" k="products_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Banner (use {phone} for WhatsApp number)" k="products_banner" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Empty State" k="products_empty" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Min Price Placeholder" k="products_min" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Max Price Placeholder" k="products_max" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Apply Button" k="products_apply" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["products_tag","products_title","products_banner","products_empty","products_min","products_max","products_apply"])}>{contentSaving?"Saving...":"💾 Save Products Copy"}</button>
                 </div>
               )}
@@ -2624,17 +2723,17 @@ export default function AdminPage() {
               {activePage==="shop" && (
                 <div className="section-card" style={{padding:24}}>
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">📦 Product Detail Copy</div></div>
-                  <CmsField label="Back Link" k="pdp_back" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Pill: COD" k="pdp_pill_cod" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Pill: Delivery" k="pdp_pill_delivery" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Pill: Region" k="pdp_pill_region" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Help Note (use {phone})" k="pdp_help" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Add to Cart" k="pdp_add" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Added to Cart" k="pdp_added" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Remove from Cart" k="pdp_remove" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="View Cart Link" k="pdp_view_cart" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="About Heading" k="pdp_about" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Included Heading" k="pdp_included" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Back Link" k="pdp_back" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Pill: COD" k="pdp_pill_cod" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Pill: Delivery" k="pdp_pill_delivery" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Pill: Region" k="pdp_pill_region" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Help Note (use {phone})" k="pdp_help" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Add to Cart" k="pdp_add" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Added to Cart" k="pdp_added" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Remove from Cart" k="pdp_remove" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="View Cart Link" k="pdp_view_cart" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="About Heading" k="pdp_about" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Included Heading" k="pdp_included" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["pdp_back","pdp_pill_cod","pdp_pill_delivery","pdp_pill_region","pdp_help","pdp_add","pdp_added","pdp_remove","pdp_view_cart","pdp_about","pdp_included"])}>{contentSaving?"Saving...":"💾 Save Product Page"}</button>
                 </div>
               )}
@@ -2644,41 +2743,41 @@ export default function AdminPage() {
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">🛒 Cart & Checkout Copy</div></div>
                   <p style={{fontSize:12,color:"#888",marginBottom:16}}>GST rate, provinces, and payment method values stay in code. Only display labels are here.</p>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <CmsField label="Cart Tag" k="cart_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Cart Title" k="cart_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Checkout Tag" k="checkout_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Checkout Title" k="checkout_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Empty Title" k="cart_empty_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Empty Subtitle" k="cart_empty_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Empty Button" k="cart_empty_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Empty Button Link" k="cart_empty_link" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Summary Heading" k="cart_summary" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Subtotal" k="cart_subtotal" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Shipping" k="cart_shipping" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Free Shipping Label" k="cart_shipping_free" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Total" k="cart_total" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Checkout Button" k="cart_checkout_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Place Order Button" k="cart_place_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Placing Label" k="cart_placing" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Details Heading" k="cart_details_heading" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Payment Heading" k="cart_pay_heading" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="COD Label" k="cart_pay_cod_label" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="COD Subtitle" k="cart_pay_cod_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="JazzCash Label" k="cart_pay_jazz_label" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="JazzCash Subtitle" k="cart_pay_jazz_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Easypaisa Label" k="cart_pay_easy_label" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Easypaisa Subtitle" k="cart_pay_easy_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Bank Label" k="cart_pay_bank_label" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Bank Subtitle" k="cart_pay_bank_sub" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Success Title" k="order_success_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Success Track Button" k="order_success_track" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Success Track Link" k="order_success_track_link" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Cart Tag" k="cart_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Cart Title" k="cart_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Checkout Tag" k="checkout_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Checkout Title" k="checkout_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Empty Title" k="cart_empty_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Empty Subtitle" k="cart_empty_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Empty Button" k="cart_empty_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Empty Button Link" k="cart_empty_link" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Summary Heading" k="cart_summary" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Subtotal" k="cart_subtotal" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Shipping" k="cart_shipping" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Free Shipping Label" k="cart_shipping_free" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Total" k="cart_total" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Checkout Button" k="cart_checkout_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Place Order Button" k="cart_place_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Placing Label" k="cart_placing" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Details Heading" k="cart_details_heading" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Payment Heading" k="cart_pay_heading" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="COD Label" k="cart_pay_cod_label" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="COD Subtitle" k="cart_pay_cod_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="JazzCash Label" k="cart_pay_jazz_label" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="JazzCash Subtitle" k="cart_pay_jazz_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Easypaisa Label" k="cart_pay_easy_label" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Easypaisa Subtitle" k="cart_pay_easy_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Bank Label" k="cart_pay_bank_label" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Bank Subtitle" k="cart_pay_bank_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Success Title" k="order_success_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Success Track Button" k="order_success_track" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Success Track Link" k="order_success_track_link" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   </div>
-                  <CmsField label="Delivery Note" k="cart_delivery_note" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Prepaid Help" k="cart_prepaid_help" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Success Subtitle" k="order_success_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Success WhatsApp CTA" k="order_success_wa" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Success WhatsApp Note" k="order_success_wa_note" siteContent={siteContent} setSiteContent={setSiteContent} area />
+                  <CmsField label="Delivery Note" k="cart_delivery_note" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Prepaid Help" k="cart_prepaid_help" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Success Subtitle" k="order_success_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Success WhatsApp CTA" k="order_success_wa" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Success WhatsApp Note" k="order_success_wa_note" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["cart_tag","cart_title","checkout_tag","checkout_title","cart_empty_title","cart_empty_sub","cart_empty_btn","cart_empty_link","cart_summary","cart_subtotal","cart_shipping","cart_shipping_free","cart_total","cart_checkout_btn","cart_place_btn","cart_placing","cart_details_heading","cart_pay_heading","cart_pay_cod_label","cart_pay_cod_sub","cart_pay_jazz_label","cart_pay_jazz_sub","cart_pay_easy_label","cart_pay_easy_sub","cart_pay_bank_label","cart_pay_bank_sub","cart_delivery_note","cart_prepaid_help","order_success_title","order_success_sub","order_success_wa","order_success_wa_note","order_success_track","order_success_track_link"])}>{contentSaving?"Saving...":"💾 Save Cart Copy"}</button>
                 </div>
               )}
@@ -2686,14 +2785,14 @@ export default function AdminPage() {
               {activePage==="tracking" && (
                 <div className="section-card" style={{padding:24}}>
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">📍 Order Tracking Copy</div></div>
-                  <CmsField label="Tag" k="tracking_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Title" k="tracking_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Subtitle" k="tracking_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Placeholder" k="tracking_placeholder" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Track Button" k="tracking_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Help Title" k="tracking_help_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Help Subtitle" k="tracking_help_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Help Button" k="tracking_help_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Tag" k="tracking_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Title" k="tracking_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Subtitle" k="tracking_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Placeholder" k="tracking_placeholder" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Track Button" k="tracking_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Help Title" k="tracking_help_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Help Subtitle" k="tracking_help_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Help Button" k="tracking_help_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["tracking_tag","tracking_title","tracking_sub","tracking_placeholder","tracking_btn","tracking_help_title","tracking_help_sub","tracking_help_btn"])}>{contentSaving?"Saving...":"💾 Save Tracking Copy"}</button>
                 </div>
               )}
@@ -2704,20 +2803,20 @@ export default function AdminPage() {
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">🧭 Nav & Footer Labels</div></div>
                   <p style={{fontSize:12,color:"#888",marginBottom:16}}>Link destinations stay structural (routes). Labels and social URLs are editable.</p>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <CmsField label="Nav: Home" k="nav_home" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Nav: Products" k="nav_products" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Nav: Track Order" k="nav_track" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Nav: Blog" k="nav_blog" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Nav: Contact" k="nav_contact" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Cart Button" k="nav_cart_label" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Shop Now Button" k="nav_shop_label" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Footer: Privacy" k="footer_privacy" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Footer: Terms" k="footer_terms" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Footer: Refund" k="footer_refund" siteContent={siteContent} setSiteContent={setSiteContent} />
-                    <CmsField label="Footer: FAQ" k="footer_faq" siteContent={siteContent} setSiteContent={setSiteContent} />
+                    <CmsField label="Nav: Home" k="nav_home" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Nav: Products" k="nav_products" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Nav: Track Order" k="nav_track" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Nav: Blog" k="nav_blog" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Nav: Contact" k="nav_contact" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Cart Button" k="nav_cart_label" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Shop Now Button" k="nav_shop_label" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Footer: Privacy" k="footer_privacy" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Footer: Terms" k="footer_terms" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Footer: Refund" k="footer_refund" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Footer: FAQ" k="footer_faq" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   </div>
-                  <CmsField label="Footer copyright" k="footer_text" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Footer tagline" k="footer_tagline" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Footer copyright" k="footer_text" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Footer tagline" k="footer_tagline" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["nav_home","nav_products","nav_track","nav_blog","nav_contact","nav_cart_label","nav_shop_label","footer_privacy","footer_terms","footer_refund","footer_faq","footer_text","footer_tagline"])}>{contentSaving?"Saving...":"💾 Save Nav & Footer"}</button>
                 </div>
               )}
@@ -2730,10 +2829,10 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Page Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.faq_subtitle||""} onChange={e=>setSiteContent(s=>({...s,faq_subtitle:e.target.value}))} /></div>
                   <div className="modal-field"><label>Help Box Title</label><input style={{width:"100%"}} value={siteContent.faq_help_title||""} onChange={e=>setSiteContent(s=>({...s,faq_help_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Help Box Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.faq_help_sub||""} onChange={e=>setSiteContent(s=>({...s,faq_help_sub:e.target.value}))} /></div>
-                  <CmsField label="Page Tag" k="faq_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="WhatsApp Button" k="faq_btn_whatsapp" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Telegram Button" k="faq_btn_telegram" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Contact Form Button" k="faq_btn_contact" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Page Tag" k="faq_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="WhatsApp Button" k="faq_btn_whatsapp" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Telegram Button" k="faq_btn_telegram" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Contact Form Button" k="faq_btn_contact" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["faq_title","faq_subtitle","faq_help_title","faq_help_sub","faq_tag","faq_btn_whatsapp","faq_btn_telegram","faq_btn_contact"])}>{contentSaving?"Saving...":"💾 Save FAQ Copy"}</button>
                 </div>
               )}
@@ -2746,17 +2845,17 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Page Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.blog_subtitle||""} onChange={e=>setSiteContent(s=>({...s,blog_subtitle:e.target.value}))} /></div>
                   <div className="modal-field"><label>Newsletter Title</label><input style={{width:"100%"}} value={siteContent.blog_newsletter_title||""} onChange={e=>setSiteContent(s=>({...s,blog_newsletter_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Newsletter Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.blog_newsletter_sub||""} onChange={e=>setSiteContent(s=>({...s,blog_newsletter_sub:e.target.value}))} /></div>
-                  <CmsField label="Page Tag" k="blog_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Read More Label" k="blog_read_more" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Featured Label" k="blog_featured_label" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Newsletter Button" k="blog_newsletter_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Newsletter Placeholder" k="blog_newsletter_placeholder" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Newsletter Thank You" k="blog_newsletter_thanks" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Post CTA Title" k="blog_post_cta_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Post CTA Subtitle" k="blog_post_cta_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Post CTA Button" k="blog_post_cta_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Post CTA Link" k="blog_post_cta_link" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Post FAQ Heading" k="blog_post_faq_title" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Page Tag" k="blog_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Read More Label" k="blog_read_more" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Featured Label" k="blog_featured_label" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Newsletter Button" k="blog_newsletter_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Newsletter Placeholder" k="blog_newsletter_placeholder" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Newsletter Thank You" k="blog_newsletter_thanks" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Post CTA Title" k="blog_post_cta_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Post CTA Subtitle" k="blog_post_cta_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Post CTA Button" k="blog_post_cta_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Post CTA Link" k="blog_post_cta_link" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Post FAQ Heading" k="blog_post_faq_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["blog_title","blog_subtitle","blog_newsletter_title","blog_newsletter_sub","blog_tag","blog_read_more","blog_featured_label","blog_newsletter_btn","blog_newsletter_placeholder","blog_newsletter_thanks","blog_post_cta_title","blog_post_cta_sub","blog_post_cta_btn","blog_post_cta_link","blog_post_faq_title"])}>{contentSaving?"Saving...":"💾 Save Blog Copy"}</button>
                 </div>
               )}
@@ -2774,17 +2873,17 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Refund Title</label><input style={{width:"100%"}} value={siteContent.refund_title||""} onChange={e=>setSiteContent(s=>({...s,refund_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Refund Last Updated</label><input style={{width:"100%"}} value={siteContent.refund_updated||""} onChange={e=>setSiteContent(s=>({...s,refund_updated:e.target.value}))} /></div>
                   <div className="modal-field"><label>Refund Body</label><TipTapEditor content={toEditorHtml(siteContent.refund_content || "")} onChange={(html)=>setSiteContent(s=>({...s,refund_content:html}))} placeholder="Leave empty to use the default refund policy..." /></div>
-                  <CmsField label="Legal Tag" k="legal_tag" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Legal Tag" k="legal_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>REFUND SUMMARY CARDS</div>
                   {[1,2,3,4].map(n=>(
                     <div key={n} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
-                      <CmsField label={`Card ${n} Title`} k={`refund_sum${n}_title`} siteContent={siteContent} setSiteContent={setSiteContent} />
-                      <CmsField label={`Card ${n} Text`} k={`refund_sum${n}_text`} siteContent={siteContent} setSiteContent={setSiteContent} area />
+                      <CmsField label={`Card ${n} Title`} k={`refund_sum${n}_title`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                      <CmsField label={`Card ${n} Text`} k={`refund_sum${n}_text`} siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
                     </div>
                   ))}
-                  <CmsField label="Refund CTA Title" k="refund_cta_title" siteContent={siteContent} setSiteContent={setSiteContent} />
-                  <CmsField label="Refund CTA Subtitle" k="refund_cta_sub" siteContent={siteContent} setSiteContent={setSiteContent} area />
-                  <CmsField label="Refund CTA Button" k="refund_cta_btn" siteContent={siteContent} setSiteContent={setSiteContent} />
+                  <CmsField label="Refund CTA Title" k="refund_cta_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Refund CTA Subtitle" k="refund_cta_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Refund CTA Button" k="refund_cta_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["privacy_title","privacy_updated","privacy_content","terms_title","terms_updated","terms_content","refund_title","refund_updated","refund_content","legal_tag","refund_sum1_title","refund_sum1_text","refund_sum2_title","refund_sum2_text","refund_sum3_title","refund_sum3_text","refund_sum4_title","refund_sum4_text","refund_cta_title","refund_cta_sub","refund_cta_btn"])}>{contentSaving?"Saving...":"💾 Save Legal"}</button>
                 </div>
               )}
