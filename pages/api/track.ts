@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { getClientIp, rateLimit } from '../../lib/rateLimit';
+import { hasCancelReasonColumn } from '../../lib/orderCancel';
 
 const TRACK_LIMIT = 15;
 const TRACK_WINDOW_MS = 15 * 60 * 1000;
@@ -89,8 +90,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    const includeCancelReason = await hasCancelReasonColumn(pool);
+    const selectCols = includeCancelReason
+      ? `order_id, status, cancel_reason, created_at, total, customer_email, customer_phone`
+      : `order_id, status, created_at, total, customer_email, customer_phone`;
+
     const [orderResult] = await pool.query(
-      `SELECT order_id, status, created_at, total, customer_email, customer_phone
+      `SELECT ${selectCols}
        FROM orders
        WHERE order_id = ?
        LIMIT 1`,
@@ -99,6 +105,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const rows = orderResult as Array<{
       order_id: string;
       status: string;
+      cancel_reason?: string | null;
       created_at: string | Date;
       total: number | string;
       customer_email: string | null;
@@ -129,13 +136,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       quantity: number;
     }>;
 
+    const orderPayload: {
+      order_id: string;
+      status: string;
+      created_at: string | Date;
+      total: number | string;
+      cancel_reason?: string;
+    } = {
+      order_id: row.order_id,
+      status: row.status,
+      created_at: row.created_at,
+      total: row.total,
+    };
+
+    if (
+      includeCancelReason &&
+      String(row.status) === 'cancelled' &&
+      typeof row.cancel_reason === 'string' &&
+      row.cancel_reason.trim()
+    ) {
+      orderPayload.cancel_reason = row.cancel_reason.trim();
+    }
+
     return res.status(200).json({
-      order: {
-        order_id: row.order_id,
-        status: row.status,
-        created_at: row.created_at,
-        total: row.total,
-      },
+      order: orderPayload,
       items: Array.isArray(items)
         ? items.map((it) => ({
             product_name: it.product_name,

@@ -5,6 +5,12 @@ import { toEditorHtml } from "@/lib/contentHtml";
 import { CLOUDINARY_FOLDER, SITE_NAME, SITE_NAME_CAPS, SITE_URL, formatPrice, parsePrice } from "@/lib/site";
 import { adminFetchList, adminRequest } from "@/lib/adminRequest";
 import AdminBanner from "../../components/admin/AdminBanner";
+import CancelOrderDialog from "../../components/admin/CancelOrderDialog";
+import {
+  CANCEL_COLUMN_MISSING,
+  CANCEL_COLUMN_MISSING_MESSAGE,
+  type CancelPresetCode,
+} from "../../lib/orderCancel";
 import RedirectManager from "../../components/admin/RedirectManager";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
@@ -234,10 +240,15 @@ type AdminOrderRow = {
   address?: string;
   payment?: string;
   payment_reference?: string;
+  cancel_reason?: string | null;
 };
 
 function mapAdminOrder(o: Record<string, unknown>): AdminOrderRow {
   const created = o.created_at ? new Date(String(o.created_at)).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "—";
+  const reasonRaw =
+    o.cancel_reason === null || o.cancel_reason === undefined
+      ? null
+      : String(o.cancel_reason);
   return {
     id: String(o.order_id ?? ""),
     customer: String(o.customer_name ?? ""),
@@ -252,6 +263,7 @@ function mapAdminOrder(o: Record<string, unknown>): AdminOrderRow {
     address: [o.delivery_address, o.city, o.postcode].filter(Boolean).join(", "),
     payment: String(o.payment_method || ""),
     payment_reference: String(o.payment_reference || ""),
+    cancel_reason: reasonRaw,
   };
 }
 
@@ -279,6 +291,8 @@ export default function AdminPage() {
   const [productsError, setProductsError] = useState("");
   const [productsReady, setProductsReady] = useState(false);
   const [adminBanner, setAdminBanner] = useState("");
+  const [cancelDialogOrderId, setCancelDialogOrderId] = useState<string | null>(null);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [ordersPage, setOrdersPage] = useState(1);
   const ORDERS_PER_PAGE = 20;
@@ -662,22 +676,61 @@ export default function AdminPage() {
     loadStaff();
   };
 
-  const updateStatus = async (id: string, status: OrderStatus) => {
+  const updateStatus = async (
+    id: string,
+    status: OrderStatus,
+    cancelFields?: {
+      cancel_reason_code: CancelPresetCode;
+      cancel_reason_note?: string;
+    }
+  ) => {
+    if (status === "cancelled" && !cancelFields) {
+      setOrderModal(null);
+      setCancelDialogOrderId(id);
+      return;
+    }
     const previous = orders;
     setOrders(orders.map(o => o.id === id ? { ...o, status } : o));
     setOrderModal(null);
     setAdminBanner("");
+    const body: Record<string, unknown> = { order_id: id, status };
+    if (cancelFields) {
+      body.cancel_reason_code = cancelFields.cancel_reason_code;
+      if (cancelFields.cancel_reason_note !== undefined) {
+        body.cancel_reason_note = cancelFields.cancel_reason_note;
+      }
+    }
     const res = await adminRequest("/api/admin-orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order_id: id, status }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       setOrders(previous);
-      setAdminBanner(res.errorMessage || "Could not update order status.");
+      const code =
+        res.data && typeof res.data === "object"
+          ? (res.data as { code?: unknown }).code
+          : undefined;
+      if (code === CANCEL_COLUMN_MISSING) {
+        setAdminBanner(CANCEL_COLUMN_MISSING_MESSAGE);
+      } else {
+        setAdminBanner(res.errorMessage || "Could not update order status.");
+      }
       return;
     }
     await loadOrders();
+  };
+
+  const confirmCancelOrder = async (payload: {
+    cancel_reason_code: CancelPresetCode;
+    cancel_reason_note?: string;
+  }) => {
+    if (!cancelDialogOrderId) return;
+    const id = cancelDialogOrderId;
+    setCancelSubmitting(true);
+    await updateStatus(id, "cancelled", payload);
+    setCancelSubmitting(false);
+    setCancelDialogOrderId(null);
   };
 
   const deleteOrder = async (orderId: string, total: string, status: string) => {
@@ -1060,15 +1113,44 @@ export default function AdminPage() {
               <div className="modal-field"><label>Payment Reference</label><input readOnly value={(orderModal as any).payment_reference} style={{background:"#F5F3FF",borderColor:"#DDD6FE",fontWeight:600}} /></div>
             )}
             <div className="modal-field"><label>Total</label><input readOnly value={orderModal.total} /></div>
+            {orderModal.status === "cancelled" ? (
+              <div className="modal-field" data-cancel-reason-display="1">
+                <label>Cancellation reason</label>
+                <input
+                  readOnly
+                  value={
+                    orderModal.cancel_reason && String(orderModal.cancel_reason).trim()
+                      ? String(orderModal.cancel_reason)
+                      : "No reason recorded"
+                  }
+                />
+              </div>
+            ) : null}
             <div className="modal-field">
               <label>Update Status</label>
-              <select defaultValue={orderModal.status} onChange={e => updateStatus(orderModal.id, e.target.value as OrderStatus)}>
-                <option value="pending">⏳ Pending</option>
-                <option value="confirmed">✅ Confirmed</option>
-                <option value="dispatched">🚚 Dispatched</option>
-                <option value="delivered">📦 Delivered</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+              {orderModal.status === "cancelled" ? (
+                <select
+                  key={`status-${orderModal.id}-cancelled`}
+                  value="cancelled"
+                  disabled
+                  data-status-terminal="1"
+                >
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              ) : (
+                <select
+                  key={`status-${orderModal.id}-${orderModal.status}`}
+                  defaultValue={orderModal.status}
+                  data-status-select="1"
+                  onChange={e => updateStatus(orderModal.id, e.target.value as OrderStatus)}
+                >
+                  <option value="pending">⏳ Pending</option>
+                  <option value="confirmed">✅ Confirmed</option>
+                  <option value="dispatched">🚚 Dispatched</option>
+                  <option value="delivered">📦 Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              )}
             </div>
             <div className="modal-actions" style={{justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
               <button
@@ -1087,6 +1169,18 @@ export default function AdminPage() {
         </div>
       )}
 
+      <CancelOrderDialog
+        orderId={cancelDialogOrderId || ""}
+        open={!!cancelDialogOrderId}
+        submitting={cancelSubmitting}
+        onBack={() => {
+          if (cancelSubmitting) return;
+          setCancelDialogOrderId(null);
+        }}
+        onConfirm={(payload) => {
+          void confirmCancelOrder(payload);
+        }}
+      />
 
       {/* PRODUCT MODAL */}
       {productModal && (
@@ -1620,7 +1714,24 @@ export default function AdminPage() {
                             : <span style={{color:"rgba(255,255,255,0.25)",fontSize:"11px"}}>No Receipt</span>
                           }
                         </td>
-                        <td><span className={statusClass(o.status)} data-order-status={o.status}>{o.status}</span></td>
+                        <td>
+                          <span className={statusClass(o.status)} data-order-status={o.status}>{o.status}</span>
+                          {o.status === "cancelled" ? (
+                            <div
+                              data-order-cancel-reason="1"
+                              style={{fontSize:11,color:"#888",marginTop:4,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
+                              title={
+                                o.cancel_reason && String(o.cancel_reason).trim()
+                                  ? String(o.cancel_reason)
+                                  : "No reason recorded"
+                              }
+                            >
+                              {o.cancel_reason && String(o.cancel_reason).trim()
+                                ? String(o.cancel_reason)
+                                : "No reason recorded"}
+                            </div>
+                          ) : null}
+                        </td>
                         <td style={{whiteSpace:"nowrap"}}>
                           <button className="action-btn btn-view" onClick={() => setOrderModal(o)}>View</button>
                           {o.status==="pending" && o.receipt && <button className="action-btn btn-verify" onClick={() => setReceiptModal(o.id)}>Verify</button>}

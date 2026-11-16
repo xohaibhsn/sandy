@@ -115,6 +115,7 @@ type OrderResult = {
   items: { name: string; price: number; qty: number }[];
   total: number;
   date: string;
+  cancelReason?: string;
 };
 
 const statusSteps = [
@@ -162,6 +163,8 @@ export default function OrderTrackingPage() {
             qty: it.quantity,
           })
         );
+        const reasonRaw =
+          typeof o.cancel_reason === "string" ? o.cancel_reason.trim() : "";
         setResult({
           id: o.order_id,
           status: o.status,
@@ -170,6 +173,7 @@ export default function OrderTrackingPage() {
           date: o.created_at
             ? new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
             : "",
+          cancelReason: reasonRaw || undefined,
         });
       } else {
         setNotFound(true);
@@ -252,6 +256,25 @@ export default function OrderTrackingPage() {
                 </div>
                 <div className={statusBadgeClass(result.status)}>{statusLabel(result.status)}</div>
               </div>
+              {result.status === "cancelled" && result.cancelReason ? (
+                <p
+                  data-cancel-reason="1"
+                  style={{
+                    margin: "0 0 12px",
+                    padding: "10px 14px",
+                    fontSize: 13,
+                    color: "#7F1D1D",
+                    background: "#FEF2F2",
+                    border: "1px solid #FECACA",
+                    borderRadius: 10,
+                    lineHeight: 1.45,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {result.cancelReason}
+                </p>
+              ) : null}
 
               <div className="order-card-body">
                 {/* Items */}
