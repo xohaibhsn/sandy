@@ -3,6 +3,8 @@ import { connection } from "next/server";
 import pool, { isDatabaseConfigured } from "@/lib/db";
 import HomeClient from "./HomeClient";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
+import { SiteContentProvider } from "@/hooks/SiteContentProvider";
+import { getSiteContentMap } from "@/lib/siteContent";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -66,9 +68,10 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function HomePage() {
   const content = await getHomeContent();
+  const map = await getSiteContentMap();
 
   return (
-    <>
+    <SiteContentProvider initialContent={map}>
       <BreadcrumbSchema
         items={[{ name: "Home", url: SITE_URL }]}
       />
@@ -88,6 +91,6 @@ export default async function HomePage() {
           "S&Y is your Pakistani online store for accessories, gadgets and everyday essentials."
         }
       />
-    </>
+    </SiteContentProvider>
   );
 }

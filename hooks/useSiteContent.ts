@@ -1,23 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useSiteContentContext } from "@/hooks/SiteContentProvider";
 
-let cache: Record<string, string> | null = null;
-let inflight: Promise<Record<string, string>> | null = null;
-const listeners = new Set<(data: Record<string, string>) => void>();
+type SiteContentMap = Record<string, string>;
 
-export function loadSiteContent(): Promise<Record<string, string>> {
-  if (cache) return Promise.resolve(cache);
+/** Concurrent in-flight de-dupe only — never a process-lifetime/forever cache. */
+let inflight: Promise<SiteContentMap> | null = null;
+
+function normalizeMap(data: unknown): SiteContentMap {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return data as SiteContentMap;
+  }
+  return {};
+}
+
+export function loadSiteContent(): Promise<SiteContentMap> {
   if (!inflight) {
-    inflight = fetch("/api/site-content?page=all")
+    inflight = fetch("/api/site-content?page=all", { cache: "no-store" })
       .then((r) => r.json())
-      .then((data) => {
-        const next = data && typeof data === "object" && !Array.isArray(data) ? data : {};
-        cache = next;
-        listeners.forEach((fn) => fn(next));
-        return next;
-      })
-      .catch(() => cache || {})
+      .then((data) => normalizeMap(data))
+      .catch(() => ({}))
       .finally(() => {
         inflight = null;
       });
@@ -25,7 +29,7 @@ export function loadSiteContent(): Promise<Record<string, string>> {
   return inflight;
 }
 
-export function cmsText(sc: Record<string, string>, key: string, fallback = ""): string {
+export function cmsText(sc: SiteContentMap, key: string, fallback = ""): string {
   const value = String(sc[key] ?? "").trim();
   return value || fallback;
 }
@@ -34,22 +38,27 @@ export function cmsFill(template: string, vars: Record<string, string>): string 
   return String(template || "").replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? "");
 }
 
-/** Shared site_content fetch — one network request for Navbar, footer, contact, pages. */
-export function useSiteContent(): Record<string, string> {
-  const [data, setData] = useState<Record<string, string>>(cache || {});
+/**
+ * Prefer server-injected provider map (sync, hydration-safe).
+ * Outside a provider (e.g. root WhatsAppButton, not-found): fetch no-store on
+ * mount and whenever pathname changes. No process-lifetime singleton cache.
+ */
+export function useSiteContent(): SiteContentMap {
+  const fromProvider = useSiteContentContext();
+  const pathname = usePathname();
+  const [data, setData] = useState<SiteContentMap>({});
 
   useEffect(() => {
-    if (cache) {
-      setData(cache);
-      return;
-    }
-    const onUpdate = (next: Record<string, string>) => setData(next);
-    listeners.add(onUpdate);
-    loadSiteContent().then((next) => setData(next));
+    if (fromProvider !== null) return;
+    let cancelled = false;
+    loadSiteContent().then((next) => {
+      if (!cancelled) setData(next);
+    });
     return () => {
-      listeners.delete(onUpdate);
+      cancelled = true;
     };
-  }, []);
+  }, [fromProvider, pathname]);
 
+  if (fromProvider !== null) return fromProvider;
   return data;
 }
