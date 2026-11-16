@@ -184,13 +184,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (status !== 'cancelled') {
-        // Non-cancel transitions: behave exactly as before (ignore reason fields).
+        // Non-cancel transitions: atomic with the cancelled-terminal rule.
+        // mysql2 enables CLIENT_FOUND_ROWS by default, so same-status updates
+        // (pending→pending) still report affectedRows=1 (matched), not 0.
         const [result] = await pool.query(
-          'UPDATE orders SET status = ? WHERE order_id = ?',
+          "UPDATE orders SET status = ? WHERE order_id = ? AND status <> 'cancelled'",
           [status, trimmedId]
         );
         if (!result || Number((result as ResultSetHeader).affectedRows) === 0) {
-          return res.status(404).json({ error: 'Order not found' });
+          // Re-read: cancelled → 409; missing → 404; otherwise treat as success
+          // (covers any driver/setup where same-status yields affectedRows=0).
+          const [again] = await pool.query<OrderLockRow[]>(
+            `SELECT order_id, status FROM orders WHERE order_id = ? LIMIT 1`,
+            [trimmedId]
+          );
+          if (!Array.isArray(again) || again.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+          }
+          if (String(again[0].status) === 'cancelled') {
+            return res.status(409).json({
+              error: 'Cancelled orders cannot change status',
+            });
+          }
         }
         return res.status(200).json({
           success: true,

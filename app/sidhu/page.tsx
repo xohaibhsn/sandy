@@ -716,6 +716,8 @@ export default function AdminPage() {
       } else {
         setAdminBanner(res.errorMessage || "Could not update order status.");
       }
+      // Refetch so the list shows server truth (e.g. cancelled) after a 409.
+      void loadOrders();
       return;
     }
     await loadOrders();
