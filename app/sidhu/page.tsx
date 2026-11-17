@@ -23,6 +23,7 @@ import {
 import RedirectManager from "../../components/admin/RedirectManager";
 import TaxSettingsPanel from "../../components/admin/TaxSettingsPanel";
 import DashboardCards from "../../components/admin/DashboardCards";
+import AdminGlobalSearch, { type AdminSearchTarget } from "../../components/admin/AdminGlobalSearch";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
 const styles = `
@@ -325,6 +326,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [adminDropOpen, setAdminDropOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -517,6 +519,22 @@ export default function AdminPage() {
   const clearOrderFilters = () => {
     setOrdersDraft(EMPTY_ORDER_FILTERS);
     void loadOrders(1, { filters: EMPTY_ORDER_FILTERS });
+  };
+
+  // Global admin search (Ctrl/Cmd+K): switch tab and, for orders/customers, apply the server-side search filter.
+  const handleSearchNavigate = (target: AdminSearchTarget) => {
+    setAdminDropOpen(false);
+    setSidebarOpen(false);
+    if (target.kind === "order" || target.kind === "customer") {
+      if (adminRole === "writer") return;
+      const filters = { ...EMPTY_ORDER_FILTERS, q: target.kind === "order" ? target.orderId : target.email };
+      setOrdersDraft(filters);
+      void loadOrders(1, { filters });
+      setTab("orders");
+      if (target.kind === "order") setDetailOrderId(target.orderId);
+      return;
+    }
+    setTab(target.tab);
   };
 
   const exportOrdersCsv = async () => {
@@ -1341,6 +1359,8 @@ export default function AdminPage() {
         </div>
       )}
 
+      <AdminGlobalSearch open={searchOpen} onOpenChange={setSearchOpen} onNavigate={handleSearchNavigate} role={adminRole} />
+
       {/* ORDER DETAIL DRAWER */}
       <OrderDetailDrawer
         orderId={detailOrderId}
@@ -1759,6 +1779,9 @@ export default function AdminPage() {
               </h1>
             </div>
             <div className="top-right">
+              <button type="button" className="admin-user-btn" data-admin-global-search-btn="1" aria-label="Search admin" aria-keyshortcuts="Control+K Meta+K" aria-haspopup="dialog" onClick={() => setSearchOpen(true)}>
+                🔍 Search <span style={{fontSize:10,color:"#888888"}}>Ctrl+K</span>
+              </button>
               <button className="admin-user-btn" onClick={() => setAdminDropOpen(o => !o)}>
                 👤 {adminName} <span style={{fontSize:10,color:"#888888"}}>{adminDropOpen?"▲":"▼"}</span>
               </button>
