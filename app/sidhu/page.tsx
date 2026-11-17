@@ -5,6 +5,7 @@ import { toEditorHtml } from "@/lib/contentHtml";
 import { CLOUDINARY_FOLDER, SITE_NAME, SITE_NAME_CAPS, SITE_URL, formatPrice, parsePrice } from "@/lib/site";
 import { adminFetchList, adminRequest } from "@/lib/adminRequest";
 import AdminBanner from "../../components/admin/AdminBanner";
+import AdminSidebarNav from "../../components/admin/AdminSidebarNav";
 import CancelOrderDialog from "../../components/admin/CancelOrderDialog";
 import {
   CANCEL_COLUMN_MISSING,
@@ -1602,33 +1603,16 @@ export default function AdminPage() {
             <div className="sidebar-logo-text">{SITE_NAME_CAPS}</div>
             <div className="sidebar-label">Admin Panel</div>
           </div>
-          <nav className="sidebar-nav">
-            {([
-              { id:"dashboard", icon:"📊", label:"Dashboard", roles:["super_admin","manager","writer"] },
-              { id:"orders",    icon:"🛒", label:"Orders",       badge: pendingCount > 0 ? String(pendingCount) : null, badgeColor:"orange", roles:["super_admin","manager"] },
-              { id:"products",  icon:"📦", label:"Products",     roles:["super_admin","manager"] },
-              { id:"categories",icon:"🗂️", label:"Categories",   roles:["super_admin","manager"] },
-              { id:"customers", icon:"👥", label:"Customers",    roles:["super_admin","manager"] },
-              { id:"blog",      icon:"📝", label:"Blog",         roles:["super_admin","manager","writer"] },
-              { id:"coupons",   icon:"🎟️", label:"Coupons",      roles:["super_admin"] },
-              { id:"builder",   icon:"🎨", label:"Page Builder", roles:["super_admin"] },
-              { id:"faqadmin",  icon:"❓", label:"FAQs",         roles:["super_admin","manager"] },
-              { id:"pages",     icon:"✏️", label:"Content Editor", roles:["super_admin","manager"] },
-              { id:"redirects", icon:"🔀", label:"Redirects",    roles:["super_admin","manager"] },
-              { id:"staff",     icon:"👤", label:"Staff Users",  roles:["super_admin"] },
-              { id:"settings",  icon:"⚙️", label:"Site Settings",roles:["super_admin"] },
-            ] as const).filter(item => ([...item.roles] as string[]).includes(adminRole)).map(item => (
-              <button key={item.id} className={`nav-item ${tab===item.id?"active":""}`} onClick={() => {
-                setTab(item.id);
-                setSidebarOpen(false);
-                if (item.id === "coupons") void loadCoupons();
-              }}>
-                <span className="nav-icon">{item.icon}</span>
-                {item.label}
-                {"badge" in item && item.badge && <span className={`nav-badge ${item.badgeColor||""}`}>{item.badge}</span>}
-              </button>
-            ))}
-          </nav>
+          <AdminSidebarNav
+            tab={tab}
+            adminRole={adminRole}
+            badges={{ orders: pendingCount > 0 ? String(pendingCount) : null }}
+            onCloseMobile={() => setSidebarOpen(false)}
+            onSelectTab={(id) => {
+              setTab(id as Tab);
+              if (id === "coupons") void loadCoupons();
+            }}
+          />
           <div className="sidebar-footer" style={{padding:"12px 10px"}}>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center",letterSpacing:"1px"}}>{SITE_NAME_CAPS} ADMIN</div>
           </div>
