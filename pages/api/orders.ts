@@ -5,14 +5,22 @@ import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import nodemailer from 'nodemailer';
 import { getContactConfig } from '../../lib/contact-config';
-import { ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL, TAX_LABEL, TAX_RATE, formatPrice } from '../../lib/site';
+import { ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL, formatPrice } from '../../lib/site';
+import {
+  TAX_CONFIG_UNAVAILABLE_MESSAGE,
+  isTaxConfigUnavailableError,
+  loadEffectiveTaxConfig,
+  toTaxUnavailable,
+} from '../../lib/taxStore';
+import type { TaxDestination, TaxSnapshot } from '../../lib/taxEngine';
 import { ensureShopTables } from '../../lib/ensureShopTables';
 import { ensureOrderIdempotencyTable } from '../../lib/ensureOrderIdempotency';
 import {
   normalizeRequestItems,
   calculateSubtotal,
   calculateCouponDiscount,
-  calculateOrderTotals,
+  computeOrderTaxTotals,
+  type TaxedPricedLineItem,
   type PricedLineItem,
   type RequestLineItem,
 } from '../../lib/orderPricing';
@@ -128,6 +136,18 @@ function parseIdempotencyKey(raw: unknown): string | null {
   return key;
 }
 
+function isMissingColumnError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { errno?: number; code?: string };
+  return e.errno === 1054 || e.code === 'ER_BAD_FIELD_ERROR';
+}
+
+function isMissingTableError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { errno?: number; code?: string };
+  return e.errno === 1146 || e.code === 'ER_NO_SUCH_TABLE';
+}
+
 function isMysqlDupEntry(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const e = err as { errno?: number; code?: string };
@@ -146,6 +166,7 @@ function buildCheckoutFingerprint(input: {
   payment_reference: string;
   receipt_path: string;
   coupon_code: string;
+  destination: TaxDestination;
   items: RequestLineItem[];
 }): string {
   const items = [...input.items]
@@ -164,6 +185,7 @@ function buildCheckoutFingerprint(input: {
     payment_reference: input.payment_reference,
     receipt_path: input.receipt_path,
     coupon_code: input.coupon_code,
+    destination: input.destination,
     items,
   };
 
@@ -177,6 +199,7 @@ type ProductRow = RowDataPacket & {
   active: unknown;
   track_inventory: unknown;
   stock_quantity: unknown;
+  tax_class_id: unknown;
 };
 
 type CouponRow = RowDataPacket & {
@@ -203,6 +226,22 @@ type OrderRow = RowDataPacket & {
   discount_amount: unknown;
   vat_amount: unknown;
 };
+
+type SnapshotLabelRow = RowDataPacket & { tax_label: unknown };
+
+function parseTaxClassId(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 type OrderItemRow = RowDataPacket & {
   product_id: unknown;
@@ -260,7 +299,21 @@ async function buildAuthoritativeReplayResponse(
   const coupon_code =
     typeof couponRaw === 'string' && couponRaw.trim() ? couponRaw.trim() : null;
 
+  // Stored label from the order's own tax snapshot (null for pre-TAX-CONFIG orders).
+  let tax_label: string | null = null;
+  try {
+    const [snapRows] = await pool.query<SnapshotLabelRow[]>(
+      `SELECT tax_label FROM order_tax_snapshots WHERE order_id = ? LIMIT 1`,
+      [orderId]
+    );
+    const label = snapRows?.[0]?.tax_label;
+    tax_label = typeof label === 'string' && label.trim() ? label.trim() : null;
+  } catch {
+    tax_label = null;
+  }
+
   return {
+    tax_label,
     success: true,
     order_id: String(order.order_id),
     whatsappUrl: contact.whatsappUrl,
@@ -355,6 +408,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (code.length > 0) couponInput = code;
     }
 
+    // Optional destination for applies_to rules. Defaults to domestic.
+    // NOTE: there is no country field in checkout yet, so this is client-asserted (see TAX-CONFIG-SUMMARY gaps).
+    let destination: TaxDestination = 'domestic';
+    if (body.destination !== undefined && body.destination !== null && body.destination !== '') {
+      if (body.destination !== 'domestic' && body.destination !== 'international') {
+        return res.status(400).json({ error: 'Invalid request' });
+      }
+      destination = body.destination;
+    }
+
     let safeReceiptPath = '';
     try {
       safeReceiptPath = assertSafeReceiptUrl(receipt_path.value);
@@ -382,11 +445,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       payment_reference: payment_reference.value,
       receipt_path: safeReceiptPath,
       coupon_code: couponInput || '',
+      destination,
       items: normalizedItems.items,
     });
 
     await ensureShopTables();
     await ensureOrderIdempotencyTable();
+
+    // Tax config is loaded server-side BEFORE any order state is created.
+    // Missing/unreadable tax tables fail safe (503) — there is no hardcoded fallback rate.
+    const taxAsOf = new Date();
+    let taxConfig: Awaited<ReturnType<typeof loadEffectiveTaxConfig>>;
+    try {
+      taxConfig = await loadEffectiveTaxConfig(pool, taxAsOf);
+    } catch (taxErr) {
+      const unavailable = toTaxUnavailable(taxErr, 'orders:loadEffectiveTaxConfig');
+      return res.status(503).json({ error: unavailable.message });
+    }
 
     // Fail before creating an order if contact config cannot be retrieved.
     const contact = await getContactConfig();
@@ -395,8 +470,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let order_id = '';
     let createdNewOrder = false;
 
-    let authoritativeItems: PricedLineItem[] = [];
+    let authoritativeItems: TaxedPricedLineItem[] = [];
     let subtotal = 0;
+    let taxLabel = '';
+    let taxLines: Array<{
+      tax_class_id: number;
+      tax_class_name: string;
+      rate_percent: number;
+      taxable_amount: number;
+      tax_amount: number;
+    }> = [];
+    let taxSnapshot: TaxSnapshot | null = null;
     let vat_amount = 0;
     let discount_amount = 0;
     let total = 0;
@@ -458,14 +542,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const ids = normalizedItems.items.map((item) => item.id);
       const placeholders = ids.map(() => '?').join(',');
-      const [productRows] = await connection.query<ProductRow[]>(
-        `SELECT id, name, price, active, track_inventory, stock_quantity
-         FROM products
-         WHERE id IN (${placeholders})
-         ORDER BY id ASC
-         FOR UPDATE`,
-        ids
-      );
+      let productRows: ProductRow[];
+      try {
+        [productRows] = await connection.query<ProductRow[]>(
+          `SELECT id, name, price, active, track_inventory, stock_quantity, tax_class_id
+           FROM products
+           WHERE id IN (${placeholders})
+           ORDER BY id ASC
+           FOR UPDATE`,
+          ids
+        );
+      } catch (productErr) {
+        // products.tax_class_id not migrated yet => fail safe, never guess a class.
+        if (isMissingColumnError(productErr)) {
+          toTaxUnavailable(productErr, 'orders:products.tax_class_id');
+          throw new OrderHttpError(503, TAX_CONFIG_UNAVAILABLE_MESSAGE);
+        }
+        throw productErr;
+      }
 
       const byId = new Map<number, ProductRow>();
       for (const row of productRows) {
@@ -523,6 +617,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           product_name: String(product.name ?? ''),
           price,
           quantity: reqItem.qty,
+          tax_class_id: parseTaxClassId(product.tax_class_id),
         });
       }
 
@@ -593,13 +688,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         persistedCoupon = null;
       }
 
-      const totalsResult = calculateOrderTotals({
-        subtotal,
-        shipping,
-        taxRate: TAX_RATE,
+      const totalsResult = computeOrderTaxTotals({
+        items: authoritativeItems,
         discountAmount: discount_amount,
+        shipping,
+        config: taxConfig,
+        destination,
       });
       if (!totalsResult.ok) {
+        if (totalsResult.error.startsWith('Tax ')) {
+          console.error('[orders] Tax computation failed:', totalsResult.error);
+          throw new OrderHttpError(503, TAX_CONFIG_UNAVAILABLE_MESSAGE);
+        }
         throw new OrderHttpError(500, 'Unable to place order');
       }
 
@@ -607,6 +707,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       total = totalsResult.totals.total;
       discount_amount = totalsResult.totals.discount_amount;
       subtotal = totalsResult.totals.subtotal;
+      taxLabel = totalsResult.totals.tax_label;
+      taxLines = totalsResult.tax.by_class.map((c) => ({
+        tax_class_id: c.tax_class_id,
+        tax_class_name: c.tax_class_name,
+        rate_percent: c.rate_percent,
+        taxable_amount: c.taxable_amount,
+        tax_amount: c.tax_amount,
+      }));
+      taxSnapshot = totalsResult.tax.snapshot;
 
       await connection.query(
         'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -635,6 +744,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           'INSERT INTO order_items (order_id,product_id,product_name,price,quantity) VALUES (?,?,?,?,?)',
           [order_id, item.product_id, item.product_name, item.price, item.quantity]
         );
+      }
+
+      // Immutable per-order tax snapshot (rates/rules/label as applied). Same transaction as the order:
+      // if it cannot be written the order is rolled back (fail safe, no untracked tax).
+      if (!taxSnapshot) {
+        throw new OrderHttpError(500, 'Unable to place order');
+      }
+      try {
+        await connection.query(
+          `INSERT INTO order_tax_snapshots (order_id, tax_label, vat_amount, snapshot_json)
+           VALUES (?, ?, ?, ?)`,
+          [order_id, taxLabel, vat_amount, JSON.stringify(taxSnapshot)]
+        );
+      } catch (snapErr) {
+        if (isMissingTableError(snapErr) || isMissingColumnError(snapErr)) {
+          toTaxUnavailable(snapErr, 'orders:order_tax_snapshots');
+          throw new OrderHttpError(503, TAX_CONFIG_UNAVAILABLE_MESSAGE);
+        }
+        throw snapErr;
       }
 
       for (const dec of inventoryDecrements) {
@@ -757,7 +885,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       <tbody>${itemRows}</tbody>
     </table>
     <div style="background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:16px 20px">
-      ${vat_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">${TAX_LABEL}</span><span style="color:#111">${formatPrice(vat_amount)}</span></div>` : ''}
+      ${vat_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">${escapeHtml(taxLabel)}</span><span style="color:#111">${formatPrice(vat_amount)}</span></div>` : ''}
       ${discount_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#16A34A"><span>Discount${persistedCoupon ? ` (${persistedCoupon})` : ''}</span><span>−${formatPrice(discount_amount)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:10px 0 4px;font-size:18px;font-weight:700;border-top:1px solid #e5e5e5;margin-top:6px"><span style="color:#111">Grand Total</span><span style="color:#5B21B6">${formatPrice(total)}</span></div>
     </div>
@@ -789,6 +917,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       subtotal,
       shipping,
       vat_amount,
+      tax_label: taxLabel,
+      tax_lines: taxLines,
       discount_amount,
       total,
       coupon_code: persistedCoupon,
@@ -802,6 +932,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error: unknown) {
     if (error instanceof OrderHttpError) {
       return res.status(error.status).json({ error: error.clientError });
+    }
+    if (isTaxConfigUnavailableError(error)) {
+      return res.status(503).json({ error: TAX_CONFIG_UNAVAILABLE_MESSAGE });
     }
     console.error('[orders] Unexpected failure:', error);
     return res.status(500).json({ error: 'Unable to place order' });

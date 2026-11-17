@@ -7,6 +7,55 @@ import { parsePrice } from '../../lib/site';
 import { requireAdmin, requireRole } from '../../lib/adminAuth';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 import { assertSafeImageUrl, UrlValidationError } from '../../lib/urlValidation';
+import { TAX_CONFIG_UNAVAILABLE_MESSAGE, toTaxUnavailable } from '../../lib/taxStore';
+
+/**
+ * Optional products.tax_class_id from the product form.
+ *  - undefined            => not sent: leave as-is
+ *  - null / '' / 0        => default class (NULL => resolved to Physical goods at checkout)
+ *  - positive int         => must exist in tax_classes
+ */
+type TaxClassInput =
+  | { ok: true; provided: false }
+  | { ok: true; provided: true; value: number | null }
+  | { ok: false; error: string; status: number };
+
+async function readTaxClassInput(raw: unknown): Promise<TaxClassInput> {
+  if (raw === undefined) return { ok: true, provided: false };
+  if (raw === null || raw === '' || raw === 0 || raw === '0') {
+    return { ok: true, provided: true, value: null };
+  }
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    return { ok: false, error: 'Invalid tax class', status: 400 };
+  }
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM tax_classes WHERE id = ? LIMIT 1',
+      [n]
+    );
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { ok: false, error: 'Invalid tax class', status: 400 };
+    }
+  } catch (err) {
+    toTaxUnavailable(err, 'admin-products:validate tax_class_id');
+    return { ok: false, error: TAX_CONFIG_UNAVAILABLE_MESSAGE, status: 503 };
+  }
+  return { ok: true, provided: true, value: n };
+}
+
+/** Separate UPDATE so products without the tax_class_id column keep saving until SQL is applied. */
+async function writeProductTaxClass(productId: number, value: number | null): Promise<void> {
+  try {
+    await pool.query('UPDATE products SET tax_class_id = ? WHERE id = ?', [value, productId]);
+  } catch (err) {
+    const e = err as { errno?: number; code?: string };
+    const missingColumn = e?.errno === 1054 || e?.code === 'ER_BAD_FIELD_ERROR';
+    // Clearing to default while the column does not exist yet is a no-op; anything else must surface.
+    if (missingColumn && value === null) return;
+    throw err;
+  }
+}
 
 function toSlug(value: string): string {
   return String(value || '')
@@ -129,6 +178,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await ensureProductsTable();
 
     if (req.method === 'GET') {
+      // Options for the product form tax-class select (any admin role; read-only).
+      if (req.query.tax_classes === '1') {
+        try {
+          const [classRows] = await pool.query(
+            'SELECT id, name, slug, active FROM tax_classes ORDER BY sort_order ASC, id ASC'
+          );
+          return res.status(200).json(Array.isArray(classRows) ? classRows : []);
+        } catch (err) {
+          toTaxUnavailable(err, 'admin-products:tax_classes');
+          return res.status(503).json({ error: TAX_CONFIG_UNAVAILABLE_MESSAGE });
+        }
+      }
       try {
         const [rows] = await pool.query('SELECT * FROM products ORDER BY id DESC');
         return res.status(200).json(Array.isArray(rows) ? rows : []);
@@ -141,11 +202,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'POST') {
       const { name, description, price, category, badge, image, slug, track_inventory, stock_quantity,
-        short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image } = req.body;
+        short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image,
+        tax_class_id } = req.body;
 
       const finalSlug = toSlug(slug || name);
       if (!name || !finalSlug) {
         return res.status(400).json({ error: 'Name and slug are required' });
+      }
+
+      const taxInput = await readTaxClassInput(tax_class_id);
+      if (!taxInput.ok) {
+        return res.status(taxInput.status).json({ error: taxInput.error });
       }
 
       const trackResult = normalizeTrackInventory(
@@ -201,6 +268,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
            safeShortDescription, safeFullDescription, finalSeoTitle, finalMetaDesc,
            focus_keyword || '', features || '', safeOgImage]
         );
+        if (taxInput.provided && taxInput.value !== null) {
+          try {
+            await writeProductTaxClass(Number(result.insertId), taxInput.value);
+          } catch (taxErr) {
+            toTaxUnavailable(taxErr, 'admin-products:POST tax_class_id');
+            return res.status(503).json({
+              error: 'Product was created but its tax class could not be saved. Tax configuration unavailable.',
+              id: result.insertId,
+            });
+          }
+        }
         return res.status(200).json({ success: true, id: result.insertId, slug: finalSlug });
       } catch (err: any) {
         if (err?.code === 'ER_DUP_ENTRY') {
@@ -212,11 +290,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'PUT') {
       const { id, name, description, price, category, badge, image, active, slug, track_inventory, stock_quantity,
-        short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image } = req.body;
+        short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image,
+        tax_class_id } = req.body;
 
       const finalSlug = toSlug(slug || name);
       if (!id || !name || !finalSlug) {
         return res.status(400).json({ error: 'id, name and slug are required' });
+      }
+
+      const taxInput = await readTaxClassInput(tax_class_id);
+      if (!taxInput.ok) {
+        return res.status(taxInput.status).json({ error: taxInput.error });
       }
 
       const numericPrice = parsePrice(price);
@@ -297,6 +381,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
            safeShortDescription, safeFullDescription, finalSeoTitle, finalMetaDesc,
            focus_keyword || '', features || '', safeOgImage, id]
         );
+        if (taxInput.provided) {
+          try {
+            await writeProductTaxClass(Number(id), taxInput.value);
+          } catch (taxErr) {
+            toTaxUnavailable(taxErr, 'admin-products:PUT tax_class_id');
+            return res.status(503).json({
+              error: 'Product was saved but its tax class could not be updated. Tax configuration unavailable.',
+            });
+          }
+        }
         return res.status(200).json({ success: true, slug: finalSlug });
       } catch (err: any) {
         if (err?.code === 'ER_DUP_ENTRY') {

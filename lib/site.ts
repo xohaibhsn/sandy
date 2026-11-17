@@ -2,8 +2,7 @@ export const SITE_NAME = "S&Y";
 export const SITE_URL = "https://sandy.com.pk";
 export const CURRENCY_SYMBOL = "Rs.";
 export const CURRENCY_CODE = "PKR";
-export const TAX_RATE = 0.18;
-export const TAX_LABEL = "GST (18%)";
+// Tax rate/label live in the CMS tax tables (TAX-CONFIG-01). Never hardcode them here.
 
 export const SITE_NAME_CAPS = "S&Y";
 export const FOOTER_COPY = "© 2026 S&Y. All rights reserved.";

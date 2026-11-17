@@ -1,14 +1,12 @@
 "use client";
 export const dynamic = 'force-dynamic';
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCart } from "../lib/cartContext";
 import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import {
   PAKISTAN_PROVINCES,
   SITE_URL,
-  TAX_LABEL,
-  TAX_RATE,
   formatPrice,
 } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
@@ -33,6 +31,18 @@ type OrderSuccessSnapshotItem = {
   name: string;
   price: number;
   qty: number;
+};
+
+/** Server-computed totals from /api/tax-quote. The browser never computes tax itself. */
+type TaxQuote = {
+  key: string;
+  subtotal: number;
+  shipping: number;
+  discount: number;
+  vat_amount: number;
+  total: number;
+  tax_label: string;
+  prices_include_tax: boolean;
 };
 
 function parseNonNegMoney(value: unknown): number | null {
@@ -338,11 +348,82 @@ export default function CartPage() {
     }
   };
 
-  const shipping = 0;
-  const subtotal = total;
-  const vatAmount = Math.round(subtotal * TAX_RATE * 100) / 100;
-  const discountAmount = couponApplied ? couponApplied.discount_amount : 0;
-  const grandTotal = Math.round((subtotal + shipping + vatAmount - discountAmount) * 100) / 100;
+  // Tax + totals come from the server (/api/tax-quote). Until a quote for the CURRENT cart/coupon
+  // arrives (or if it fails), tax and total are shown as unavailable and checkout is disabled.
+  const [quote, setQuote] = useState<TaxQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<{ key: string; message: string } | null>(null);
+  const quoteKey = JSON.stringify({
+    items: cart.map((item) => [item.id, item.qty]),
+    coupon: couponApplied?.code ?? null,
+  });
+
+  useEffect(() => {
+    const parsed = JSON.parse(quoteKey) as { items: Array<[number, number]>; coupon: string | null };
+    if (parsed.items.length === 0) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/tax-quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: parsed.items.map(([id, qty]) => ({ id, qty })),
+            coupon: parsed.coupon,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (cancelled) return;
+        const subtotalQ = parseNonNegMoney(data.subtotal);
+        const shippingQ = parseNonNegMoney(data.shipping);
+        const discountQ = parseNonNegMoney(data.discount);
+        const vatQ = parseNonNegMoney(data.vat_amount);
+        const totalQ = parseNonNegMoney(data.total);
+        const label = typeof data.tax_label === "string" ? data.tax_label.trim() : "";
+        if (
+          res.ok && data.success === true && label &&
+          subtotalQ !== null && shippingQ !== null && discountQ !== null && vatQ !== null && totalQ !== null
+        ) {
+          setQuote({
+            key: quoteKey,
+            subtotal: subtotalQ,
+            shipping: shippingQ,
+            discount: discountQ,
+            vat_amount: vatQ,
+            total: totalQ,
+            tax_label: label,
+            prices_include_tax: data.prices_include_tax === true,
+          });
+          setQuoteError(null);
+        } else {
+          setQuoteError({
+            key: quoteKey,
+            message:
+              (typeof data.error === "string" && data.error.trim()) ||
+              "Tax could not be calculated right now. Please try again shortly.",
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setQuoteError({ key: quoteKey, message: "Network error. Could not calculate tax." });
+        }
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [quoteKey]);
+
+  const quoteReady = quote !== null && quote.key === quoteKey;
+  const currentQuoteError = quoteError && quoteError.key === quoteKey ? quoteError.message : "";
+  const shipping = quoteReady ? quote.shipping : 0;
+  const subtotal = quoteReady ? quote.subtotal : total;
+  const discountAmount = quoteReady ? quote.discount : couponApplied ? couponApplied.discount_amount : 0;
+  const taxLabelDisplay = quoteReady
+    ? quote.prices_include_tax ? `${quote.tax_label} (included)` : quote.tax_label
+    : "Tax";
+  const taxAmountDisplay = quoteReady ? formatPrice(quote.vat_amount) : "—";
+  const grandTotalDisplay = quoteReady ? formatPrice(quote.total) : "—";
   const isPrepaid = paymentMethod !== "cod";
 
   const applyCoupon = async () => {
@@ -355,7 +436,7 @@ export default function CartPage() {
   };
 
   const handleOrder = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || !quoteReady) return;
     setPlacing(true);
     setOrderError("");
 
@@ -436,6 +517,7 @@ export default function CartPage() {
           subtotal?: unknown;
           shipping?: unknown;
           vat_amount?: unknown;
+          tax_label?: unknown;
           discount_amount?: unknown;
           total?: unknown;
           coupon_code?: unknown;
@@ -467,6 +549,11 @@ export default function CartPage() {
           return;
         }
 
+        // Label stored with the order by the server (from CMS tax rules at placement time).
+        const serverTaxLabel =
+          typeof payload.tax_label === "string" && payload.tax_label.trim()
+            ? payload.tax_label.trim()
+            : "Tax";
         const serverCouponCode =
           typeof payload.coupon_code === "string" && payload.coupon_code.trim()
             ? payload.coupon_code.trim()
@@ -496,7 +583,7 @@ export default function CartPage() {
           '',
           `💰 *Subtotal:* ${formatPrice(serverSubtotal)}`,
           `🚚 *Shipping:* ${serverShipping === 0 ? 'Free' : formatPrice(serverShipping)}`,
-          `🧾 *${TAX_LABEL}:* ${formatPrice(serverVatAmount)}`,
+          `🧾 *${serverTaxLabel}:* ${formatPrice(serverVatAmount)}`,
           successCouponApplied ? `🎟️ *Discount (${successCouponApplied.code}):* -${formatPrice(serverDiscountAmount)}` : null,
           `💵 *Total: ${formatPrice(serverGrandTotal)}*`,
           '',
@@ -514,6 +601,7 @@ export default function CartPage() {
           subtotal: serverSubtotal,
           shipping: serverShipping,
           vatAmount: serverVatAmount,
+          taxLabel: serverTaxLabel,
           discountAmount: serverDiscountAmount,
           grandTotal: serverGrandTotal,
           couponApplied: successCouponApplied,
@@ -594,10 +682,11 @@ export default function CartPage() {
               <div className="summary-body">
                 <div className="summary-row"><span>{cmsText(sc, "cart_subtotal", "Subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                 <div className="summary-row"><span>{cmsText(sc, "cart_shipping", "Shipping")}</span><span>{shipping === 0 ? cmsText(sc, "cart_shipping_free", "Free") : formatPrice(shipping)}</span></div>
-                <div className="summary-row"><span>{TAX_LABEL}</span><span>{formatPrice(vatAmount)}</span></div>
+                <div className="summary-row"><span>{taxLabelDisplay}</span><span>{taxAmountDisplay}</span></div>
                 {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                 <hr className="summary-divider" />
-                <div className="summary-row summary-total"><span>{cmsText(sc, "cart_total", "Total")}</span><span>{formatPrice(grandTotal)}</span></div>
+                <div className="summary-row summary-total"><span>{cmsText(sc, "cart_total", "Total")}</span><span>{grandTotalDisplay}</span></div>
+                {currentQuoteError && <div style={{fontSize:12,color:"#DC2626",marginTop:8}} role="alert">⚠️ {currentQuoteError}</div>}
               </div>
               {/* Coupon input */}
               <div style={{padding:"0 20px 16px"}}>
@@ -608,7 +697,7 @@ export default function CartPage() {
                 {couponApplied && <div style={{fontSize:12,color:"#00c864"}}>✅ {couponApplied.message} — Save {formatPrice(discountAmount)}</div>}
                 {couponError && <div style={{fontSize:12,color:"#ff6666"}}>❌ {couponError}</div>}
               </div>
-              <button className="checkout-btn" disabled={cart.length === 0} onClick={() => setStep("checkout")}>
+              <button className="checkout-btn" disabled={cart.length === 0 || !quoteReady} onClick={() => setStep("checkout")}>
                 {cmsText(sc, "cart_checkout_btn", "Proceed to Checkout →")}
               </button>
             </div>
@@ -684,7 +773,7 @@ export default function CartPage() {
                   {paymentMethod === "cod" && (
                     <div className="bank-details">
                       <h4>Cash on Delivery</h4>
-                      <div className="bank-row"><span>Amount Due</span><span>{formatPrice(grandTotal)}</span></div>
+                      <div className="bank-row"><span>Amount Due</span><span>{grandTotalDisplay}</span></div>
                     </div>
                   )}
 
@@ -695,7 +784,7 @@ export default function CartPage() {
                         <p style={{fontSize:13,color:"#555",lineHeight:1.6,marginBottom:10}}>
                           {cmsText(sc, "cart_prepaid_help", "Account details will be shared after your order. Enter your payment reference below if you have already paid, or wait for our WhatsApp message with the account number.")}
                         </p>
-                        <div className="bank-row"><span>Amount</span><span>{formatPrice(grandTotal)}</span></div>
+                        <div className="bank-row"><span>Amount</span><span>{grandTotalDisplay}</span></div>
                       </div>
                       <div className="form-group">
                         <label>Upload Payment Receipt (Optional)</label>
@@ -722,17 +811,18 @@ export default function CartPage() {
                   <div className="summary-body" style={{background:"rgba(139,0,255,0.05)", borderRadius:"12px", marginBottom:"16px"}}>
                     <div className="summary-row"><span>{cmsText(sc, "cart_subtotal", "Subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                     <div className="summary-row"><span>{cmsText(sc, "cart_shipping", "Shipping")}</span><span>{shipping === 0 ? cmsText(sc, "cart_shipping_free", "Free") : formatPrice(shipping)}</span></div>
-                    <div className="summary-row"><span>{TAX_LABEL}</span><span>{formatPrice(vatAmount)}</span></div>
+                    <div className="summary-row"><span>{taxLabelDisplay}</span><span>{taxAmountDisplay}</span></div>
                     {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                     <hr className="summary-divider" />
-                    <div className="summary-row summary-total"><span>{cmsText(sc, "cart_total", "Total")}</span><span>{formatPrice(grandTotal)}</span></div>
+                    <div className="summary-row summary-total"><span>{cmsText(sc, "cart_total", "Total")}</span><span>{grandTotalDisplay}</span></div>
+                {currentQuoteError && <div style={{fontSize:12,color:"#DC2626",marginTop:8}} role="alert">⚠️ {currentQuoteError}</div>}
                   </div>
                   <div style={{background:"rgba(91,33,182,0.08)",border:"1px solid rgba(91,33,182,0.2)",borderRadius:"12px",padding:"12px 14px",fontSize:"13px",lineHeight:1.6,color:"#444444",marginBottom:"16px"}}>
                     {cmsText(sc, "cart_delivery_note", "We deliver across Pakistan. You will receive order updates on WhatsApp.")}
                   </div>
 
                   <button className="place-order-btn"
-                    disabled={placing || cart.length === 0}
+                    disabled={placing || cart.length === 0 || !quoteReady}
                     onClick={handleOrder}>
                     {placing ? cmsText(sc, "cart_placing", "Placing Order...") : cmsText(sc, "cart_place_btn", "Place Order →")}
                   </button>

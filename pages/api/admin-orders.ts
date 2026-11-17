@@ -149,7 +149,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         GROUP BY o.order_id
         ORDER BY o.created_at DESC
       `);
-      return res.status(200).json(Array.isArray(rows) ? rows : []);
+      const orderRows = Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
+
+      // Stored tax label per order (order_tax_snapshots). Display-only and best-effort:
+      // orders placed before TAX-CONFIG-01 have no snapshot and the UI shows a generic "Tax".
+      try {
+        const [snapRows] = await pool.query<RowDataPacket[]>(
+          'SELECT order_id, tax_label FROM order_tax_snapshots'
+        );
+        const labelByOrder = new Map<string, string>();
+        for (const s of Array.isArray(snapRows) ? snapRows : []) {
+          if (typeof s.tax_label === 'string' && s.tax_label.trim()) {
+            labelByOrder.set(String(s.order_id), s.tax_label.trim());
+          }
+        }
+        for (const o of orderRows) {
+          const label = labelByOrder.get(String(o.order_id));
+          if (label) o.tax_label = label;
+        }
+      } catch {
+        /* snapshot table not available yet — labels fall back to "Tax" */
+      }
+      return res.status(200).json(orderRows);
     }
 
     if (req.method === 'PATCH') {

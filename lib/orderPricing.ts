@@ -3,6 +3,13 @@
  * No DB, network, env, or side effects — financial authority helpers for Phase B.
  */
 
+import {
+  computeCartTax,
+  type CartTaxOk,
+  type TaxConfig,
+  type TaxDestination,
+} from "./taxEngine";
+
 export const MAX_REQUEST_ITEM_ROWS = 100;
 export const MAX_LINE_QTY = 99;
 export const MIN_LINE_QTY = 1;
@@ -186,7 +193,10 @@ export function calculateCouponDiscount(
 }
 
 /**
- * Current checkout semantics:
+ * @deprecated TAX-CONFIG-01: flat single taxRate. Checkout now uses
+ * computeOrderTaxTotals (per-line, CMS-driven). Kept for backward compatibility only.
+ *
+ * Legacy checkout semantics:
  * vat = roundMoney(subtotal * taxRate)
  * total = roundMoney(subtotal + shipping + vat - discount)
  * Tax base is subtotal only (shipping not taxed). taxRate is a fraction (0.18 = 18%).
@@ -245,6 +255,93 @@ export function calculateOrderTotals(input: {
       vat_amount: vatRounded.amount,
       discount_amount: discRounded.amount,
       total: totalRounded.amount,
+    },
+  };
+}
+
+export type TaxedPricedLineItem = PricedLineItem & {
+  /** products.tax_class_id; null/undefined => default class (Physical goods). */
+  tax_class_id: number | null;
+};
+
+export type OrderTaxTotals = OrderTotals & {
+  tax_label: string;
+  prices_include_tax: boolean;
+};
+
+export type OrderTaxTotalsResult =
+  | { ok: true; totals: OrderTaxTotals; tax: CartTaxOk }
+  | { ok: false; error: string };
+
+/**
+ * TAX-CONFIG-01 checkout totals: per-line tax from CMS config (server-provided).
+ *
+ * - discount is allocated across lines; tax is computed per line (whole rupees) then summed.
+ * - tax-exclusive pricing (default): total = subtotal + shipping + vat - discount
+ * - tax-inclusive (rules.prices_include_tax): total = subtotal + shipping - discount (vat is informational)
+ * - Fails closed (ok:false) if any class/rate is unresolved. No default rate exists here.
+ */
+export function computeOrderTaxTotals(input: {
+  items: TaxedPricedLineItem[];
+  discountAmount: unknown;
+  shipping: unknown;
+  config: TaxConfig;
+  destination?: TaxDestination;
+}): OrderTaxTotalsResult {
+  const { items, discountAmount, shipping, config } = input;
+
+  const subtotalResult = calculateSubtotal(items);
+  if (!subtotalResult.ok) return { ok: false, error: subtotalResult.error };
+  if (!isFiniteNumber(shipping) || shipping < 0) {
+    return { ok: false, error: "Invalid shipping" };
+  }
+  if (!isFiniteNumber(discountAmount) || discountAmount < 0) {
+    return { ok: false, error: "Invalid discount" };
+  }
+
+  const subtotal = subtotalResult.amount;
+  const shipRounded = roundMoney(shipping);
+  const discRounded = roundMoney(discountAmount);
+  if (!shipRounded.ok || !discRounded.ok) {
+    return { ok: false, error: "Invalid money amount" };
+  }
+  if (discRounded.amount > subtotal + shipRounded.amount) {
+    return { ok: false, error: "Discount exceeds payable base" };
+  }
+
+  const tax = computeCartTax({
+    config,
+    lines: items.map((i) => ({
+      key: i.product_id,
+      amount: i.price * i.quantity,
+      tax_class_id: i.tax_class_id,
+    })),
+    discount_amount: discRounded.amount,
+    shipping_amount: shipRounded.amount,
+    destination: input.destination ?? "domestic",
+  });
+  if (!tax.ok) return { ok: false, error: tax.error };
+
+  const inclusive = config.rules.prices_include_tax;
+  const totalRaw =
+    subtotal + shipRounded.amount - discRounded.amount + (inclusive ? 0 : tax.vat_amount);
+  if (!Number.isFinite(totalRaw) || totalRaw < 0) {
+    return { ok: false, error: "Invalid total" };
+  }
+  const totalRounded = roundMoney(totalRaw);
+  if (!totalRounded.ok) return { ok: false, error: totalRounded.error };
+
+  return {
+    ok: true,
+    tax,
+    totals: {
+      subtotal,
+      shipping: shipRounded.amount,
+      vat_amount: tax.vat_amount,
+      discount_amount: discRounded.amount,
+      total: totalRounded.amount,
+      tax_label: tax.tax_label,
+      prices_include_tax: inclusive,
     },
   };
 }

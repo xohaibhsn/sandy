@@ -92,8 +92,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const includeCancelReason = await hasCancelReasonColumn(pool);
     const selectCols = includeCancelReason
-      ? `order_id, status, cancel_reason, created_at, total, customer_email, customer_phone`
-      : `order_id, status, created_at, total, customer_email, customer_phone`;
+      ? `order_id, status, cancel_reason, created_at, total, vat_amount, customer_email, customer_phone`
+      : `order_id, status, created_at, total, vat_amount, customer_email, customer_phone`;
 
     const [orderResult] = await pool.query(
       `SELECT ${selectCols}
@@ -108,6 +108,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       cancel_reason?: string | null;
       created_at: string | Date;
       total: number | string;
+      vat_amount?: number | string | null;
       customer_email: string | null;
       customer_phone: string | null;
     }>;
@@ -141,6 +142,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       status: string;
       created_at: string | Date;
       total: number | string;
+      vat_amount?: number | string;
+      tax_label?: string;
       cancel_reason?: string;
     } = {
       order_id: row.order_id,
@@ -148,6 +151,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       created_at: row.created_at,
       total: row.total,
     };
+
+    // Stored tax amount (as charged at order time) + its stored label, when present.
+    // Never recomputed here and never uses current CMS rates.
+    if (row.vat_amount !== null && row.vat_amount !== undefined) {
+      orderPayload.vat_amount = row.vat_amount;
+    }
+    try {
+      const [snapResult] = await pool.query(
+        `SELECT tax_label FROM order_tax_snapshots WHERE order_id = ? LIMIT 1`,
+        [orderId]
+      );
+      const snapRows = snapResult as Array<{ tax_label: string | null }>;
+      const label = Array.isArray(snapRows) ? snapRows[0]?.tax_label : null;
+      if (typeof label === 'string' && label.trim()) {
+        orderPayload.tax_label = label.trim();
+      }
+    } catch {
+      /* no snapshot table / row: tracking still works without a label */
+    }
 
     if (
       includeCancelReason &&

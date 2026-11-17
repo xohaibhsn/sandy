@@ -116,6 +116,9 @@ type OrderResult = {
   total: number;
   date: string;
   cancelReason?: string;
+  /** Stored at order time; label from the order's own tax snapshot when present. */
+  vatAmount?: number;
+  taxLabel?: string;
 };
 
 const statusSteps = [
@@ -174,6 +177,11 @@ export default function OrderTrackingPage() {
             ? new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
             : "",
           cancelReason: reasonRaw || undefined,
+          vatAmount: Number.isFinite(parseFloat(String(o.vat_amount)))
+            ? parseFloat(String(o.vat_amount))
+            : undefined,
+          taxLabel:
+            typeof o.tax_label === "string" && o.tax_label.trim() ? o.tax_label.trim() : undefined,
         });
       } else {
         setNotFound(true);
@@ -286,6 +294,12 @@ export default function OrderTrackingPage() {
                       <span className="order-item-price">{formatPrice(item.price * item.qty)}</span>
                     </div>
                   ))}
+                  {result.vatAmount !== undefined && (result.vatAmount > 0 || result.taxLabel) ? (
+                    <div className="order-item-row">
+                      <span className="order-item-name">{result.taxLabel || "Tax"}</span>
+                      <span className="order-item-price">{formatPrice(result.vatAmount)}</span>
+                    </div>
+                  ) : null}
                   <div className="order-total-row">
                     <span>Total</span>
                     <span>{formatPrice(result.total)}</span>

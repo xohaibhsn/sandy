@@ -13,6 +13,7 @@ import {
   type CancelPresetCode,
 } from "../../lib/orderCancel";
 import RedirectManager from "../../components/admin/RedirectManager";
+import TaxSettingsPanel from "../../components/admin/TaxSettingsPanel";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
 const styles = `
@@ -199,7 +200,7 @@ const demoCustomers = [
   { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026" },
 ];
 
-type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff";
+type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff"|"tax";
 type StoreCategory = { id:number; name:string; slug:string; description:string; image:string; parent_id:number|null; active:number; sort_order:number; };
 type AdminRole = "super_admin"|"manager"|"writer";
 type OrderStatus = "pending"|"confirmed"|"dispatched"|"delivered"|"cancelled";
@@ -242,6 +243,9 @@ type AdminOrderRow = {
   payment?: string;
   payment_reference?: string;
   cancel_reason?: string | null;
+  /** Stored at order time (orders.vat_amount) and its stored label (order_tax_snapshots), if any. */
+  vat: string;
+  taxLabel: string;
 };
 
 function mapAdminOrder(o: Record<string, unknown>): AdminOrderRow {
@@ -265,6 +269,8 @@ function mapAdminOrder(o: Record<string, unknown>): AdminOrderRow {
     payment: String(o.payment_method || ""),
     payment_reference: String(o.payment_reference || ""),
     cancel_reason: reasonRaw,
+    vat: formatPrice(Number(o.vat_amount || 0)),
+    taxLabel: typeof o.tax_label === "string" && o.tax_label.trim() ? o.tax_label.trim() : "Tax",
   };
 }
 
@@ -300,7 +306,9 @@ export default function AdminPage() {
   const [receiptModal, setReceiptModal] = useState<string|null>(null);
   const [orderModal, setOrderModal] = useState<AdminOrderRow|null>(null);
   const [productModal, setProductModal] = useState<any|null|"new">(null);
-  const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", track_inventory:1 as number, stock_quantity:0 as number | null, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number });
+  const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", track_inventory:1 as number, stock_quantity:0 as number | null, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number, tax_class_id:"" as string });
+  const [taxClassOptions, setTaxClassOptions] = useState<Array<{ id:number; name:string; active:number|boolean }>>([]);
+  const [taxClassOptionsError, setTaxClassOptionsError] = useState("");
   const [categories, setCategories] = useState<StoreCategory[]>([]);
   const [categoryModal, setCategoryModal] = useState<StoreCategory|"new"|null>(null);
   const [editCategory, setEditCategory] = useState({ name:"", slug:"", description:"", image:"", active:1 as number, sort_order:"0" });
@@ -465,6 +473,18 @@ export default function AdminPage() {
     }
     setFaqs(res.data);
     setFaqsError("");
+    return true;
+  }, []);
+
+  const loadTaxClassOptions = useCallback(async () => {
+    setTaxClassOptionsError("");
+    const res = await adminFetchList<{ id:number; name:string; active:number|boolean }>("/api/admin-products?tax_classes=1");
+    if (!res.ok) {
+      setTaxClassOptions([]);
+      setTaxClassOptionsError(res.errorMessage || "Could not load tax classes.");
+      return false;
+    }
+    setTaxClassOptions(res.data);
     return true;
   }, []);
 
@@ -965,7 +985,11 @@ export default function AdminPage() {
       seo_title: editProduct.seo_title || "",
       meta_description: editProduct.meta_description || "",
       focus_keyword: editProduct.focus_keyword || "",
-      active: editProduct.active === 0 ? 0 : 1
+      active: editProduct.active === 0 ? 0 : 1,
+      // Only sent when the class list loaded, so a failed/missing tax setup can never wipe a product's class.
+      ...(taxClassOptions.length > 0
+        ? { tax_class_id: editProduct.tax_class_id === "" ? null : Number(editProduct.tax_class_id) }
+        : {}),
     };
     setAdminBanner("");
     if (productModal === "new") {
@@ -992,12 +1016,14 @@ export default function AdminPage() {
     const tracked = !(p.track_inventory === 0 || p.track_inventory === false || p.track_inventory === "0");
     const qtyRaw = p.stock_quantity;
     const qtyNum = qtyRaw === null || qtyRaw === undefined || qtyRaw === "" ? 0 : Number(qtyRaw);
-    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||defaultProductCategory(), price:rawPrice, track_inventory: tracked ? 1 : 0, stock_quantity: tracked ? (Number.isFinite(qtyNum) ? qtyNum : 0) : null, image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1 });
+    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||defaultProductCategory(), price:rawPrice, track_inventory: tracked ? 1 : 0, stock_quantity: tracked ? (Number.isFinite(qtyNum) ? qtyNum : 0) : null, image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1, tax_class_id: p.tax_class_id != null && Number(p.tax_class_id) > 0 ? String(p.tax_class_id) : "" });
+    void loadTaxClassOptions();
     setProductModal(p);
   };
 
   const openNewProduct = () => {
-    setEditProduct({ name:"", slug:"", category:defaultProductCategory(), price:"", track_inventory:1, stock_quantity:0, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 });
+    setEditProduct({ name:"", slug:"", category:defaultProductCategory(), price:"", track_inventory:1, stock_quantity:0, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1, tax_class_id:"" });
+    void loadTaxClassOptions();
     setProductModal("new");
   };
 
@@ -1196,6 +1222,7 @@ export default function AdminPage() {
             {(orderModal as any).payment_reference && (
               <div className="modal-field"><label>Payment Reference</label><input readOnly value={(orderModal as any).payment_reference} style={{background:"#F5F3FF",borderColor:"#DDD6FE",fontWeight:600}} /></div>
             )}
+            <div className="modal-field"><label>{orderModal.taxLabel}</label><input readOnly value={orderModal.vat} /></div>
             <div className="modal-field"><label>Total</label><input readOnly value={orderModal.total} /></div>
             {orderModal.status === "cancelled" ? (
               <div className="modal-field" data-cancel-reason-display="1">
@@ -1318,6 +1345,26 @@ export default function AdminPage() {
               </small>
             </div>
             <div className="modal-field"><label>Price</label><input placeholder="e.g. Rs. 999" value={editProduct.price} onChange={e => setEditProduct({...editProduct,price:e.target.value})} /></div>
+            <div className="modal-field" data-tax-class-field="1">
+              <label>Tax class</label>
+              <select
+                value={editProduct.tax_class_id}
+                disabled={taxClassOptions.length === 0}
+                onChange={e => setEditProduct({...editProduct,tax_class_id:e.target.value})}
+              >
+                <option value="">Default (Physical goods)</option>
+                {taxClassOptions
+                  .filter(c => Number(c.active) === 1 || String(c.id) === editProduct.tax_class_id)
+                  .map(c => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.name}{Number(c.active) === 0 ? " (Inactive)" : ""}
+                    </option>
+                  ))}
+              </select>
+              {taxClassOptionsError && (
+                <small style={{display:"block",marginTop:4,fontSize:11,color:"#DC2626"}}>{taxClassOptionsError}</small>
+              )}
+            </div>
             <div className="modal-field">
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
                 <input
@@ -2334,6 +2381,9 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* 🧾 TAX (super_admin only; /api/admin-tax enforces this server-side too) */}
+          {tab==="tax" && adminRole==="super_admin" && <TaxSettingsPanel />}
+
           {/* 👤 STAFF USERS */}
           {tab==="staff" && adminRole==="super_admin" && (
             <div>
@@ -2988,7 +3038,7 @@ export default function AdminPage() {
               {activePage==="cart" && (
                 <div className="section-card" style={{padding:24}}>
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">🛒 Cart & Checkout Copy</div></div>
-                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>GST rate, provinces, and payment method values stay in code. Only display labels are here.</p>
+                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>Tax rates and labels are managed in the Tax tab. Provinces and payment method values stay in code. Only display labels are here.</p>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                     <CmsField label="Cart Tag" k="cart_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Cart Title" k="cart_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />

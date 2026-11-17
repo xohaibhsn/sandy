@@ -75,6 +75,8 @@ interface OrderSnapshot {
   subtotal: number;
   shipping: number;
   vatAmount: number;
+  /** Label stored with the order at placement (from /api/orders response). */
+  taxLabel?: string | null;
   discountAmount: number;
   grandTotal: number;
   couponApplied: { code: string } | null;
@@ -186,7 +188,7 @@ export default function CartSuccessPage() {
                 <span className="breakdown-value">{snap.shipping === 0 ? 'Free' : formatPrice(snap.shipping)}</span>
               </div>
               <div className="breakdown-row">
-                <span className="breakdown-label">GST (18%)</span>
+                <span className="breakdown-label">{snap.taxLabel || "Tax"}</span>
                 <span className="breakdown-value">{formatPrice(snap.vatAmount)}</span>
               </div>
               {snap.couponApplied && snap.discountAmount > 0 && (
