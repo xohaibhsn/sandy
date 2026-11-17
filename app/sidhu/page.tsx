@@ -305,13 +305,16 @@ export default function AdminPage() {
   const [editCategory, setEditCategory] = useState({ name:"", slug:"", description:"", image:"", active:1 as number, sort_order:"0" });
   const [catImgUploading, setCatImgUploading] = useState(false);
   const [categoryMsg, setCategoryMsg] = useState("");
+  const [categoriesError, setCategoriesError] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
   const [heroImgUploading, setHeroImgUploading] = useState(false);
   const [customers, setCustomers] = useState(demoCustomers);
   const [coupons, setCoupons] = useState<any[]>([]);
+  const [couponsError, setCouponsError] = useState("");
   const [couponForm, setCouponForm] = useState({ code:"", type:"percentage", value:"", minimum_order:"0", usage_limit:"", expires_at:"" });
   const [couponMsg, setCouponMsg] = useState("");
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
+  const [blogError, setBlogError] = useState("");
   const [blogMsg, setBlogMsg] = useState("");
   const [blogModal, setBlogModal] = useState<BlogPost|"new"|null>(null);
   const [featImgUploading, setFeatImgUploading] = useState(false);
@@ -333,6 +336,7 @@ export default function AdminPage() {
   // Page Builder
   type SectionItem = { key:string; label:string; page:string; order:number; visible:boolean; data:any; };
   const [sections, setSections] = useState<SectionItem[]>([]);
+  const [sectionsError, setSectionsError] = useState("");
   const [builderPage, setBuilderPage] = useState("home");
   const [sectionModal, setSectionModal] = useState<SectionItem|null>(null);
   const [sectionEditing, setSectionEditing] = useState<any>({});
@@ -341,9 +345,11 @@ export default function AdminPage() {
   // FAQs
   type FAQ = { id:number; question:string; answer:string; category:string; sort_order:number; is_visible:number; };
   const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [faqsError, setFaqsError] = useState("");
   const [faqModal, setFaqModal] = useState<FAQ|"new"|null>(null);
   const [editFaq, setEditFaq] = useState({ question:"", answer:"", category:"General" });
   const [faqMsg, setFaqMsg] = useState("");
+  const [staffError, setStaffError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -401,21 +407,92 @@ export default function AdminPage() {
     return true;
   }, []);
 
+  const loadCategories = useCallback(async () => {
+    setCategoriesError("");
+    const res = await adminFetchList<StoreCategory>("/api/categories");
+    if (!res.ok) {
+      setCategoriesError(res.errorMessage || "Could not load categories.");
+      return false;
+    }
+    setCategories(res.data);
+    setCategoriesError("");
+    return true;
+  }, []);
+
+  const loadBlog = useCallback(async () => {
+    setBlogError("");
+    const res = await adminFetchList<BlogPost>("/api/blog");
+    if (!res.ok) {
+      setBlogError(res.errorMessage || "Could not load blog posts.");
+      return false;
+    }
+    setBlogPosts(res.data);
+    setBlogError("");
+    return true;
+  }, []);
+
+  const loadCoupons = useCallback(async () => {
+    setCouponsError("");
+    const res = await adminFetchList("/api/coupons");
+    if (!res.ok) {
+      setCouponsError(res.errorMessage || "Could not load coupons.");
+      return false;
+    }
+    setCoupons(res.data);
+    setCouponsError("");
+    return true;
+  }, []);
+
+  const loadSections = useCallback(async (pageName: string = "home") => {
+    setSectionsError("");
+    const res = await adminFetchList<SectionItem>(`/api/sections?page=${encodeURIComponent(pageName)}&all=1`);
+    if (!res.ok) {
+      setSectionsError(res.errorMessage || "Could not load sections.");
+      return false;
+    }
+    setSections(res.data);
+    setSectionsError("");
+    return true;
+  }, []);
+
+  const loadFaqs = useCallback(async () => {
+    setFaqsError("");
+    const res = await adminFetchList<FAQ>("/api/faqs?admin=true");
+    if (!res.ok) {
+      setFaqsError(res.errorMessage || "Could not load FAQs.");
+      return false;
+    }
+    setFaqs(res.data);
+    setFaqsError("");
+    return true;
+  }, []);
+
+  const loadStaff = useCallback(async () => {
+    setStaffError("");
+    const res = await adminFetchList("/api/admin-staff");
+    if (!res.ok) {
+      setStaffError(res.errorMessage || "Could not load staff.");
+      return false;
+    }
+    setStaffUsers(res.data);
+    setStaffError("");
+    return true;
+  }, []);
+
+  // Boot loads (same trigger as parent: loggedIn + adminRole). Finding 41 left as-is —
+  // splitting staff out of this effect adds a react-hooks/set-state-in-effect finding.
   useEffect(() => {
     if (!loggedIn) return;
     void loadProducts();
     void loadOrders();
-    fetch("/api/categories", { credentials: "same-origin" })
-      .then(async r => {
-        if (!r.ok) throw new Error("Failed to load categories");
-        return r.json();
-      })
-      .then(d => { if (Array.isArray(d)) setCategories(d); })
-      .catch(() => { setCategoryMsg("Could not load categories from server."); setCategories([]); });
-    fetch("/api/blog", { credentials: "same-origin" })
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setBlogPosts(data); })
-      .catch(() => {});
+    void loadCategories();
+    void loadBlog();
+    void loadCoupons();
+    void loadSections("home");
+    void loadFaqs();
+    if (adminRole === "super_admin") {
+      void loadStaff();
+    }
     fetch("/api/admin-orders?customers=1", { credentials: "same-origin" })
       .then(r => r.json())
       .then(data => {
@@ -430,18 +507,11 @@ export default function AdminPage() {
         }
       })
       .catch(() => {});
-    fetch("/api/coupons", { credentials: "same-origin" }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setCoupons(d); }).catch(()=>{});
     fetch("/api/site-content?page=all")
       .then(r => r.json())
       .then(d => { if (d && typeof d === "object") setSiteContent(d); })
       .catch(() => {});
-    fetch("/api/sections?page=home&all=1").then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setSections(d); }).catch(()=>{});
-    fetch("/api/faqs?admin=true", { credentials: "same-origin" }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setFaqs(d); }).catch(()=>{});
-    if (adminRole === "super_admin") {
-      fetch("/api/admin-staff", { credentials: "same-origin" })
-        .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setStaffUsers(d); }).catch(()=>{});
-    }
-  }, [loggedIn, adminRole, loadOrders, loadProducts]);
+  }, [loggedIn, adminRole, loadOrders, loadProducts, loadCategories, loadBlog, loadCoupons, loadSections, loadFaqs, loadStaff]);
 
 
   // Refresh all site_content (incl. OG + WhatsApp icon) when Site Settings opens
@@ -654,26 +724,41 @@ export default function AdminPage() {
     setAdminRole("super_admin");
   };
 
-  const loadStaff = () => {
-    fetch("/api/admin-staff", { credentials: "same-origin" })
-      .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setStaffUsers(d); }).catch(()=>{});
-  };
-
   const saveStaff = async () => {
     if (!staffForm.name||!staffForm.email) { setStaffMsg("❌ Name and email required"); return; }
     if (staffModal==="new" && !staffForm.password) { setStaffMsg("❌ Password required"); return; }
     const method = staffModal==="new" ? "POST" : "PUT";
     const body = staffModal==="new" ? staffForm : { ...staffForm, id: staffModal.id };
-    const res = await fetch("/api/admin-staff",{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json()).catch(()=>({}));
-    if (res.success) { setStaffMsg("✅ Saved!"); setStaffModal(null); loadStaff(); }
-    else setStaffMsg(`❌ ${res.error||"Failed"}`);
+    const res = await adminRequest("/api/admin-staff", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      setStaffMsg("✅ Saved!");
+      setStaffModal(null);
+      await loadStaff();
+    } else {
+      setStaffMsg(`❌ ${res.errorMessage || "Failed"}`);
+      setAdminBanner(res.errorMessage || "Could not save staff.");
+      await loadStaff();
+    }
     setTimeout(()=>setStaffMsg(""),3000);
   };
 
   const deleteStaff = async (id:number) => {
     if (!confirm("Delete this staff user?")) return;
-    await fetch(`/api/admin-staff?id=${id}`,{method:"DELETE",credentials: "same-origin"});
-    loadStaff();
+    setAdminBanner("");
+    const res = await adminRequest(`/api/admin-staff?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setAdminBanner(res.errorMessage || "Could not delete staff.");
+      setStaffMsg(`❌ ${res.errorMessage || "Delete failed"}`);
+      await loadStaff();
+      return;
+    }
+    setStaffMsg("✅ Staff deleted");
+    await loadStaff();
+    setTimeout(()=>setStaffMsg(""),3000);
   };
 
   const updateStatus = async (
@@ -721,6 +806,9 @@ export default function AdminPage() {
       return;
     }
     await loadOrders();
+    if (status === "cancelled") {
+      void loadCoupons();
+    }
   };
 
   const confirmCancelOrder = async (payload: {
@@ -752,6 +840,7 @@ export default function AdminPage() {
     }
     setOrderModal(null);
     await loadOrders();
+    void loadCoupons();
   };
 
   const toSlug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
@@ -774,41 +863,51 @@ export default function AdminPage() {
     if (html) setEditBlog(p=>({...p, content: html}));
   }, []);
 
-  const fetchBlogs = () => {
-    fetch("/api/blog", {  }).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setBlogPosts(d); }).catch(()=>{});
-  };
-
   const saveBlog = async () => {
     const content = editorRef.current?.innerHTML || editBlog.content;
     const payload = { ...editBlog, content };
     const isNew = blogModal === "new";
-    const res = await fetch("/api/blog", {
+    const res = await adminRequest("/api/blog", {
       method: isNew ? "POST" : "PUT",
-      credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isNew ? payload : { ...payload, id: (blogModal as BlogPost).id }) }).then(r=>r.json()).catch(()=>({}));
-    if (res.success) {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(isNew ? payload : { ...payload, id: (blogModal as BlogPost).id }),
+    });
+    if (res.ok) {
       setBlogMsg(isNew ? "✅ Post published!" : "✅ Post updated!");
       setBlogModal(null);
-      fetchBlogs();
+      await loadBlog();
     } else {
-      setBlogMsg(`❌ ${res.error || "Save failed"}`);
+      setBlogMsg(`❌ ${res.errorMessage || "Save failed"}`);
+      setAdminBanner(res.errorMessage || "Could not save blog post.");
+      await loadBlog();
     }
     setTimeout(()=>setBlogMsg(""),3000);
   };
 
   const deleteBlog = async (id: number) => {
     if (!confirm("Delete this blog post?")) return;
-    const res = await fetch(`/api/blog?id=${id}`, { method: "DELETE" }).then(r=>r.json()).catch(()=>({}));
-    if (res.success) {
-      setBlogPosts(blogPosts.filter(p => p.id !== id));
-      setBlogMsg("✅ Post deleted");
-    } else {
-      setBlogMsg(`❌ ${res.error || "Delete failed"}`);
+    setAdminBanner("");
+    const res = await adminRequest(`/api/blog?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setBlogMsg(`❌ ${res.errorMessage || "Delete failed"}`);
+      setAdminBanner(res.errorMessage || "Could not delete blog post.");
+      await loadBlog();
+      setTimeout(()=>setBlogMsg(""),3000);
+      return;
     }
+    setBlogMsg("✅ Post deleted");
+    await loadBlog();
     setTimeout(()=>setBlogMsg(""),3000);
   };
 
   const deleteProduct = async (id: number) => {
+    const product = products.find((p) => p.id === id);
+    const name = String(product?.name || `product #${id}`);
+    let confirmMsg = `Delete "${name}"?`;
+    if (products.length === 1) {
+      confirmMsg += "\n\nWarning: deleting the last product re-seeds demo products.";
+    }
+    if (!confirm(confirmMsg)) return;
     setAdminBanner("");
     const res = await adminRequest(`/api/admin-products?id=${id}`, { method: "DELETE" });
     if (!res.ok) {
@@ -919,17 +1018,6 @@ export default function AdminPage() {
   };
 
 
-  const reloadCategories = async () => {
-    try {
-      const r = await fetch("/api/categories", { credentials: "same-origin" });
-      if (!r.ok) throw new Error("Failed to load categories");
-      const d = await r.json();
-      if (Array.isArray(d)) setCategories(d);
-    } catch {
-      setCategoryMsg("Could not load categories from server.");
-    }
-  };
-
   const productCategoryOptions = (currentName: string) => {
     const active = categories.filter(c => Number(c.active) !== 0);
     const current = String(currentName || "").trim();
@@ -990,57 +1078,50 @@ export default function AdminPage() {
       }
       payload.id = original.id;
     }
-    const res = await fetch("/api/categories", {
-      credentials: "same-origin",
+    setAdminBanner("");
+    const res = await adminRequest("/api/categories", {
       method: isNew ? "POST" : "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }).then(async r => {
-      const data = await r.json().catch(() => ({}));
-      return { ok: r.ok, status: r.status, data };
-    }).catch(() => ({ ok: false, status: 0, data: { error: "Request failed" } }));
-    if (!res.ok || res.data.error) {
-      alert(res.data.error || "Failed to save category");
+    });
+    if (!res.ok) {
+      setAdminBanner(res.errorMessage || "Failed to save category");
+      setCategoryMsg("");
+      await loadCategories();
       return;
     }
     setCategoryModal(null);
     setCategoryMsg(isNew ? "Category created." : "Category updated.");
-    await reloadCategories();
+    await loadCategories();
   };
 
   const deleteCategory = async (id: number) => {
     if (!confirm("Delete this category?")) return;
-    const res = await fetch(`/api/categories?id=${id}`, {
-      method: "DELETE",
-      credentials: "same-origin",
-    }).then(async r => {
-      const data = await r.json().catch(() => ({}));
-      return { ok: r.ok, data };
-    }).catch(() => ({ ok: false, data: { error: "Request failed" } }));
-    if (!res.ok || res.data.error) {
-      alert(res.data.error || "Failed to delete category");
+    setAdminBanner("");
+    const res = await adminRequest(`/api/categories?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setAdminBanner(res.errorMessage || "Failed to delete category");
+      await loadCategories();
       return;
     }
     setCategoryMsg("Category deleted.");
-    await reloadCategories();
+    await loadCategories();
   };
 
   const toggleCategoryActive = async (c: StoreCategory) => {
     const next = Number(c.active) === 0 ? 1 : 0;
-    const res = await fetch("/api/categories", {
-      credentials: "same-origin",
+    setAdminBanner("");
+    const res = await adminRequest("/api/categories", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: c.id, active: next }),
-    }).then(async r => {
-      const data = await r.json().catch(() => ({}));
-      return { ok: r.ok, data };
-    }).catch(() => ({ ok: false, data: { error: "Request failed" } }));
-    if (!res.ok || res.data.error) {
-      alert(res.data.error || "Failed to update category status");
+    });
+    if (!res.ok) {
+      setAdminBanner(res.errorMessage || "Failed to update category status");
+      await loadCategories();
       return;
     }
-    await reloadCategories();
+    await loadCategories();
   };
 
   const filteredOrders = statusFilter === "all" ? orders : orders.filter(o => o.status === statusFilter);
@@ -1537,7 +1618,11 @@ export default function AdminPage() {
               { id:"staff",     icon:"👤", label:"Staff Users",  roles:["super_admin"] },
               { id:"settings",  icon:"⚙️", label:"Site Settings",roles:["super_admin"] },
             ] as const).filter(item => ([...item.roles] as string[]).includes(adminRole)).map(item => (
-              <button key={item.id} className={`nav-item ${tab===item.id?"active":""}`} onClick={() => { setTab(item.id); setSidebarOpen(false); }}>
+              <button key={item.id} className={`nav-item ${tab===item.id?"active":""}`} onClick={() => {
+                setTab(item.id);
+                setSidebarOpen(false);
+                if (item.id === "coupons") void loadCoupons();
+              }}>
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
                 {"badge" in item && item.badge && <span className={`nav-badge ${item.badgeColor||""}`}>{item.badge}</span>}
@@ -1752,6 +1837,11 @@ export default function AdminPage() {
           {/* CATEGORIES */}
           {tab==="categories" && (
             <div className="section-card">
+              {categoriesError && (
+                <div style={{padding:"0 0 12px"}}>
+                  <AdminBanner message={categoriesError} tone="error" onRetry={() => { void loadCategories(); }} />
+                </div>
+              )}
               {categoryMsg && (
                 <div style={{marginBottom:16,padding:"10px 16px",background:"rgba(22,163,74,0.1)",border:"1px solid rgba(22,163,74,0.3)",borderRadius:10,fontSize:13,color:"#16A34A"}}>
                   {categoryMsg}
@@ -1759,11 +1849,14 @@ export default function AdminPage() {
               )}
               <div className="section-header">
                 <div className="section-title">Categories ({categories.length})</div>
-                <button className="add-btn" onClick={() => {
-                  setCategoryMsg("");
-                  setEditCategory({ name:"", slug:"", description:"", image:"", active:1, sort_order:String((categories.length + 1) * 10) });
-                  setCategoryModal("new");
-                }}>+ Add Category</button>
+                <div className="section-actions">
+                  <button type="button" className="action-btn btn-view" data-refresh="categories" onClick={() => { void loadCategories(); }}>Refresh</button>
+                  <button className="add-btn" onClick={() => {
+                    setCategoryMsg("");
+                    setEditCategory({ name:"", slug:"", description:"", image:"", active:1, sort_order:String((categories.length + 1) * 10) });
+                    setCategoryModal("new");
+                  }}>+ Add Category</button>
+                </div>
               </div>
               <div className="table-wrap">
                 <table>
@@ -1773,7 +1866,7 @@ export default function AdminPage() {
                       <tr><td colSpan={6} style={{textAlign:"center",color:"#999",padding:"24px"}}>No categories yet. Click + Add Category.</td></tr>
                     )}
                     {categories.map(c => (
-                      <tr key={c.id}>
+                      <tr key={c.id} data-category-id={String(c.id)}>
                         <td>{c.image ? <img src={c.image} alt="" style={{width:44,height:44,objectFit:"cover",borderRadius:6}} /> : "🗂️"}</td>
                         <td style={{fontWeight:600}}>{c.name}</td>
                         <td style={{fontSize:12,color:"#888"}}>{c.slug}</td>
@@ -1871,11 +1964,15 @@ export default function AdminPage() {
           {/* BLOG */}
           {tab==="blog" && (
             <div>
+              {blogError && <AdminBanner message={blogError} tone="error" onRetry={() => { void loadBlog(); }} />}
               {blogMsg && <div style={{marginBottom:16,padding:"10px 16px",background:blogMsg.startsWith("✅")?"rgba(22,163,74,0.1)":"rgba(220,38,38,0.1)",border:`1px solid ${blogMsg.startsWith("✅")?"rgba(22,163,74,0.3)":"rgba(220,38,38,0.25)"}`,borderRadius:10,fontSize:13,color:blogMsg.startsWith("✅")?"#16A34A":"#DC2626"}}>{blogMsg}</div>}
             <div className="section-card">
               <div className="section-header">
                 <div className="section-title">Blog Posts ({blogPosts.length})</div>
-                <button className="add-btn" onClick={() => { setEditBlog(defaultBlog); setTimeout(()=>{if(editorRef.current)editorRef.current.innerHTML="";},50); setBlogModal("new"); }}>+ Add Post</button>
+                <div className="section-actions">
+                  <button type="button" className="action-btn btn-view" data-refresh="blog" onClick={() => { void loadBlog(); }}>Refresh</button>
+                  <button className="add-btn" onClick={() => { setEditBlog(defaultBlog); setTimeout(()=>{if(editorRef.current)editorRef.current.innerHTML="";},50); setBlogModal("new"); }}>+ Add Post</button>
+                </div>
               </div>
               <div className="table-wrap">
                 <table>
@@ -1885,7 +1982,7 @@ export default function AdminPage() {
                       <tr><td colSpan={5} style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:"24px"}}>No blog posts yet. Add your first post above.</td></tr>
                     )}
                     {blogPosts.map(p => (
-                      <tr key={p.id}>
+                      <tr key={p.id} data-blog-id={String(p.id)}>
                         <td>{p.featured_image ? <img src={p.featured_image} alt="" style={{width:44,height:44,objectFit:"cover",borderRadius:6,border:"1px solid rgba(139,0,255,0.3)"}} /> : <span style={{fontSize:"20px"}}>{p.emoji||"📝"}</span>}</td>
                         <td style={{fontWeight:600,maxWidth:"240px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.featured?<span style={{color:"#5B21B6",marginRight:4}}>⭐</span>:null}{p.title}</td>
                         <td><span style={{background:"rgba(139,0,255,0.1)",border:"1px solid rgba(139,0,255,0.2)",padding:"3px 10px",borderRadius:"10px",fontSize:"12px"}}>{p.category}</span></td>
@@ -1938,10 +2035,14 @@ export default function AdminPage() {
           {/* 🎟️ COUPONS */}
           {tab==="coupons" && (
             <div>
+              {couponsError && <AdminBanner message={couponsError} tone="error" onRetry={() => { void loadCoupons(); }} />}
               {couponMsg && <div style={{marginBottom:16,padding:"10px 16px",background:couponMsg.startsWith("✅")?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",border:`1px solid ${couponMsg.startsWith("✅")?"rgba(0,200,100,0.3)":"rgba(255,68,68,0.25)"}`,borderRadius:10,fontSize:13,color:couponMsg.startsWith("✅")?"#00c864":"#ff6666"}}>{couponMsg}</div>}
               {/* Add Coupon Form */}
               <div className="section-card" style={{padding:20,marginBottom:20}}>
-                <div className="section-title" style={{marginBottom:16}}>Add New Coupon</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:12,flexWrap:"wrap"}}>
+                  <div className="section-title" style={{marginBottom:0}}>Add New Coupon</div>
+                  <button type="button" className="action-btn btn-view" data-refresh="coupons" onClick={() => { void loadCoupons(); }}>Refresh</button>
+                </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
                   <div className="modal-field"><label>Code *</label><input placeholder="SAVE10" style={{width:"100%",textTransform:"uppercase"}} value={couponForm.code} onChange={e=>setCouponForm(f=>({...f,code:e.target.value.toUpperCase()}))} /></div>
                   <div className="modal-field"><label>Type</label><select style={{width:"100%"}} value={couponForm.type} onChange={e=>setCouponForm(f=>({...f,type:e.target.value}))}><option value="percentage">% Percentage</option><option value="fixed">Rs. Fixed</option></select></div>
@@ -1952,9 +2053,10 @@ export default function AdminPage() {
                 </div>
                 <button className="btn-primary" style={{marginTop:8}} onClick={async()=>{
                   if(!couponForm.code||!couponForm.value){setCouponMsg("❌ Code and value required");return;}
-                  const r=await fetch("/api/coupons",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(couponForm)}).then(x=>x.json()).catch(()=>({}));
-                  if(r.success){setCouponMsg("✅ Coupon created!");setCouponForm({code:"",type:"percentage",value:"",minimum_order:"0",usage_limit:"",expires_at:""});fetch("/api/coupons",{headers:{}}).then(x=>x.json()).then(d=>Array.isArray(d)&&setCoupons(d));}
-                  else setCouponMsg(`❌ ${r.error||"Failed"}`);
+                  setAdminBanner("");
+                  const r=await adminRequest("/api/coupons",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(couponForm)});
+                  if(r.ok){setCouponMsg("✅ Coupon created!");setCouponForm({code:"",type:"percentage",value:"",minimum_order:"0",usage_limit:"",expires_at:""});await loadCoupons();}
+                  else {setCouponMsg(`❌ ${r.errorMessage||"Failed"}`);setAdminBanner(r.errorMessage||"Could not create coupon.");await loadCoupons();}
                   setTimeout(()=>setCouponMsg(""),3000);
                 }}>+ Create Coupon</button>
               </div>
@@ -1966,19 +2068,32 @@ export default function AdminPage() {
                     <tbody>
                       {coupons.length===0&&<tr><td colSpan={8} style={{textAlign:"center",color:"rgba(255,255,255,0.25)",padding:24}}>No coupons yet</td></tr>}
                       {coupons.map((c:any)=>(
-                        <tr key={c.id}>
+                        <tr key={c.id} data-coupon-id={String(c.id)}>
                           <td style={{fontFamily:"monospace",color:"#5B21B6",fontWeight:700}}>{c.code}</td>
                           <td><span className="status-badge status-pending" style={{fontSize:11}}>{c.type==="percentage"?`${c.value}%`:`${formatPrice(c.value)}`}</span></td>
                           <td style={{fontWeight:600}}>{c.type==="percentage"?`${c.value}%`:formatPrice(c.value)}</td>
                           <td>{c.minimum_order>0?formatPrice(c.minimum_order):"None"}</td>
-                          <td>{c.used_count}{c.usage_limit?`/${c.usage_limit}`:" / ∞"}</td>
+                          <td data-coupon-used={String(c.used_count)}>{c.used_count}{c.usage_limit?`/${c.usage_limit}`:" / ∞"}</td>
                           <td style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{c.expires_at?new Date(c.expires_at).toLocaleDateString("en-GB"):"Never"}</td>
                           <td>
-                            <span className={`status-badge ${c.is_active?"status-confirmed":"status-pending"}`} style={{cursor:"pointer"}} onClick={async()=>{await fetch("/api/coupons",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...c,is_active:!c.is_active})});fetch("/api/coupons",{headers:{}}).then(r=>r.json()).then(d=>Array.isArray(d)&&setCoupons(d));}}>
+                            <span className={`status-badge ${c.is_active?"status-confirmed":"status-pending"}`} style={{cursor:"pointer"}} onClick={async()=>{
+                              setAdminBanner("");
+                              const prev=coupons;
+                              setCoupons(list=>list.map(x=>x.id===c.id?{...x,is_active:!c.is_active}:x));
+                              const r=await adminRequest("/api/coupons",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...c,is_active:!c.is_active})});
+                              if(!r.ok){setCoupons(prev);setAdminBanner(r.errorMessage||"Could not update coupon.");}
+                              await loadCoupons();
+                            }}>
                               {c.is_active?"Active":"Inactive"}
                             </span>
                           </td>
-                          <td><button className="action-btn btn-delete" onClick={async()=>{if(!confirm("Delete?"))return;await fetch(`/api/coupons?id=${c.id}`,{method:"DELETE",headers:{}});setCoupons(prev=>prev.filter(x=>x.id!==c.id));}}>Delete</button></td>
+                          <td><button className="action-btn btn-delete" onClick={async()=>{
+                            if(!confirm("Delete?"))return;
+                            setAdminBanner("");
+                            const r=await adminRequest(`/api/coupons?id=${c.id}`,{method:"DELETE"});
+                            if(!r.ok){setAdminBanner(r.errorMessage||"Could not delete coupon.");await loadCoupons();return;}
+                            await loadCoupons();
+                          }}>Delete</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -1991,16 +2106,17 @@ export default function AdminPage() {
           {/* 🎨 PAGE BUILDER */}
           {tab==="builder" && (
             <div>
+              {sectionsError && <AdminBanner message={sectionsError} tone="error" onRetry={() => { void loadSections(builderPage); }} />}
               {sectionMsg && <div style={{marginBottom:14,padding:"10px 14px",background:sectionMsg.startsWith("✅")?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",borderRadius:10,fontSize:13,color:sectionMsg.startsWith("✅")?"#00c864":"#ff6666"}}>{sectionMsg}</div>}
               {/* Page selector */}
               <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
                 {[["home","🏠 Home"],["about","ℹ️ About"]].map(([k,l])=>(
                   <button key={k} className={`action-btn ${builderPage===k?"btn-verify":"btn-view"}`} style={{padding:"10px 20px",fontSize:13}} onClick={()=>{
                     setBuilderPage(k);
-                    fetch(`/api/sections?page=${k}&all=1`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setSections(d); else setSections([]); }).catch(()=>setSections([]));
+                    void loadSections(k);
                   }}>{l}</button>
                 ))}
-                <button className="action-btn btn-view" style={{padding:"10px 16px",fontSize:13,marginLeft:"auto"}} onClick={()=>fetch(`/api/sections?page=${builderPage}&all=1`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setSections(d); }).catch(()=>{})}>🔄 Refresh</button>
+                <button type="button" className="action-btn btn-view" data-refresh="sections" style={{padding:"10px 16px",fontSize:13,marginLeft:"auto"}} onClick={()=>{ void loadSections(builderPage); }}>🔄 Refresh</button>
               </div>
               {/* Sections list */}
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -2009,22 +2125,28 @@ export default function AdminPage() {
                     <div style={{fontSize:32,marginBottom:12}}>📋</div>
                     <div style={{fontWeight:600,marginBottom:6}}>No sections found for {builderPage} page</div>
                     <div style={{fontSize:13,marginBottom:16}}>Click Refresh or visit the live website first to auto-create sections.</div>
-                    <button className="add-btn" onClick={()=>fetch(`/api/sections?page=${builderPage}&all=1`).then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setSections(d); }).catch(()=>{})}>🔄 Load Sections</button>
+                    <button className="add-btn" onClick={()=>{ void loadSections(builderPage); }}>🔄 Load Sections</button>
                   </div>
                 )}
                 {sections.filter(s=>s.page===builderPage).sort((a,b)=>a.order-b.order).map((sec,i,arr)=>(
-                  <div key={sec.key} className="section-card" style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
+                  <div key={sec.key} className="section-card" style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:14}} data-section-key={sec.key}>
                     {/* Reorder arrows */}
                     <div style={{display:"flex",flexDirection:"column",gap:2}}>
                       <button className="action-btn btn-view" style={{padding:"2px 6px",fontSize:10}} disabled={i===0} onClick={async()=>{
                         const prev=arr[i-1]; const newOrder=[{key:sec.key,section_order:prev.order},{key:prev.key,section_order:sec.order}];
-                        await fetch("/api/sections?action=reorder",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({order:newOrder})});
+                        const snapshot=sections;
                         setSections(s=>s.map(x=>x.key===sec.key?{...x,order:prev.order}:x.key===prev.key?{...x,order:sec.order}:x));
+                        const r=await adminRequest("/api/sections?action=reorder",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({order:newOrder})});
+                        if(!r.ok){setSections(snapshot);setAdminBanner(r.errorMessage||"Could not reorder sections.");}
+                        await loadSections(builderPage);
                       }}>▲</button>
                       <button className="action-btn btn-view" style={{padding:"2px 6px",fontSize:10}} disabled={i===arr.length-1} onClick={async()=>{
                         const next=arr[i+1]; const newOrder=[{key:sec.key,section_order:next.order},{key:next.key,section_order:sec.order}];
-                        await fetch("/api/sections?action=reorder",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({order:newOrder})});
+                        const snapshot=sections;
                         setSections(s=>s.map(x=>x.key===sec.key?{...x,order:next.order}:x.key===next.key?{...x,order:sec.order}:x));
+                        const r=await adminRequest("/api/sections?action=reorder",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({order:newOrder})});
+                        if(!r.ok){setSections(snapshot);setAdminBanner(r.errorMessage||"Could not reorder sections.");}
+                        await loadSections(builderPage);
                       }}>▼</button>
                     </div>
                     <div style={{flex:1}}>
@@ -2034,8 +2156,11 @@ export default function AdminPage() {
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
                       {/* Visibility toggle */}
                       <span style={{fontSize:11,background:sec.visible?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",border:`1px solid ${sec.visible?"rgba(0,200,100,0.3)":"rgba(255,68,68,0.25)"}`,color:sec.visible?"#00c864":"#ff6666",padding:"3px 10px",borderRadius:20,cursor:"pointer"}} onClick={async()=>{
-                        await fetch("/api/sections?action=visibility",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:sec.key,is_visible:!sec.visible})});
+                        const snapshot=sections;
                         setSections(s=>s.map(x=>x.key===sec.key?{...x,visible:!sec.visible}:x));
+                        const r=await adminRequest("/api/sections?action=visibility",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:sec.key,is_visible:!sec.visible})});
+                        if(!r.ok){setSections(snapshot);setAdminBanner(r.errorMessage||"Could not update visibility.");}
+                        await loadSections(builderPage);
                       }}>{sec.visible?"👁 Visible":"🚫 Hidden"}</span>
                       {/* Edit button */}
                       <button className="action-btn btn-edit" onClick={()=>{ setSectionEditing(JSON.parse(JSON.stringify(sec.data))); setSectionModal(sec); setSectionMsg(""); }}>✏️ Edit</button>
@@ -2139,9 +2264,10 @@ export default function AdminPage() {
                 <div className="modal-actions">
                   <button className="modal-cancel" onClick={()=>setSectionModal(null)}>Cancel</button>
                   <button className="modal-save" onClick={async()=>{
-                    const res=await fetch("/api/sections",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:sectionModal.key,value:sectionEditing})}).then(r=>r.json()).catch(()=>({}));
-                    if(res.success){setSectionMsg("✅ Section saved!");setSections(s=>s.map(x=>x.key===sectionModal.key?{...x,data:sectionEditing}:x));setSectionModal(null);}
-                    else setSectionMsg(`❌ ${res.error||"Failed"}`);
+                    setAdminBanner("");
+                    const res=await adminRequest("/api/sections",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:sectionModal.key,value:sectionEditing})});
+                    if(res.ok){setSectionMsg("✅ Section saved!");setSectionModal(null);await loadSections(builderPage);}
+                    else {setSectionMsg(`❌ ${res.errorMessage||"Failed"}`);setAdminBanner(res.errorMessage||"Could not save section.");await loadSections(builderPage);}
                     setTimeout(()=>setSectionMsg(""),3000);
                   }}>💾 Save Section</button>
                 </div>
@@ -2152,8 +2278,10 @@ export default function AdminPage() {
           {/* ❓ FAQ ADMIN */}
           {tab==="faqadmin" && (
             <div>
+              {faqsError && <AdminBanner message={faqsError} tone="error" onRetry={() => { void loadFaqs(); }} />}
               {faqMsg && <div style={{marginBottom:14,padding:"10px 14px",background:faqMsg.startsWith("✅")?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",borderRadius:10,fontSize:13,color:faqMsg.startsWith("✅")?"#00c864":"#ff6666"}}>{faqMsg}</div>}
-              <div style={{marginBottom:16,display:"flex",justifyContent:"flex-end"}}>
+              <div style={{marginBottom:16,display:"flex",justifyContent:"flex-end",gap:10}}>
+                <button type="button" className="action-btn btn-view" data-refresh="faqs" onClick={() => { void loadFaqs(); }}>Refresh</button>
                 <button className="add-btn" onClick={()=>{setEditFaq({question:"",answer:"",category:"General"});setFaqModal("new");}}>+ Add FAQ</button>
               </div>
               {/* Group by category */}
@@ -2165,12 +2293,24 @@ export default function AdminPage() {
                       <thead><tr><th>Question</th><th>Visible</th><th>Actions</th></tr></thead>
                       <tbody>
                         {faqs.filter((f:FAQ)=>f.category===cat).map((f:FAQ)=>(
-                          <tr key={f.id}>
+                          <tr key={f.id} data-faq-id={String(f.id)}>
                             <td style={{maxWidth:320,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.question}</td>
-                            <td><span style={{fontSize:11,background:f.is_visible?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",border:`1px solid ${f.is_visible?"rgba(0,200,100,0.3)":"rgba(255,68,68,0.25)"}`,color:f.is_visible?"#00c864":"#ff6666",padding:"3px 10px",borderRadius:20,cursor:"pointer"}} onClick={async()=>{await fetch("/api/faqs",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...f,is_visible:f.is_visible?0:1})});setFaqs(prev=>prev.map((x:FAQ)=>x.id===f.id?{...x,is_visible:f.is_visible?0:1}:x));}}>{f.is_visible?"Visible":"Hidden"}</span></td>
+                            <td><span style={{fontSize:11,background:f.is_visible?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",border:`1px solid ${f.is_visible?"rgba(0,200,100,0.3)":"rgba(255,68,68,0.25)"}`,color:f.is_visible?"#00c864":"#ff6666",padding:"3px 10px",borderRadius:20,cursor:"pointer"}} onClick={async()=>{
+                              const snapshot=faqs;
+                              setFaqs(prev=>prev.map((x:FAQ)=>x.id===f.id?{...x,is_visible:f.is_visible?0:1}:x));
+                              const r=await adminRequest("/api/faqs",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...f,is_visible:f.is_visible?0:1})});
+                              if(!r.ok){setFaqs(snapshot);setAdminBanner(r.errorMessage||"Could not update FAQ.");}
+                              await loadFaqs();
+                            }}>{f.is_visible?"Visible":"Hidden"}</span></td>
                             <td>
                               <button className="action-btn btn-edit" style={{marginRight:6}} onClick={()=>{setEditFaq({question:f.question,answer:f.answer,category:f.category});setFaqModal(f);}}>Edit</button>
-                              <button className="action-btn btn-delete" onClick={async()=>{if(!confirm("Delete this FAQ?"))return;await fetch(`/api/faqs?id=${f.id}`,{method:"DELETE"});setFaqs(prev=>prev.filter((x:FAQ)=>x.id!==f.id));}}>Delete</button>
+                              <button className="action-btn btn-delete" onClick={async()=>{
+                                if(!confirm("Delete this FAQ?"))return;
+                                setAdminBanner("");
+                                const r=await adminRequest(`/api/faqs?id=${f.id}`,{method:"DELETE"});
+                                if(!r.ok){setAdminBanner(r.errorMessage||"Could not delete FAQ.");await loadFaqs();return;}
+                                await loadFaqs();
+                              }}>Delete</button>
                             </td>
                           </tr>
                         ))}
@@ -2194,10 +2334,16 @@ export default function AdminPage() {
                   <button className="modal-cancel" onClick={()=>setFaqModal(null)}>Cancel</button>
                   <button className="modal-save" onClick={async()=>{
                     if(!editFaq.question||!editFaq.answer){setFaqMsg("❌ Question and answer required");return;}
-                    let res: any;
-                    if(faqModal==="new"){res=await fetch("/api/faqs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(editFaq)}).then(r=>r.json()).catch(()=>({}));if(res.success){setFaqMsg("✅ FAQ added");setFaqs(prev=>[...prev,{id:res.id,...editFaq,sort_order:0,is_visible:1} as FAQ]);}}
-                    else{res=await fetch("/api/faqs",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...(faqModal as FAQ),...editFaq})}).then(r=>r.json()).catch(()=>({}));if(res.success){setFaqMsg("✅ FAQ updated");setFaqs(prev=>prev.map((x:FAQ)=>x.id===(faqModal as FAQ).id?{...x,...editFaq}:x));}}
-                    setFaqModal(null);setTimeout(()=>setFaqMsg(""),3000);
+                    setAdminBanner("");
+                    const isNew=faqModal==="new";
+                    const res=await adminRequest("/api/faqs",{
+                      method:isNew?"POST":"PUT",
+                      headers:{"Content-Type":"application/json"},
+                      body:JSON.stringify(isNew?editFaq:{...(faqModal as FAQ),...editFaq}),
+                    });
+                    if(res.ok){setFaqMsg(isNew?"✅ FAQ added":"✅ FAQ updated");setFaqModal(null);await loadFaqs();}
+                    else {setFaqMsg(`❌ ${res.errorMessage||"Failed"}`);setAdminBanner(res.errorMessage||"Could not save FAQ.");await loadFaqs();}
+                    setTimeout(()=>setFaqMsg(""),3000);
                   }}>Save FAQ</button>
                 </div>
               </div>
@@ -2207,12 +2353,16 @@ export default function AdminPage() {
           {/* 👤 STAFF USERS */}
           {tab==="staff" && adminRole==="super_admin" && (
             <div>
+              {staffError && <AdminBanner message={staffError} tone="error" onRetry={() => { void loadStaff(); }} />}
               {staffMsg && <div style={{marginBottom:14,padding:"10px 14px",background:staffMsg.startsWith("✅")?"rgba(0,200,100,0.1)":"rgba(255,68,68,0.1)",borderRadius:10,fontSize:13,color:staffMsg.startsWith("✅")?"#00c864":"#ff6666"}}>{staffMsg}</div>}
-              <div style={{marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                 <div>
                   <div style={{fontSize:12,color:"#888",marginBottom:4}}>Role permissions: <strong>super_admin</strong> = full access · <strong>manager</strong> = products + blogs · <strong>writer</strong> = blogs only</div>
                 </div>
-                <button className="add-btn" onClick={()=>{ setStaffForm({name:"",email:"",password:"",role:"writer"}); setStaffModal("new"); setStaffMsg(""); }}>+ Add Staff</button>
+                <div style={{display:"flex",gap:10}}>
+                  <button type="button" className="action-btn btn-view" data-refresh="staff" onClick={() => { void loadStaff(); }}>Refresh</button>
+                  <button className="add-btn" onClick={()=>{ setStaffForm({name:"",email:"",password:"",role:"writer"}); setStaffModal("new"); setStaffMsg(""); }}>+ Add Staff</button>
+                </div>
               </div>
               <div className="section-card">
                 <div className="table-wrap">
@@ -2221,7 +2371,7 @@ export default function AdminPage() {
                     <tbody>
                       {staffUsers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",color:"#888",padding:24}}>No staff users yet. Add staff to delegate access.</td></tr>}
                       {staffUsers.map((s:any)=>(
-                        <tr key={s.id}>
+                        <tr key={s.id} data-staff-id={String(s.id)}>
                           <td style={{color:"#888",fontSize:12}}>#{s.id}</td>
                           <td style={{fontWeight:600}}>{s.name}</td>
                           <td style={{fontSize:12,color:"#888"}}>{s.email}</td>
