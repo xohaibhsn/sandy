@@ -14,6 +14,7 @@ import {
 } from "../../lib/orderCancel";
 import RedirectManager from "../../components/admin/RedirectManager";
 import TaxSettingsPanel from "../../components/admin/TaxSettingsPanel";
+import DashboardCards from "../../components/admin/DashboardCards";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
 const styles = `
@@ -1712,6 +1713,7 @@ export default function AdminPage() {
           {/* DASHBOARD */}
           {tab==="dashboard" && (
             <>
+              {adminRole === "writer" ? (
               <div className="stats-grid">
                 {[
                   { icon:"🛒", label:"Total Orders", value:orders.length, trend:"All time" },
@@ -1731,6 +1733,9 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
+              ) : (
+                <DashboardCards enabled={adminRole === "super_admin" || adminRole === "manager"} />
+              )}
 
               {/* RECENT ORDERS */}
               <div className="section-card">
