@@ -1824,7 +1824,11 @@ export default function AdminPage() {
                 ))}
               </div>
               ) : (
-                <DashboardCards enabled={adminRole === "super_admin" || adminRole === "manager"} />
+                <DashboardCards
+                  enabled={adminRole === "super_admin" || adminRole === "manager"}
+                  onOpenOrder={(orderId) => { setTab("orders"); setDetailOrderId(orderId); }}
+                  onNavigateTab={(next) => { if (next === "products" || next === "orders") setTab(next); }}
+                />
               )}
 
               {/* RECENT ORDERS (writers never fetch or see orders) */}

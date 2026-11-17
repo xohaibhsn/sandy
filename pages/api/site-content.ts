@@ -16,6 +16,17 @@ import {
   assertSafeInternalPath,
   UrlValidationError,
 } from '../../lib/urlValidation';
+import {
+  LOW_STOCK_CONTENT_KEY,
+  parseLowStockThreshold,
+} from '../../lib/dashboardExtras';
+
+export class ContentValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ContentValidationError';
+  }
+}
 
 /** TipTap / rich-HTML site_content keys — write-time sanitize only these. */
 const RICH_HTML_CONTENT_KEYS = new Set([
@@ -55,6 +66,14 @@ function persistSiteContentValue(
   value: unknown,
   callerContentType?: unknown
 ): string {
+  if (key === LOW_STOCK_CONTENT_KEY) {
+    const parsed = parseLowStockThreshold(value);
+    if (!parsed.ok) {
+      throw new ContentValidationError(parsed.error);
+    }
+    return String(parsed.value);
+  }
+
   if (RICH_HTML_CONTENT_KEYS.has(key)) {
     return sanitizeRichHtml(value);
   }
@@ -94,6 +113,7 @@ const DEFAULTS = [
   ['og_default_image','','image','settings','Default OG Share Image'],
   ['whatsapp_number', WHATSAPP_DIGITS,'text','settings','WhatsApp Number'],
   ['whatsapp_icon_url','','image','settings','WhatsApp Button Icon'],
+  [LOW_STOCK_CONTENT_KEY, '5', 'text', 'settings', 'Admin low-stock threshold'],
   ['contact_whatsapp', WHATSAPP_DIGITS,'text','settings','WhatsApp Number'],
   ['contact_phone', PHONE_DISPLAY,'text','settings','Phone Number'],
   ['contact_email', CONTACT_EMAIL,'text','settings','Contact Email'],
@@ -537,6 +557,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error: any) {
     if (error instanceof UrlValidationError) {
       return res.status(400).json({ error: 'Invalid URL or path' });
+    }
+    if (error instanceof ContentValidationError) {
+      return res.status(400).json({ error: error.message || 'Invalid value' });
     }
     return res.status(500).json({ error: error.message });
   }
