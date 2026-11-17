@@ -23,6 +23,10 @@ import {
   type RequestLineItem,
 } from '../../lib/orderPricing';
 import { assertSafeReceiptUrl, UrlValidationError } from '../../lib/urlValidation';
+import { evaluateCheckoutProtection } from '../../lib/codProtection';
+import { CUSTOMER_TEXTS } from '../../lib/customerTexts';
+import { consumeVerificationToken } from '../../lib/otp';
+import { loadOrderProtectionSettings } from '../../lib/orderProtectionSettings';
 
 const ALLOWED_PAYMENT_METHODS = new Set(['cod', 'jazzcash', 'easypaisa', 'bank']);
 
@@ -47,12 +51,14 @@ const MAX_STOCK_QUANTITY = 1_000_000;
 class OrderHttpError extends Error {
   status: number;
   clientError: string;
+  code?: string;
 
-  constructor(status: number, clientError: string) {
+  constructor(status: number, clientError: string, code?: string) {
     super(clientError);
     this.name = 'OrderHttpError';
     this.status = status;
     this.clientError = clientError;
+    this.code = code;
   }
 }
 
@@ -166,12 +172,18 @@ function buildCheckoutFingerprint(input: {
   coupon_code: string;
   destination: TaxDestination;
   items: RequestLineItem[];
+  /** When protection is on, include outcome-changing extras; omit entirely when off (parity). */
+  protectionExtras?: {
+    verification_token: string;
+    advance_reference: string;
+    advance_receipt_path: string;
+  };
 }): string {
   const items = [...input.items]
     .sort((a, b) => a.id - b.id)
     .map((item) => ({ id: item.id, qty: item.qty }));
 
-  const canonical = {
+  const canonical: Record<string, unknown> = {
     customer_name: input.customer_name,
     customer_email: input.customer_email,
     customer_phone: input.customer_phone,
@@ -186,6 +198,12 @@ function buildCheckoutFingerprint(input: {
     destination: input.destination,
     items,
   };
+
+  if (input.protectionExtras) {
+    canonical.verification_token = input.protectionExtras.verification_token;
+    canonical.advance_reference = input.protectionExtras.advance_reference;
+    canonical.advance_receipt_path = input.protectionExtras.advance_receipt_path;
+  }
 
   return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
@@ -444,6 +462,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw err;
     }
 
+    const protectionSettings = await loadOrderProtectionSettings();
+    const protectionOn = protectionSettings.cod_protection_enabled;
+
+    const verificationToken =
+      typeof body.verification_token === 'string' ? body.verification_token.trim() : '';
+    const advanceReferenceRaw = readStringField(body.advance_reference, FIELD_MAX.payment_reference);
+    if (!advanceReferenceRaw.ok) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+    const advanceReceiptRaw = readStringField(body.advance_receipt_path, FIELD_MAX.receipt_path);
+    if (!advanceReceiptRaw.ok) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+    let safeAdvanceReceiptPath = '';
+    if (advanceReceiptRaw.value) {
+      try {
+        safeAdvanceReceiptPath = assertSafeReceiptUrl(advanceReceiptRaw.value);
+      } catch (err) {
+        if (err instanceof UrlValidationError) {
+          return res.status(400).json({ error: 'Invalid receipt reference' });
+        }
+        throw err;
+      }
+    }
+
     const idempotencyKey = parseIdempotencyKey(body.idempotency_key);
     if (!idempotencyKey) {
       return res.status(400).json({ error: 'Invalid request' });
@@ -463,6 +506,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       coupon_code: couponInput || '',
       destination,
       items: normalizedItems.items,
+      ...(protectionOn
+        ? {
+            protectionExtras: {
+              verification_token: verificationToken,
+              advance_reference: advanceReferenceRaw.value,
+              advance_receipt_path: safeAdvanceReceiptPath,
+            },
+          }
+        : {}),
     });
 
     // Tax config is loaded server-side BEFORE any order state is created.
@@ -731,27 +783,148 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }));
       taxSnapshot = totalsResult.tax.snapshot;
 
-      await connection.query(
-        'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        [
-          order_id,
-          customer_name.value,
-          customer_email.value,
-          customer_phone.value,
-          delivery_address.value,
-          city.value,
-          postcode.value,
-          notes.value,
-          payment_method,
-          safeReceiptPath,
-          total,
-          persistedCoupon,
-          discount_amount,
-          vat_amount,
-          payment_reference.value || null,
-          'pending',
-        ]
-      );
+      let phoneNorm: string | null = null;
+      let emailNorm: string | null = null;
+      let riskScore: number | null = null;
+      let riskReasons: string | null = null;
+      let otpVerified: number | null = null;
+      let advanceAmount: number | null = null;
+      let advanceReference: string | null = null;
+      let advanceReceiptPath: string | null = null;
+
+      if (protectionOn) {
+        const eval_ = await evaluateCheckoutProtection(connection, {
+          phone: customer_phone.value,
+          email: customer_email.value,
+          orderTotal: total,
+          paymentMethod: payment_method,
+          clientIp: getClientIp(req),
+        });
+        phoneNorm = eval_.phoneNorm;
+        emailNorm = eval_.emailNorm;
+        riskScore = eval_.risk.score;
+        riskReasons = eval_.risk.reasons.join(',');
+
+        if (payment_method === 'cod' && !eval_.risk.codAllowed) {
+          throw new OrderHttpError(
+            409,
+            CUSTOMER_TEXTS.COD_NOT_AVAILABLE,
+            'COD_NOT_AVAILABLE'
+          );
+        }
+
+        if (payment_method === 'cod' && eval_.risk.advanceDeliveryChargeRequired) {
+          if (!advanceReferenceRaw.value) {
+            throw new OrderHttpError(
+              409,
+              CUSTOMER_TEXTS.COD_NOT_AVAILABLE,
+              'COD_NOT_AVAILABLE'
+            );
+          }
+          advanceAmount = eval_.risk.advanceDeliveryCharge;
+          advanceReference = advanceReferenceRaw.value;
+          advanceReceiptPath = safeAdvanceReceiptPath || null;
+        }
+
+        if (payment_method === 'cod' && eval_.otpEffective) {
+          if (!verificationToken) {
+            throw new OrderHttpError(
+              409,
+              CUSTOMER_TEXTS.COD_NOT_AVAILABLE,
+              'COD_NOT_AVAILABLE'
+            );
+          }
+          if (!phoneNorm) {
+            throw new OrderHttpError(
+              409,
+              CUSTOMER_TEXTS.COD_NOT_AVAILABLE,
+              'COD_NOT_AVAILABLE'
+            );
+          }
+          // order_id already assigned above for this txn
+          const consumed = await consumeVerificationToken(connection, {
+            token: verificationToken,
+            phoneNorm,
+            orderId: order_id,
+          });
+          if (!consumed.ok) {
+            throw new OrderHttpError(
+              409,
+              CUSTOMER_TEXTS.COD_NOT_AVAILABLE,
+              'COD_NOT_AVAILABLE'
+            );
+          }
+          otpVerified = 1;
+        } else if (protectionOn) {
+          otpVerified = 0;
+        }
+      }
+
+      if (protectionOn) {
+        try {
+          await connection.query(
+            `INSERT INTO orders (
+              order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,
+              payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status,
+              customer_phone_norm,customer_email_norm,risk_score,risk_reasons,otp_verified,
+              advance_amount,advance_reference,advance_receipt_path
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [
+              order_id,
+              customer_name.value,
+              customer_email.value,
+              customer_phone.value,
+              delivery_address.value,
+              city.value,
+              postcode.value,
+              notes.value,
+              payment_method,
+              safeReceiptPath,
+              total,
+              persistedCoupon,
+              discount_amount,
+              vat_amount,
+              payment_reference.value || null,
+              'pending',
+              phoneNorm,
+              emailNorm,
+              riskScore,
+              riskReasons,
+              otpVerified,
+              advanceAmount,
+              advanceReference,
+              advanceReceiptPath,
+            ]
+          );
+        } catch (insErr) {
+          if (isMissingColumnError(insErr)) {
+            throw new OrderHttpError(503, 'Service unavailable');
+          }
+          throw insErr;
+        }
+      } else {
+        await connection.query(
+          'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          [
+            order_id,
+            customer_name.value,
+            customer_email.value,
+            customer_phone.value,
+            delivery_address.value,
+            city.value,
+            postcode.value,
+            notes.value,
+            payment_method,
+            safeReceiptPath,
+            total,
+            persistedCoupon,
+            discount_amount,
+            vat_amount,
+            payment_reference.value || null,
+            'pending',
+          ]
+        );
+      }
 
       for (const item of authoritativeItems) {
         await connection.query(
@@ -821,10 +994,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (txError instanceof OrderHttpError) {
-        return res.status(txError.status).json({ error: txError.clientError });
+        return res.status(txError.status).json(
+          txError.code
+            ? { error: txError.clientError, code: txError.code }
+            : { error: txError.clientError }
+        );
       }
 
-      console.error('[orders] Transaction failed:', txError);
+      console.error(
+        '[orders] Transaction failed:',
+        (txError as { code?: string; errno?: number })?.code ||
+          (txError as { errno?: number })?.errno ||
+          'unknown'
+      );
       return res.status(500).json({ error: 'Unable to place order' });
     } finally {
       try {

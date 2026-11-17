@@ -30,6 +30,12 @@ registerHooks({
       } catch {
         /* fall through */
       }
+      // directory import (e.g. ../../lib/otp -> lib/otp/index.ts) — same as orders-test-support
+      try {
+        return nextResolve(`${specifier.replace(/\/$/, "")}/index.ts`, context);
+      } catch {
+        /* fall through */
+      }
     }
     return nextResolve(specifier, context);
   },

@@ -11,8 +11,63 @@ import {
 } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import PaymentMethodPicker from "@/components/checkout/PaymentMethodPicker";
+import CodOtpStep from "@/components/checkout/CodOtpStep";
+import AdvanceDeliveryFields from "@/components/checkout/AdvanceDeliveryFields";
+import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
+import { normaliseEmail, normalisePhone } from "@/lib/customerIdentity";
 
 type PaymentMethod = "cod" | "jazzcash" | "easypaisa" | "bank";
+
+const ALL_PAYMENT_METHODS: readonly PaymentMethod[] = ["cod", "jazzcash", "easypaisa", "bank"];
+
+/** COD-protection eligibility (POST /api/checkout/eligibility). null = unavailable → show everything. */
+type Eligibility = {
+  allowedMethods: PaymentMethod[];
+  otpRequired: boolean;
+  advanceDeliveryCharge: number;
+};
+
+function parseEligibility(data: Record<string, unknown>): Eligibility | null {
+  if (!Array.isArray(data.allowedMethods)) return null;
+  const allowed = ALL_PAYMENT_METHODS.filter((m) => (data.allowedMethods as unknown[]).includes(m));
+  if (allowed.length === 0) return null;
+  const charge = Number(data.advanceDeliveryCharge);
+  return {
+    allowedMethods: allowed,
+    otpRequired: data.otpRequired === true,
+    advanceDeliveryCharge: Number.isFinite(charge) && charge > 0 ? charge : 0,
+  };
+}
+
+const RECEIPT_TYPE_RE = /^(image\/(jpeg|png|webp|gif)|application\/pdf)$/i;
+
+/** Uploads an advance-delivery receipt. Returns the stored path, or an error message. */
+async function uploadAdvanceReceipt(file: File): Promise<{ path: string } | { error: string }> {
+  if (!RECEIPT_TYPE_RE.test(file.type)) {
+    return { error: "Please upload a JPG, PNG, WEBP, GIF or PDF receipt." };
+  }
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const uploadRes = await fetch("/api/upload-receipt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file: base64, name: file.name }),
+  });
+  const uploadData = await uploadRes.json().catch(() => ({}));
+  if (!uploadRes.ok || !uploadData.path) {
+    return {
+      error:
+        (typeof uploadData.error === "string" && uploadData.error.trim()) ||
+        "Receipt upload failed. Please try a JPG, PNG, WEBP, GIF or PDF under 5MB.",
+    };
+  }
+  return { path: String(uploadData.path) };
+}
 
 const PAYMENT_OPTIONS: { val: PaymentMethod; label: string; sub: string }[] = [
   { val: "cod", label: "Cash on Delivery (COD)", sub: "Pay in cash when your order arrives" },
@@ -256,6 +311,11 @@ export default function CartPage() {
   const [paymentReference, setPaymentReference] = useState("");
   const [placing, setPlacing] = useState(false);
   const [orderError, setOrderError] = useState("");
+  // COD protection (flags-aware). elig stays null until eligibility answers; null = all methods.
+  const [elig, setElig] = useState<Eligibility | null>(null);
+  const [otpState, setOtpState] = useState<{ phone: string; token: string } | null>(null);
+  const [advanceReference, setAdvanceReference] = useState("");
+  const [advanceReceiptFile, setAdvanceReceiptFile] = useState<File | null>(null);
 
   const [form, setForm] = useState({
     name: "", email: "", phone: "", address: "", area: "", city: "", postcode: "", province: "", notes: ""
@@ -414,6 +474,54 @@ export default function CartPage() {
     };
   }, [quoteKey]);
 
+  // Eligibility: only once phone + email look valid, debounced. Failure/unavailable → fall back to
+  // every method (never blocks checkout; the server still enforces on /api/orders).
+  const eligPhone = normalisePhone(form.phone) ? form.phone.trim() : "";
+  const eligEmail = normaliseEmail(form.email) ? form.email.trim() : "";
+  const eligKey = eligPhone && eligEmail ? JSON.stringify({ phone: eligPhone, email: eligEmail, quoteKey }) : "";
+  useEffect(() => {
+    if (!eligKey) return;
+    const parsed = JSON.parse(eligKey) as { phone: string; email: string; quoteKey: string };
+    const cartState = JSON.parse(parsed.quoteKey) as { items: Array<[number, number]>; coupon: string | null };
+    if (cartState.items.length === 0) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/checkout/eligibility", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: parsed.phone,
+            email: parsed.email,
+            items: cartState.items.map(([id, qty]) => ({ id, qty })),
+            couponCode: cartState.coupon || undefined,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (cancelled) return;
+        const next = res.ok ? parseEligibility(data) : null;
+        setElig(next);
+        if (next) {
+          setPaymentMethod((cur) => (next.allowedMethods.includes(cur) ? cur : next.allowedMethods[0]));
+        }
+      } catch {
+        if (!cancelled) setElig(null);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [eligKey]);
+
+  // Ignore stale eligibility once phone/email are cleared.
+  const eligActive = eligKey ? elig : null;
+  const allowedMethods = eligActive ? eligActive.allowedMethods : null;
+  const codOtpActive = paymentMethod === "cod" && !!eligActive?.otpRequired;
+  const otpToken = otpState && otpState.phone === form.phone ? otpState.token : "";
+  const advanceCharge = paymentMethod === "cod" && eligActive ? eligActive.advanceDeliveryCharge : 0;
+  const codGateOk = (!codOtpActive || !!otpToken) && (advanceCharge <= 0 || !!advanceReference.trim());
+
   const quoteReady = quote !== null && quote.key === quoteKey;
   const currentQuoteError = quoteError && quoteError.key === quoteKey ? quoteError.message : "";
   const shipping = quoteReady ? quote.shipping : 0;
@@ -437,12 +545,27 @@ export default function CartPage() {
 
   const handleOrder = async () => {
     if (cart.length === 0 || !quoteReady) return;
+    if (!codGateOk) {
+      setOrderError(codOtpActive && !otpToken ? CUSTOMER_TEXTS.COD_OTP_REQUIRED : CUSTOMER_TEXTS.ADVANCE_DELIVERY_HINT);
+      return;
+    }
     setPlacing(true);
     setOrderError("");
 
     try {
       const idempotencyKey = getOrCreateCheckoutIdempotencyKey();
       let receiptPath = "";
+      let advanceReceiptPath = "";
+
+      if (advanceCharge > 0 && advanceReceiptFile) {
+        const up = await uploadAdvanceReceipt(advanceReceiptFile);
+        if ("error" in up) {
+          setOrderError(up.error);
+          setPlacing(false);
+          return;
+        }
+        advanceReceiptPath = up.path;
+      }
 
       if (receiptFile) {
         if (!/^(image\/(jpeg|png|webp|gif)|application\/pdf)$/i.test(receiptFile.type)) {
@@ -503,6 +626,10 @@ export default function CartPage() {
           payment_reference: paymentReference || null,
           items: cart.map((item) => ({ id: item.id, qty: item.qty })),
           coupon_code: couponApplied?.code || null,
+          ...(codOtpActive && otpToken ? { verification_token: otpToken } : {}),
+          ...(advanceCharge > 0
+            ? { advance_reference: advanceReference.trim(), advance_receipt_path: advanceReceiptPath }
+            : {}),
         })
       });
 
@@ -753,28 +880,45 @@ export default function CartPage() {
               <div>
                 <div className="form-section">
                   <h3>{cmsText(sc, "cart_pay_heading", "Payment Method")}</h3>
-                  <div className="payment-options">
-                    {[
+                  <PaymentMethodPicker
+                    allowedMethods={allowedMethods}
+                    value={paymentMethod}
+                    onChange={setPaymentMethod}
+                    options={[
                       { val: "cod" as PaymentMethod, label: cmsText(sc, "cart_pay_cod_label", "Cash on Delivery (COD)"), sub: cmsText(sc, "cart_pay_cod_sub", "Pay in cash when your order arrives") },
                       { val: "jazzcash" as PaymentMethod, label: cmsText(sc, "cart_pay_jazz_label", "JazzCash"), sub: cmsText(sc, "cart_pay_jazz_sub", "Pay via JazzCash and enter your payment reference") },
                       { val: "easypaisa" as PaymentMethod, label: cmsText(sc, "cart_pay_easy_label", "Easypaisa"), sub: cmsText(sc, "cart_pay_easy_sub", "Pay via Easypaisa and enter your payment reference") },
                       { val: "bank" as PaymentMethod, label: cmsText(sc, "cart_pay_bank_label", "Bank Transfer"), sub: cmsText(sc, "cart_pay_bank_sub", "Transfer to our bank and upload your receipt") },
-                    ].map(p => (
-                      <div key={p.val} className={`payment-option ${paymentMethod === p.val ? "selected" : ""}`} onClick={() => setPaymentMethod(p.val)}>
-                        <input type="radio" readOnly checked={paymentMethod === p.val} />
-                        <div>
-                          <div className="payment-option-label">{p.label}</div>
-                          <div className="payment-option-sub">{p.sub}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                    ]}
+                  />
+                  {allowedMethods && !allowedMethods.includes("cod") && (
+                    <div style={{fontSize:12,color:"#B45309",marginBottom:14}} role="status">{CUSTOMER_TEXTS.COD_NOT_AVAILABLE}</div>
+                  )}
 
                   {paymentMethod === "cod" && (
                     <div className="bank-details">
                       <h4>Cash on Delivery</h4>
                       <div className="bank-row"><span>Amount Due</span><span>{grandTotalDisplay}</span></div>
                     </div>
+                  )}
+
+                  {codOtpActive && (
+                    <CodOtpStep
+                      key={form.phone}
+                      phone={form.phone}
+                      disabled={placing}
+                      onVerified={(token) => setOtpState({ phone: form.phone, token })}
+                    />
+                  )}
+
+                  {advanceCharge > 0 && (
+                    <AdvanceDeliveryFields
+                      charge={advanceCharge}
+                      reference={advanceReference}
+                      onReferenceChange={setAdvanceReference}
+                      receiptFile={advanceReceiptFile}
+                      onReceiptFileChange={setAdvanceReceiptFile}
+                    />
                   )}
 
                   {isPrepaid && (
@@ -822,7 +966,7 @@ export default function CartPage() {
                   </div>
 
                   <button className="place-order-btn"
-                    disabled={placing || cart.length === 0 || !quoteReady}
+                    disabled={placing || cart.length === 0 || !quoteReady || !codGateOk}
                     onClick={handleOrder}>
                     {placing ? cmsText(sc, "cart_placing", "Placing Order...") : cmsText(sc, "cart_place_btn", "Place Order →")}
                   </button>

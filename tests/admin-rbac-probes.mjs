@@ -73,6 +73,13 @@ export const PROBES = {
   "POST /api/admin-tax": { url: "/api/admin-tax", body: {}, ok: [400] },
   "PUT /api/admin-tax": { url: "/api/admin-tax", body: {}, ok: [400] },
 
+  "GET /api/admin-blacklist": { url: "/api/admin-blacklist", ok: [200, 500] },
+  "POST /api/admin-blacklist": { url: "/api/admin-blacklist", body: {}, ok: [400] },
+  "PATCH /api/admin-blacklist": { url: "/api/admin-blacklist", body: {}, ok: [400] },
+  "DELETE /api/admin-blacklist": { url: "/api/admin-blacklist", body: {}, ok: [400] },
+
+  "GET /api/admin-order-protection": { url: "/api/admin-order-protection", ok: [200] },
+
   "POST /api/upload": { url: "/api/upload", body: {}, ok: [400] },
   "POST /api/upload-favicon": { url: "/api/upload-favicon", body: {}, ok: [400] },
 };

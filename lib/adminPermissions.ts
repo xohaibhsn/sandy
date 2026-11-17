@@ -43,7 +43,9 @@ export type AdminPermission =
   | "staff:view"
   | "staff:write"
   | "tax:manage"
-  | "audit:view";
+  | "audit:view"
+  | "settings:order_protection"
+  | "customers:block";
 
 export const ALL_ADMIN_ROLES: readonly AdminRole[] = ["super_admin", "manager", "writer"];
 
@@ -76,6 +78,8 @@ const SUPER_ADMIN_PERMISSIONS: readonly AdminPermission[] = [
   "staff:write",
   "tax:manage",
   "audit:view",
+  "settings:order_protection",
+  "customers:block",
 ];
 
 /**
@@ -103,6 +107,7 @@ const MANAGER_PERMISSIONS: readonly AdminPermission[] = [
   "redirects:manage",
   "uploads:content",
   "uploads:receipts",
+  "customers:block",
 ];
 
 /**
@@ -295,6 +300,13 @@ export const ADMIN_ENDPOINT_POLICY: readonly AdminEndpointPolicy[] = [
   { route: "/api/admin-tax", method: "POST", permission: "tax:manage" },
   { route: "/api/admin-tax", method: "PUT", permission: "tax:manage" },
 
+  { route: "/api/admin-blacklist", method: "GET", permission: "customers:block" },
+  { route: "/api/admin-blacklist", method: "POST", permission: "customers:block" },
+  { route: "/api/admin-blacklist", method: "PATCH", permission: "customers:block" },
+  { route: "/api/admin-blacklist", method: "DELETE", permission: "customers:block" },
+
+  { route: "/api/admin-order-protection", method: "GET", permission: "settings:order_protection" },
+
   { route: "/api/upload", method: "POST", permission: "uploads:content" },
   { route: "/api/upload-favicon", method: "POST", permission: "uploads:favicon" },
 ];
@@ -329,4 +341,7 @@ export const PUBLIC_API_ROUTES: readonly string[] = [
   "/api/tax-quote",
   "/api/track",
   "/api/upload-receipt",
+  "/api/checkout/eligibility",
+  "/api/checkout/otp-start",
+  "/api/checkout/otp-verify",
 ];

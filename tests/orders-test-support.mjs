@@ -46,6 +46,12 @@ export function installTsResolveHook() {
         } catch {
           /* fall through */
         }
+        // directory import (e.g. ../../lib/otp -> lib/otp/index.ts)
+        try {
+          return nextResolve(`${specifier.replace(/\/$/, "")}/index.ts`, context);
+        } catch {
+          /* fall through */
+        }
       }
       return nextResolve(specifier, context);
     },
@@ -104,9 +110,11 @@ export async function rebuildFromMigrations() {
     await c.query(readFileSync(taxSql, "utf8"));
     // admin tables (coupons, admin_sessions, ...) come from 0003 too; no default content is seeded here (no 0004).
     await c.query(readFileSync(path.join(root, "migrations/0003-admin-schema.sql"), "utf8"));
+    await c.query(readFileSync(path.join(root, "migrations/0005-orders-cancel-reason.sql"), "utf8"));
+    await c.query(readFileSync(path.join(root, "migrations/0006-customer-protection.sql"), "utf8"));
+    await c.query(readFileSync(path.join(root, "migrations/0007-orders-protection-columns.sql"), "utf8"));
 
     // --- fixtures outside the migrations
-    await c.query("ALTER TABLE orders ADD COLUMN cancel_reason VARCHAR(500) NULL"); // local test DB only
     await c.query(
       `INSERT INTO tax_rates (tax_class_id, rate_percent, effective_from, created_by)
        SELECT id, 18.0000, '2021-01-01 00:00:00', 'phase2-test' FROM tax_classes`

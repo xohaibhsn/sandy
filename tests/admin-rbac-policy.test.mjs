@@ -109,6 +109,8 @@ check("D3 matrix", () => {
     "staff:write": [1, 0, 0],
     "tax:manage": [1, 0, 0],
     "audit:view": [1, 0, 0],
+    "settings:order_protection": [1, 0, 0],
+    "customers:block": [1, 1, 0],
   };
   const known = new Set(Object.keys(D3));
   for (const role of ROLES) {
@@ -149,11 +151,19 @@ check("site-content + upload folder policy", () => {
 
 // ---------------------------------------------------------------- source scan
 const apiDir = path.join(root, "pages", "api");
-const apiFiles = fs
-  .readdirSync(apiDir)
-  .filter((f) => f.endsWith(".ts"))
-  .sort();
-const routeOf = (f) => `/api/${f.replace(/\.ts$/, "")}`;
+/** Recurse so nested routes (e.g. pages/api/checkout/eligibility.ts) are classified. */
+function listApiTsFiles(dir, relBase = "") {
+  const out = [];
+  for (const name of fs.readdirSync(dir).sort()) {
+    const full = path.join(dir, name);
+    const rel = relBase ? `${relBase}/${name}` : name;
+    if (fs.statSync(full).isDirectory()) out.push(...listApiTsFiles(full, rel));
+    else if (name.endsWith(".ts")) out.push(rel);
+  }
+  return out;
+}
+const apiFiles = listApiTsFiles(apiDir);
+const routeOf = (f) => `/api/${f.replace(/\.ts$/, "").replace(/\\/g, "/")}`;
 const src = Object.fromEntries(apiFiles.map((f) => [routeOf(f), fs.readFileSync(path.join(apiDir, f), "utf8")]));
 
 const registryRoutes = new Set(ADMIN_ENDPOINT_POLICY.map((e) => e.route));
@@ -208,7 +218,11 @@ check("requirePermission() permissions match registry per route", () => {
     const allowed = new Set(ADMIN_ENDPOINT_POLICY.filter((e) => e.route === route).map((e) => e.permission));
     // Routes with payload-dependent second stage:
     if (route === "/api/upload") ["uploads:receipts", "uploads:branding"].forEach((p) => allowed.add(p));
-    if (route === "/api/site-content") allowed.add("site_content:write_branding");
+    if (route === "/api/site-content") {
+      // second-stage permissions: branding keys and the COD order-protection keys
+      allowed.add("site_content:write_branding");
+      allowed.add("settings:order_protection");
+    }
     const text = src[route];
     // Every permission-shaped literal in the route file (covers computed permissions in admin-orders).
     const everyPerm = new Set(Object.values(ROLE_PERMISSIONS).flat());

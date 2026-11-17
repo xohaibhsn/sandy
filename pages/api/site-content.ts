@@ -24,6 +24,11 @@ import {
   LOW_STOCK_CONTENT_KEY,
   parseLowStockThreshold,
 } from '../../lib/dashboardExtras';
+import {
+  isOrderProtectionContentKey,
+  validateOrderProtectionSetting,
+  resetOrderProtectionSettingsCache,
+} from '../../lib/orderProtectionSettings';
 
 export class ContentValidationError extends Error {
   constructor(message: string) {
@@ -76,6 +81,14 @@ function persistSiteContentValue(
       throw new ContentValidationError(parsed.error);
     }
     return String(parsed.value);
+  }
+
+  if (isOrderProtectionContentKey(key)) {
+    const parsed = validateOrderProtectionSetting(key, value);
+    if (!parsed.ok) {
+      throw new ContentValidationError(parsed.error);
+    }
+    return parsed.value;
   }
 
   if (RICH_HTML_CONTENT_KEYS.has(key)) {
@@ -409,6 +422,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ) {
         return;
       }
+      if (
+        requestedKeys.some((k) => k && isOrderProtectionContentKey(k)) &&
+        !requireSessionPermission(session, res, 'settings:order_protection')
+      ) {
+        return;
+      }
 
       const upsert = async (contentKey: string, contentValue: string) => {
         const defaults = DEFAULTS.find((d) => d[0] === contentKey);
@@ -436,10 +455,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         for (const row of prepared) {
           await upsert(row.contentKey, row.safeValue);
         }
+        if (prepared.some((row) => isOrderProtectionContentKey(row.contentKey))) {
+          resetOrderProtectionSettingsCache();
+        }
       } else if (key) {
         const contentKey = String(key);
         const safeValue = persistSiteContentValue(contentKey, value);
         await upsert(contentKey, safeValue);
+        if (isOrderProtectionContentKey(contentKey)) {
+          resetOrderProtectionSettingsCache();
+        }
       } else {
         return res.status(400).json({ error: 'No content keys provided' });
       }

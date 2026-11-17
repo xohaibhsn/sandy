@@ -22,6 +22,8 @@ import {
 } from "../../lib/orderCancel";
 import RedirectManager from "../../components/admin/RedirectManager";
 import TaxSettingsPanel from "../../components/admin/TaxSettingsPanel";
+import OrderProtectionSettingsPanel from "../../components/admin/OrderProtectionSettingsPanel";
+import BlacklistPanel, { CustomerBlockButton } from "../../components/admin/BlacklistPanel";
 import DashboardCards from "../../components/admin/DashboardCards";
 import AdminGlobalSearch, { type AdminSearchTarget } from "../../components/admin/AdminGlobalSearch";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
@@ -206,8 +208,8 @@ const styles = `
 
 // DEMO DATA
 const demoCustomers = [
-  { name:"Ahmed Khan", email:"ahmed@example.com", phone:"+923334800181", orders:3, spent: formatPrice(7497), joined:"Jan 2026" },
-  { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026" },
+  { name:"Ahmed Khan", email:"ahmed@example.com", phone:"+923334800181", orders:3, spent: formatPrice(7497), joined:"Jan 2026", blocked:false },
+  { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026", blocked:false },
 ];
 
 type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff"|"tax";
@@ -368,6 +370,7 @@ export default function AdminPage() {
   const [customersPage, setCustomersPage] = useState(1);
   const [customersTotalPages, setCustomersTotalPages] = useState(1);
   const [customersError, setCustomersError] = useState("");
+  const [blacklistRefresh, setBlacklistRefresh] = useState(0);
   const [coupons, setCoupons] = useState<any[]>([]);
   const [couponsError, setCouponsError] = useState("");
   const [couponForm, setCouponForm] = useState({ code:"", type:"percentage", value:"", minimum_order:"0", usage_limit:"", expires_at:"" });
@@ -504,6 +507,7 @@ export default function AdminPage() {
       orders: Number(c.order_count) || 0,
       spent: formatPrice(Number(c.total_spent) || 0),
       joined: c.first_order ? new Date(String(c.first_order)).toLocaleDateString("en-GB",{month:"short",year:"numeric"}) : "—",
+      blocked: c.blocked === true,
     })));
     setCustomersTotal(Number(res.data.total) || 0);
     setCustomersPage(Number(res.data.page) || page);
@@ -1369,6 +1373,8 @@ export default function AdminPage() {
         onStatusChange={(id, status) => { void updateStatus(id, status); }}
         onDelete={(id, total, status) => { void deleteOrder(id, total, status); }}
         canDelete={adminRole === "super_admin"}
+        canBlock={adminRole === "super_admin" || adminRole === "manager"}
+        onConfirmed={() => { void refreshOrderData(); }}
         onViewReceipt={(id, url) => { setDetailOrderId(null); setReceiptModal({ id, url }); }}
       />
 
@@ -2152,7 +2158,7 @@ export default function AdminPage() {
               )}
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th></th><th>Name</th><th>Email</th><th>Phone / WhatsApp</th><th>Orders</th><th>Total Spent</th><th>Joined</th><th>Actions</th></tr></thead>
+                  <thead><tr><th></th><th>Name</th><th>Email</th><th>Phone / WhatsApp</th><th>Orders</th><th>Total Spent</th><th>Joined</th><th>Blocked</th><th>Actions</th></tr></thead>
                   <tbody>
                     {customers.map((c,i) => (
                       <tr key={i}>
@@ -2163,16 +2169,26 @@ export default function AdminPage() {
                         <td><span style={{fontWeight:700,color:"#5B21B6"}}>{c.orders}</span></td>
                         <td style={{fontWeight:700}}>{c.spent}</td>
                         <td style={{color:"rgba(255,255,255,0.4)",fontSize:"12px"}}>{c.joined}</td>
+                        <td>{c.blocked ? <span className="status-badge status-cancelled">Blocked</span> : <span style={{color:"#aaa",fontSize:12}}>—</span>}</td>
                         <td>
                           <a href={`https://wa.me/${c.phone.replace(/\s+/g,"").replace("+","")}`} target="_blank" rel="noopener noreferrer">
                             <button className="action-btn btn-verify">WhatsApp</button>
                           </a>
+                          {(adminRole==="super_admin" || adminRole==="manager") && (
+                            <CustomerBlockButton
+                              phone={c.phone}
+                              email={c.email}
+                              blocked={c.blocked}
+                              onChanged={() => { void loadCustomers(customersPage); setBlacklistRefresh(n => n + 1); }}
+                            />
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {(adminRole==="super_admin" || adminRole==="manager") && <BlacklistPanel refreshKey={blacklistRefresh} />}
             </div>
           )}
 
@@ -2565,6 +2581,8 @@ export default function AdminPage() {
               )}
             </div>
           )}
+
+          {tab==="settings" && adminRole==="super_admin" && <OrderProtectionSettingsPanel />}
 
           {/* ⚙️ SITE SETTINGS */}
           {tab==="settings" && (

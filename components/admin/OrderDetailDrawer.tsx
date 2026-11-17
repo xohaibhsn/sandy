@@ -26,6 +26,13 @@ type DetailOrder = {
   cancel_reason?: string | null;
   created_at_pkt?: string;
   receipt_url?: string | null;
+  risk_score?: number | string | null;
+  risk_reason_labels?: string[];
+  otp_verified?: boolean | null;
+  confirmation_method?: string | null;
+  confirmation_note?: string | null;
+  confirmed_by?: string | null;
+  confirmed_at?: string | null;
 };
 
 type DetailItem = {
@@ -64,6 +71,22 @@ export type OrderDetailDrawerProps = {
   /** Order delete is super_admin only server-side; hide the control for other roles. Defaults to true. */
   canDelete?: boolean;
   onViewReceipt: (orderId: string, receiptUrl: string) => void;
+  /** Show "Block customer" (super_admin | manager; the API enforces customers:block). Defaults to false. */
+  canBlock?: boolean;
+  /** Called after a COD order is confirmed from the drawer so the parent can refresh its lists. */
+  onConfirmed?: () => void;
+};
+
+type ProtectionDialog = { orderId: string; kind: "confirm" | "block" };
+
+const fieldStyle: React.CSSProperties = {
+  padding: "8px 10px",
+  border: "1px solid #E5E5E5",
+  borderRadius: 8,
+  fontSize: 13,
+  background: "#fff",
+  color: "#111",
+  width: "100%",
 };
 
 const money = (v: unknown) => formatPrice(Number(v || 0));
@@ -105,9 +128,17 @@ export default function OrderDetailDrawer({
   onDelete,
   canDelete = true,
   onViewReceipt,
+  canBlock = false,
+  onConfirmed,
 }: OrderDetailDrawerProps) {
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<FetchState | null>(null);
+  const [dialog, setDialog] = useState<ProtectionDialog | null>(null);
+  const [confirmMethod, setConfirmMethod] = useState<"call" | "whatsapp">("call");
+  const [confirmNote, setConfirmNote] = useState("");
+  const [blockReason, setBlockReason] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ orderId: string; tone: "ok" | "error"; text: string } | null>(null);
 
   const active = open && !!orderId;
   const requestKey = active ? `${orderId}:${attempt}` : "";
@@ -166,6 +197,64 @@ export default function OrderDetailDrawer({
     order?.receipt_url && String(order.receipt_url).trim() ? String(order.receipt_url).trim() : "";
   const taxLabel = tax?.has_snapshot && tax.label && tax.label.trim() ? tax.label.trim() : "Tax";
   const taxAmount = tax?.vat_amount ?? order?.vat_amount ?? 0;
+
+  const riskScore =
+    order?.risk_score != null && order.risk_score !== "" && Number.isFinite(Number(order.risk_score))
+      ? Number(order.risk_score)
+      : null;
+  const riskLabels = Array.isArray(order?.risk_reason_labels) ? order.risk_reason_labels : [];
+  const isCod = String(order?.payment_method || "") === "cod";
+  const canConfirmCod = isCod && status === "pending" && !order?.confirmed_at;
+  const activeDialog = dialog && dialog.orderId === orderId ? dialog.kind : null;
+  const msg = actionMsg && actionMsg.orderId === orderId ? actionMsg : null;
+
+  const submitConfirm = async () => {
+    setActionBusy(true);
+    setActionMsg(null);
+    const res = await adminRequest("/api/admin-orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        order_id: orderId,
+        status: "confirmed",
+        confirmation_method: confirmMethod,
+        confirmation_note: confirmNote.trim(),
+      }),
+    });
+    setActionBusy(false);
+    if (!res.ok) {
+      setActionMsg({ orderId, tone: "error", text: res.errorMessage || "Could not confirm order." });
+      return;
+    }
+    setDialog(null);
+    setConfirmNote("");
+    setActionMsg({ orderId, tone: "ok", text: "COD order confirmed." });
+    setAttempt((n) => n + 1);
+    onConfirmed?.();
+  };
+
+  const submitBlock = async () => {
+    const reason = blockReason.trim();
+    if (!reason) {
+      setActionMsg({ orderId, tone: "error", text: "A reason is required to block this customer." });
+      return;
+    }
+    setActionBusy(true);
+    setActionMsg(null);
+    const res = await adminRequest("/api/admin-blacklist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, reason }),
+    });
+    setActionBusy(false);
+    if (!res.ok) {
+      setActionMsg({ orderId, tone: "error", text: res.errorMessage || "Could not block customer." });
+      return;
+    }
+    setDialog(null);
+    setBlockReason("");
+    setActionMsg({ orderId, tone: "ok", text: "Customer blocked." });
+  };
 
   return (
     <div
@@ -256,6 +345,31 @@ export default function OrderDetailDrawer({
               </span>
             </div>
 
+            {riskScore !== null || order.otp_verified === true ? (
+              <div style={{ marginBottom: 12 }} data-order-protection-info="1">
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {riskScore !== null ? (
+                    <span
+                      className={`status-badge ${riskScore >= 50 ? "status-cancelled" : riskScore >= 25 ? "status-pending" : "status-delivered"}`}
+                      data-risk-score={riskScore}
+                    >
+                      Risk {riskScore}
+                    </span>
+                  ) : null}
+                  {order.otp_verified === true ? (
+                    <span className="status-badge status-delivered" data-otp-verified="1">OTP verified</span>
+                  ) : null}
+                </div>
+                {riskLabels.length > 0 ? (
+                  <ul style={{ margin: "8px 0 0 18px", padding: 0, fontSize: 12, color: "#666" }}>
+                    {riskLabels.map((l, i) => (
+                      <li key={`${l}-${i}`}>{l}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             <Row label="Placed (PKT)" value={text(order.created_at_pkt)} />
             <Row label="Customer" value={text(order.customer_name)} />
             <Row label="Email" value={text(order.customer_email)} />
@@ -267,6 +381,16 @@ export default function OrderDetailDrawer({
             ) : null}
             <Row label="Coupon" value={text(order.coupon_code)} mono />
             <Row label="Notes" value={text(order.notes)} />
+            {order.confirmation_method ? (
+              <Row
+                label="COD confirmed"
+                value={[
+                  order.confirmation_method === "whatsapp" ? "WhatsApp" : "Call",
+                  order.confirmed_by ? `by ${order.confirmed_by}` : "",
+                  order.confirmation_note ? `— ${order.confirmation_note}` : "",
+                ].filter(Boolean).join(" ")}
+              />
+            ) : null}
             {isCancelled ? (
               <div data-cancel-reason-display="1">
                 <Row
@@ -375,6 +499,103 @@ export default function OrderDetailDrawer({
                 </select>
               )}
             </div>
+
+            {msg ? (
+              <div
+                role={msg.tone === "error" ? "alert" : "status"}
+                style={{ marginTop: 12, fontSize: 13, color: msg.tone === "error" ? "#DC2626" : "#15803D" }}
+              >
+                {msg.text}
+              </div>
+            ) : null}
+
+            {canConfirmCod || canBlock ? (
+              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {canConfirmCod ? (
+                  <button
+                    type="button"
+                    className="action-btn btn-verify"
+                    data-order-detail-confirm-cod="1"
+                    onClick={() => { setActionMsg(null); setDialog({ orderId, kind: "confirm" }); }}
+                  >
+                    Confirm COD
+                  </button>
+                ) : null}
+                {canBlock ? (
+                  <button
+                    type="button"
+                    className="action-btn btn-delete"
+                    data-order-detail-block="1"
+                    onClick={() => { setActionMsg(null); setDialog({ orderId, kind: "block" }); }}
+                  >
+                    Block customer
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {activeDialog === "confirm" ? (
+              <div
+                data-confirm-cod-dialog="1"
+                style={{ marginTop: 12, padding: 14, border: "1px solid #E5E5E5", borderRadius: 10, background: "#FAFAFA" }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Confirm COD order</div>
+                <div className="modal-field">
+                  <label htmlFor="confirm-cod-method">Confirmed via</label>
+                  <select
+                    id="confirm-cod-method"
+                    value={confirmMethod}
+                    onChange={(e) => setConfirmMethod(e.target.value === "whatsapp" ? "whatsapp" : "call")}
+                  >
+                    <option value="call">Phone call</option>
+                    <option value="whatsapp">WhatsApp</option>
+                  </select>
+                </div>
+                <div className="modal-field">
+                  <label htmlFor="confirm-cod-note">Note (optional)</label>
+                  <textarea
+                    id="confirm-cod-note"
+                    rows={2}
+                    maxLength={500}
+                    style={fieldStyle}
+                    value={confirmNote}
+                    onChange={(e) => setConfirmNote(e.target.value)}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="modal-cancel" disabled={actionBusy} onClick={() => setDialog(null)}>Cancel</button>
+                  <button type="button" className="modal-save" disabled={actionBusy} onClick={() => { void submitConfirm(); }}>
+                    {actionBusy ? "Confirming…" : "Confirm order"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {activeDialog === "block" ? (
+              <div
+                data-block-customer-dialog="1"
+                style={{ marginTop: 12, padding: 14, border: "1px solid #E5E5E5", borderRadius: 10, background: "#FAFAFA" }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Block this customer</div>
+                <div className="modal-field">
+                  <label htmlFor="block-customer-reason">Reason</label>
+                  <textarea
+                    id="block-customer-reason"
+                    rows={2}
+                    maxLength={500}
+                    style={fieldStyle}
+                    value={blockReason}
+                    onChange={(e) => setBlockReason(e.target.value)}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="modal-cancel" disabled={actionBusy} onClick={() => setDialog(null)}>Cancel</button>
+                  <button type="button" className="modal-save" disabled={actionBusy} onClick={() => { void submitBlock(); }}>
+                    {actionBusy ? "Blocking…" : "Block customer"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {canDelete && (
               <div style={{ marginTop: 8 }}>

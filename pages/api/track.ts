@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { getClientIp, rateLimit } from '../../lib/rateLimit';
 import { hasCancelReasonColumn } from '../../lib/orderCancel';
+import { canonicalPkMobile } from '../../lib/customerIdentity';
 
 const TRACK_LIMIT = 15;
 const TRACK_WINDOW_MS = 15 * 60 * 1000;
@@ -58,20 +59,6 @@ function emailsMatch(provided: string, stored: unknown): boolean {
   const storedNorm = stored.trim().toLowerCase();
   if (!storedNorm) return false;
   return provided === storedNorm;
-}
-
-/**
- * Canonical Pakistani mobile form (03XXXXXXXXX) for digits-only input, or null when the
- * digits are not a recognisable PK mobile number.
- * 0092333... -> 92333...; 92 + 3XXXXXXXXX -> 0 + 3XXXXXXXXX; 3XXXXXXXXX -> 0 + 3XXXXXXXXX; 03XXXXXXXXX stays.
- */
-function canonicalPkMobile(digits: string): string | null {
-  let d = digits;
-  if (d.startsWith('0092')) d = '92' + d.slice(4);
-  if (/^923\d{9}$/.test(d)) return '0' + d.slice(2);
-  if (/^3\d{9}$/.test(d)) return '0' + d;
-  if (/^03\d{9}$/.test(d)) return d;
-  return null;
 }
 
 function phonesMatch(providedDigits: string, stored: unknown): boolean {

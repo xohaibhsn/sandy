@@ -20,8 +20,10 @@ These `.sql` files are for **owner review and a manual run in phpMyAdmin only**.
 | `0003-admin-schema.sql` | Schema for the admin / CMS tables: `categories`, `coupons`, `admin_staff`, `admin_sessions`, `faqs`, `redirects`, `site_content` (with `section_order`, `is_visible` and the `json` content type) and `blog_posts` (including the late `canonical_url` and `faqs` columns). Same idempotent / guarded style as 0002. **No data statements at all** (no INSERT, UPDATE, DELETE or REPLACE). Definitions are copied statement for statement from the runtime code that used to create them. Admin login needs `admin_sessions`; without it the app fails closed (503). |
 | `0004-default-content-seed.sql` | Default CMS rows only: `site_content` keys, the home/about sections, and starter FAQs. **Only adds missing rows**: `INSERT IGNORE` on the unique `content_key`, FAQs inserted only when the `faqs` table is empty (the three "required" FAQs only when no FAQ has the same question). It never updates, replaces or deletes anything, so it cannot overwrite content the owner has already edited. Run it after 0003, and only when you want the default rows (a database that already has content gets just the keys it is missing). |
 | `0005-orders-cancel-reason.sql` | Adds `orders.cancel_reason` (`VARCHAR(500) NULL`, after `status`) for admin cancel-reason capture. Same idempotent / guarded style as 0002. Production already has this column; the file is for fresh databases built from migrations. Run after 0002. |
+| `0006-customer-protection.sql` | Creates `customer_blacklist`, `otp_challenges`, and BATCH-08 prep tables `customers` / `customer_sessions`. Idempotent `CREATE TABLE IF NOT EXISTS`. No data rows. |
+| `0007-orders-protection-columns.sql` | Adds nullable COD-protection columns on `orders` (norms, risk, OTP, confirmation, advance). Guarded ADD COLUMN / indexes. No backfill — legacy rows keep NULL norms. |
 
-Order: 0001, 0002, 0003, 0004, 0005 (0001 and 0002 are independent of 0003; 0005 depends on 0002).
+Order: 0001, 0002, 0003, 0004, 0005, 0006, 0007 (0001 and 0002 are independent of 0003; 0005–0007 depend on 0002; 0006 and 0007 are independent of each other).
 
 ## Intentionally NOT ported from the removed runtime code (owner decision later)
 

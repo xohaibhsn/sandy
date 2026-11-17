@@ -22,6 +22,9 @@ import {
   SEARCH_MAX,
   SEARCH_MIN,
 } from "../../lib/adminOrdersQuery";
+import { RISK_REASON_LABELS, type RiskReasonCode } from "../../lib/codRisk";
+import { loadOrderProtectionSettings } from "../../lib/orderProtectionSettings";
+import { normaliseEmail, normalisePhone } from "../../lib/customerIdentity";
 
 const ALLOWED_STATUSES = ORDER_STATUSES;
 
@@ -231,9 +234,53 @@ async function handleCustomers(req: NextApiRequest, res: NextApiResponse) {
     [...params, pageSize, offset]
   );
 
+  const customers = Array.isArray(rows) ? rows : [];
+  const phoneNorms = customers
+    .map((c) => normalisePhone(c.customer_phone))
+    .filter((v): v is string => Boolean(v));
+  const emailNorms = customers
+    .map((c) => normaliseEmail(c.customer_email))
+    .filter((v): v is string => Boolean(v));
+
+  const blockedSet = new Set<string>();
+  if (phoneNorms.length || emailNorms.length) {
+    try {
+      const clauses: string[] = [];
+      const bParams: string[] = [];
+      if (phoneNorms.length) {
+        clauses.push(`phone_norm IN (${phoneNorms.map(() => "?").join(",")})`);
+        bParams.push(...phoneNorms);
+      }
+      if (emailNorms.length) {
+        clauses.push(`email_norm IN (${emailNorms.map(() => "?").join(",")})`);
+        bParams.push(...emailNorms);
+      }
+      const [bl] = await pool.query<RowDataPacket[]>(
+        `SELECT phone_norm, email_norm FROM customer_blacklist
+         WHERE active = 1 AND (${clauses.join(" OR ")})`,
+        bParams
+      );
+      for (const row of bl || []) {
+        if (row.phone_norm) blockedSet.add(`p:${row.phone_norm}`);
+        if (row.email_norm) blockedSet.add(`e:${row.email_norm}`);
+      }
+    } catch {
+      /* table may be absent before migration */
+    }
+  }
+
+  const enriched = customers.map((c) => {
+    const pn = normalisePhone(c.customer_phone);
+    const en = normaliseEmail(c.customer_email);
+    const blocked =
+      (pn != null && blockedSet.has(`p:${pn}`)) ||
+      (en != null && blockedSet.has(`e:${en}`));
+    return { ...c, blocked };
+  });
+
   return res.status(200).json({
     success: true,
-    customers: Array.isArray(rows) ? rows : [],
+    customers: enriched,
     total,
     page,
     pageSize,
@@ -322,6 +369,14 @@ async function handleDetail(res: NextApiResponse, orderId: string) {
     }
   }
 
+  const reasonCodes = String(order.risk_reasons || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean) as RiskReasonCode[];
+  const risk_reason_labels = reasonCodes.map(
+    (code) => RISK_REASON_LABELS[code] || code
+  );
+
   return res.status(200).json({
     success: true,
     order: {
@@ -344,6 +399,17 @@ async function handleDetail(res: NextApiResponse, orderId: string) {
       created_at: order.created_at,
       created_at_pkt: formatPktDateTime(order.created_at),
       receipt_url,
+      risk_score: order.risk_score ?? null,
+      risk_reasons: reasonCodes,
+      risk_reason_labels,
+      otp_verified: order.otp_verified == null ? null : Number(order.otp_verified) === 1,
+      confirmation_method: order.confirmation_method ?? null,
+      confirmation_note: order.confirmation_note ?? null,
+      confirmed_by: order.confirmed_by ?? null,
+      confirmed_at: order.confirmed_at ?? null,
+      advance_amount: order.advance_amount ?? null,
+      advance_reference: order.advance_reference ?? null,
+      advance_receipt_path: order.advance_receipt_path ?? null,
     },
     items,
     tax,
@@ -486,15 +552,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       const trimmedId = order_id.trim();
+      const protection = await loadOrderProtectionSettings();
 
-      const [currentRows] = await pool.query<OrderLockRow[]>(
-        `SELECT order_id, status, coupon_code FROM orders WHERE order_id = ? LIMIT 1`,
-        [trimmedId]
-      );
+      type CurrentOrderRow = OrderLockRow & {
+        payment_method?: string | null;
+        confirmed_at?: Date | string | null;
+      };
+      let currentRows: CurrentOrderRow[];
+      try {
+        if (protection.cod_protection_enabled) {
+          const [rows] = await pool.query<CurrentOrderRow[]>(
+            `SELECT order_id, status, coupon_code, payment_method, confirmed_at
+             FROM orders WHERE order_id = ? LIMIT 1`,
+            [trimmedId]
+          );
+          currentRows = Array.isArray(rows) ? rows : [];
+        } else {
+          const [rows] = await pool.query<CurrentOrderRow[]>(
+            `SELECT order_id, status, coupon_code FROM orders WHERE order_id = ? LIMIT 1`,
+            [trimmedId]
+          );
+          currentRows = Array.isArray(rows) ? rows : [];
+        }
+      } catch (selErr) {
+        // Missing protection columns while flag somehow on → fail closed.
+        safeLog(selErr);
+        return res.status(503).json({ error: "Service unavailable" });
+      }
       if (!Array.isArray(currentRows) || currentRows.length === 0) {
         return res.status(404).json({ error: "Order not found" });
       }
-      const currentStatus = String(currentRows[0].status || "");
+      const current = currentRows[0];
+      const currentStatus = String(current.status || "");
+      const paymentMethod = String(current.payment_method || "");
       if (currentStatus === "cancelled" && status !== "cancelled") {
         return res.status(409).json({
           error: "Cancelled orders cannot change status",
@@ -502,6 +592,104 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (status !== "cancelled") {
+        // COD confirmation gate when protection enabled.
+        if (
+          protection.cod_protection_enabled &&
+          paymentMethod === "cod" &&
+          status === "confirmed"
+        ) {
+          const method = body.confirmation_method;
+          if (method !== "call" && method !== "whatsapp") {
+            return res.status(400).json({ error: "confirmation_method required" });
+          }
+          const note =
+            typeof body.confirmation_note === "string"
+              ? body.confirmation_note.trim().slice(0, 500)
+              : "";
+          const confirmedBy = String(session.name || session.role || "admin").slice(0, 255);
+          const connection = await pool.getConnection();
+          try {
+            await connection.beginTransaction();
+            const [locked] = await connection.query<RowDataPacket[]>(
+              `SELECT order_id, status, payment_method, confirmed_at
+               FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE`,
+              [trimmedId]
+            );
+            const row = Array.isArray(locked) ? locked[0] : undefined;
+            if (!row) {
+              await connection.rollback();
+              return res.status(404).json({ error: "Order not found" });
+            }
+            if (String(row.status) === "cancelled") {
+              await connection.rollback();
+              return res.status(409).json({ error: "Cancelled orders cannot change status" });
+            }
+            if (String(row.payment_method) !== "cod") {
+              await connection.rollback();
+              return res.status(409).json({ error: "Invalid request" });
+            }
+            const [result] = await connection.query<ResultSetHeader>(
+              `UPDATE orders
+               SET status = 'confirmed',
+                   confirmation_method = ?,
+                   confirmation_note = ?,
+                   confirmed_by = ?,
+                   confirmed_at = NOW()
+               WHERE order_id = ? AND status <> 'cancelled'`,
+              [method, note || null, confirmedBy, trimmedId]
+            );
+            if (!result || Number(result.affectedRows) === 0) {
+              await connection.rollback();
+              return res.status(409).json({ error: "Unable to confirm order" });
+            }
+            await connection.commit();
+            return res.status(200).json({
+              success: true,
+              order_id: trimmedId,
+              status: "confirmed",
+            });
+          } catch (err) {
+            try {
+              await connection.rollback();
+            } catch {
+              /* ignore */
+            }
+            safeLog(err);
+            return res.status(500).json({ error: "Server error" });
+          } finally {
+            connection.release();
+          }
+        }
+
+        if (
+          protection.cod_protection_enabled &&
+          paymentMethod === "cod" &&
+          status === "dispatched" &&
+          !current.confirmed_at &&
+          currentStatus !== "confirmed" &&
+          currentStatus !== "dispatched" &&
+          currentStatus !== "delivered"
+        ) {
+          return res.status(409).json({
+            error: "Confirm this COD order before dispatch",
+            code: "COD_CONFIRMATION_REQUIRED",
+          });
+        }
+
+        // pending → dispatched for COD refused unless already confirmed
+        if (
+          protection.cod_protection_enabled &&
+          paymentMethod === "cod" &&
+          status === "dispatched" &&
+          currentStatus === "pending" &&
+          !current.confirmed_at
+        ) {
+          return res.status(409).json({
+            error: "Confirm this COD order before dispatch",
+            code: "COD_CONFIRMATION_REQUIRED",
+          });
+        }
+
         const [result] = await pool.query(
           "UPDATE orders SET status = ? WHERE order_id = ? AND status <> 'cancelled'",
           [status, trimmedId]
