@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { SITE_URL } from '../../lib/site';
 import { getAdminSession } from '../../lib/adminAuth';
-import { requirePermission } from '../../lib/adminPermissions';
+import { hasPermission, requirePermission } from '../../lib/adminPermissions';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 import {
   assertSafeCanonicalUrl,
@@ -121,13 +121,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
         return res.status(200).json(rows[0] || null);
       }
+      // Soft check only: GET never returns 401/403. Only blog:write sessions see unpublished rows.
+      const { session } = await getAdminSession(req);
+      const canSeeDrafts = !!session && hasPermission(session.role, 'blog:write');
       if (id) {
-        const [rows]: any = await pool.query('SELECT * FROM blog_posts WHERE id = ? LIMIT 1', [id]);
+        const idSql = canSeeDrafts
+          ? 'SELECT * FROM blog_posts WHERE id = ? LIMIT 1'
+          : 'SELECT * FROM blog_posts WHERE id = ? AND active = 1 AND (status = "published" OR status IS NULL) LIMIT 1';
+        const [rows]: any = await pool.query(idSql, [id]);
         return res.status(200).json(rows[0] || null);
       }
-      const { session } = await getAdminSession(req);
-      const isAdmin = !!session;
-      const listSql = isAdmin
+      const listSql = canSeeDrafts
         ? 'SELECT * FROM blog_posts ORDER BY created_at DESC'
         : 'SELECT * FROM blog_posts WHERE active = 1 AND (status = "published" OR status IS NULL) ORDER BY created_at DESC';
       const [rows]: any = await pool.query(listSql);
@@ -174,6 +178,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (error instanceof UrlValidationError) {
       return res.status(400).json({ error: 'Invalid URL or path' });
     }
-    return res.status(500).json({ error: error.message });
+    console.error('[api/blog] request failed', error?.code || 'unknown');
+    return res.status(500).json({ error: 'Server error' });
   }
 }

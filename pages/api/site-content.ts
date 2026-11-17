@@ -584,6 +584,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (error instanceof ContentValidationError) {
       return res.status(400).json({ error: error.message || 'Invalid value' });
     }
-    return res.status(500).json({ error: error.message });
+    console.error('[api/site-content] request failed', error?.code || 'unknown');
+    return res.status(500).json({ error: 'Server error' });
   }
 }

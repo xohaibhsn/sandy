@@ -78,7 +78,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!req.query.id && !req.query.slug) {
         return res.status(200).json([]);
       }
-      return res.status(500).json({ error: error.message });
+      console.error('[api/products] request failed', error?.code || 'unknown');
+      return res.status(500).json({ error: 'Server error' });
     }
   }
 }

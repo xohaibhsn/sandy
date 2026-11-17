@@ -198,7 +198,7 @@ check("admin routes call requirePermission; public-only routes never do", () => 
     .filter(([, t]) => /\bgetAdminSession\b/.test(t))
     .map(([r]) => r)
     .sort();
-  eq(sessionUsers, ["/api/admin-session", "/api/blog", "/api/faqs"]);
+  eq(sessionUsers, ["/api/admin-session", "/api/blog", "/api/faqs", "/api/sections"]);
 });
 
 check("requirePermission() permissions match registry per route", () => {

@@ -443,6 +443,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         error: 'Database connection failed. On Hostinger set DB_HOST to 127.0.0.1 (not srvXXX.hstgr.io).',
       });
     }
-    return res.status(500).json({ error: error.message });
+    console.error('[api/admin-products] request failed', error?.code || 'unknown');
+    return res.status(500).json({ error: 'Server error' });
   }
 }

@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
-import { requirePermission } from '../../lib/adminPermissions';
+import { getAdminSession } from '../../lib/adminAuth';
+import { hasPermission, requirePermission } from '../../lib/adminPermissions';
 import {
   assertSafeImageUrl,
   assertSafeInternalPath,
@@ -120,7 +121,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { page, all } = req.query;
       let query = 'SELECT content_key,content_value,content_type,page_name,label,section_order,is_visible FROM site_content WHERE page_name=? AND content_type="json"';
       const params: any[] = [page || 'home'];
-      if (!all) query += ' AND is_visible=1';
+      // Soft check only: GET never returns 401/403. `all` is honored only for sections:write sessions.
+      let includeHidden = false;
+      if (all) {
+        const { session } = await getAdminSession(req);
+        includeHidden = !!session && hasPermission(session.role, 'sections:write');
+      }
+      if (!includeHidden) query += ' AND is_visible=1';
       query += ' ORDER BY section_order ASC';
       const [rows]: any = await pool.query(query, params);
       const result = (Array.isArray(rows)?rows:[]).map((r:any) => ({
@@ -182,6 +189,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (error instanceof UrlValidationError) {
       return res.status(400).json({ error: 'Invalid URL or path' });
     }
-    return res.status(500).json({ error: error.message });
+    console.error('[api/sections] request failed', error?.code || 'unknown');
+    return res.status(500).json({ error: 'Server error' });
   }
 }

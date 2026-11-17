@@ -118,3 +118,19 @@ Records seconds until first match (or first absent), and whether the marker appe
 4. Restore the original text.
 
 The **owner** performs the admin login and the edit. These scripts **never** log in.
+
+---
+
+## `check-runtime-ddl.mjs`
+
+Static guard against schema changes (DDL) in runtime code. It never connects to a database and never reads the network.
+
+```bash
+node scripts/qa/check-runtime-ddl.mjs
+```
+
+Scans `app/`, `pages/`, `lib/`, `components/`, `hooks/` and root `*.ts` for `CREATE TABLE`, `CREATE INDEX`, `ALTER TABLE`, `DROP TABLE`, `DROP INDEX`, `DROP COLUMN`, `RENAME TABLE` and `TRUNCATE`. It skips `tests/`, `migrations/`, `scripts/`, `node_modules` and `.next`, and ignores comment-only lines. Read-only probes (`SHOW COLUMNS`, `SHOW CREATE TABLE`, `SELECT ... FROM INFORMATION_SCHEMA`) are not DDL and are never flagged.
+
+`runtime-ddl-allowlist.json` is `{ "<file>": <max DDL count> }` and lists the runtime DDL that still exists. Exit **1** if a file that is not in the allowlist contains DDL, or if a file's count goes above its allowlisted maximum. Exit **2** if the allowlist cannot be read. Counts that drop are reported as a NOTE: lower the number (or delete the entry) when you remove DDL from a file. Never raise a number to make the check pass; schema changes belong in `migrations/` and are run by the owner by hand.
+
+Output contains only file paths, counts and rule names. It never prints source lines.

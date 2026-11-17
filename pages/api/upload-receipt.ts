@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { rateLimit, getClientIp } from '../../lib/rateLimit';
@@ -17,7 +18,6 @@ const ALLOWED_MIME = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
-  'image/gif',
   'application/pdf',
 ]);
 
@@ -31,9 +31,28 @@ function parseDataUrl(file: unknown): { mime: string; base64: string; dataUrl: s
   return { mime, base64, dataUrl: file };
 }
 
-function sanitizeFileName(name: unknown): string {
-  const raw = typeof name === 'string' && name.trim() ? name.trim() : 'receipt';
-  return raw.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'receipt';
+function startsWithBytes(buf: Buffer, bytes: readonly number[], offset = 0): boolean {
+  if (buf.length < offset + bytes.length) return false;
+  return bytes.every((b, i) => buf[offset + i] === b);
+}
+
+/** True when the decoded bytes match the file signature of the declared MIME type. */
+function matchesMagicBytes(buf: Buffer, mime: string): boolean {
+  switch (mime) {
+    case 'image/jpeg':
+      return startsWithBytes(buf, [0xff, 0xd8, 0xff]);
+    case 'image/png':
+      return startsWithBytes(buf, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    case 'image/webp':
+      return (
+        startsWithBytes(buf, [0x52, 0x49, 0x46, 0x46]) && // RIFF
+        startsWithBytes(buf, [0x57, 0x45, 0x42, 0x50], 8) // WEBP
+      );
+    case 'application/pdf':
+      return startsWithBytes(buf, [0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
+    default:
+      return false;
+  }
 }
 
 function extensionForMime(mime: string): string {
@@ -44,8 +63,6 @@ function extensionForMime(mime: string): string {
       return '.png';
     case 'image/webp':
       return '.webp';
-    case 'image/gif':
-      return '.gif';
     case 'application/pdf':
       return '.pdf';
     default:
@@ -80,7 +97,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid receipt file' });
     }
 
-    const safeName = sanitizeFileName((body as { name?: unknown }).name);
+    if (!matchesMagicBytes(decoded, parsed.mime)) {
+      return res.status(400).json({ error: 'Invalid receipt file' });
+    }
+
+    const fileId = crypto.randomUUID();
     const isPdf = parsed.mime === 'application/pdf';
     let storedPath = '';
 
@@ -92,7 +113,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const cloudinary = (await import('../../lib/cloudinary')).default;
       const uploadOptions: Record<string, unknown> = {
         folder: RECEIPT_FOLDER,
-        public_id: `receipt-${Date.now()}`,
+        public_id: `receipt-${fileId}`,
         resource_type: isPdf ? 'raw' : 'image',
       };
       if (!isPdf) {
@@ -107,9 +128,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
       }
-      const ext = path.extname(safeName) || extensionForMime(parsed.mime);
-      const base = path.basename(safeName, path.extname(safeName)) || 'receipt';
-      const fileName = `${Date.now()}-${base}${ext}`;
+      const fileName = `${fileId}${extensionForMime(parsed.mime)}`;
       fs.writeFileSync(path.join(uploadsDir, fileName), decoded);
       storedPath = `/uploads/receipts/${fileName}`;
     }

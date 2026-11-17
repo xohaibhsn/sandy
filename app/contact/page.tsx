@@ -78,6 +78,7 @@ const styles = `
   .form-group select option { background:#FFFFFF; color:#111111; }
   .form-group textarea { resize:vertical; min-height:120px; }
   .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .hp-field { position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }
   .submit-btn { width:100%; background:#5B21B6; color:#FFFFFF; border:none; padding:15px;
     border-radius:9px; font-size:15px; font-weight:600; cursor:pointer; transition:all 0.2s; margin-top:6px; }
   .submit-btn:hover { background:#4C1D95; transform:translateY(-1px); box-shadow:0 4px 14px rgba(91,33,182,0.35); }
@@ -155,7 +156,7 @@ const faqs = [
 export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "", website: "" });
   const [submitting, setSubmitting] = useState(false);
   const sc = useSiteContent();
   const contact = useContactConfig();
@@ -278,6 +279,16 @@ export default function ContactPage() {
                     </select>
                   </div>
                 </div>
+                <input
+                  type="text"
+                  name="website"
+                  className="hp-field"
+                  value={form.website}
+                  onChange={e => setForm({ ...form, website: e.target.value })}
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
                 <div className="form-group">
                   <label>Message *</label>
                   <textarea placeholder="How can we help you?" value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} />
