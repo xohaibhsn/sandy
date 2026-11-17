@@ -4,6 +4,8 @@ import {
   RedirectConflictError,
   RedirectNotFoundError,
   RedirectValidationError,
+  RedirectsStorageMissingError,
+  assertRedirectsStorage,
   createRedirect,
   deleteRedirect,
   listRedirects,
@@ -17,6 +19,13 @@ function parsePositiveId(value: unknown): number | null {
 }
 
 function sendError(res: NextApiResponse, err: unknown): void {
+  if (
+    err instanceof RedirectsStorageMissingError ||
+    (typeof err === "object" && err !== null && (err as { code?: string }).code === "ER_NO_SUCH_TABLE")
+  ) {
+    res.status(503).json({ error: "Redirects storage not configured" });
+    return;
+  }
   if (err instanceof RedirectValidationError) {
     res.status(400).json({ error: "Validation error" });
     return;
@@ -37,6 +46,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!session) return;
 
   try {
+    // Fail closed: the redirects table is created by migrations/0003 only. Missing => 503 for every
+    // supported method (before any validation or write is attempted).
+    if (
+      req.method === "GET" ||
+      req.method === "POST" ||
+      req.method === "PUT" ||
+      req.method === "DELETE"
+    ) {
+      await assertRedirectsStorage();
+    }
+
     if (req.method === "GET") {
       const rows = await listRedirects();
       return res.status(200).json(rows);

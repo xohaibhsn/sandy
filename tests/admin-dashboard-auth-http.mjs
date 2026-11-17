@@ -272,25 +272,44 @@ async function main() {
       ok(typeof r.json?.error === "string" && r.json.error.length > 0, "400 carries an error message");
       invalidStatuses.push(r.status);
     }
-    const badBatch = await postJson(
+    // Central RBAC (lib/adminPermissions.ts): site_title is super_admin-only branding.
+    // Manager has site_content:write but NOT site_content:write_branding -> 403 before value validation.
+    const forbiddenBatch = await postJson(
       "/api/site-content",
       { updates: [{ key: "site_title", value: "should not be written" }, { key: LOW_STOCK_KEY, value: "nope" }] },
       manager
     );
-    eq(badBatch.status, 400, `updates[] invalid: ${badBatch.text}`);
+    eq(forbiddenBatch.status, 403, `updates[] branding without permission: ${forbiddenBatch.text}`);
+    const [titleRows] = await pool.query("SELECT content_value FROM site_content WHERE content_key = 'site_title'");
+    ok(!titleRows[0] || titleRows[0].content_value !== "should not be written", "branding batch denied for manager");
+
+    // Role WITH permission + invalid input -> 400 (manager may write admin_low_stock_threshold).
+    const badBatch = await postJson(
+      "/api/site-content",
+      { updates: [{ key: LOW_STOCK_KEY, value: "nope" }] },
+      manager
+    );
+    eq(badBatch.status, 400, `updates[] invalid with permission: ${badBatch.text}`);
     const [rowC] = await pool.query("SELECT content_value FROM site_content WHERE content_key = ?", [LOW_STOCK_KEY]);
     eq(String(rowC[0].content_value), "6", "invalid writes did not change the stored threshold");
-    const [titleRows] = await pool.query("SELECT content_value FROM site_content WHERE content_key = 'site_title'");
-    ok(!titleRows[0] || titleRows[0].content_value !== "should not be written", "batch with an invalid row is all-or-nothing");
     postStatuses.invalid = [...new Set(invalidStatuses)];
+    postStatuses.forbidden_branding = forbiddenBatch.status;
 
-    // PUT path uses the same validator
-    const putBad = await fetch(`${BASE}/api/site-content`, {
+    // PUT requires site_content:manage (super_admin). Manager without that permission -> 403.
+    const putForbidden = await fetch(`${BASE}/api/site-content`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", Origin: BASE, Referer: `${BASE}/admin`, Cookie: `sAdminSession=${manager}` },
       body: JSON.stringify({ content_key: LOW_STOCK_KEY, content_value: "abc" }),
     });
-    eq(putBad.status, 400, "PUT with invalid threshold -> 400");
+    eq(putForbidden.status, 403, "manager PUT without site_content:manage -> 403");
+
+    // Role WITH manage permission + invalid input -> 400.
+    const putBad = await fetch(`${BASE}/api/site-content`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Origin: BASE, Referer: `${BASE}/admin`, Cookie: `sAdminSession=${superAdmin}` },
+      body: JSON.stringify({ content_key: LOW_STOCK_KEY, content_value: "abc" }),
+    });
+    eq(putBad.status, 400, "super_admin PUT with invalid threshold -> 400");
 
     // writers are still blocked from the dashboard regardless of threshold writes
     const w2 = await hit("/api/admin-dashboard-summary?preset=all", writer);

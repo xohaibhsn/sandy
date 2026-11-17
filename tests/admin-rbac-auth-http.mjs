@@ -61,12 +61,20 @@ process.removeAllListeners("warning");
 const P = await import(pathToFileURL(path.join(root, "lib/adminPermissions.ts")).href);
 const { ADMIN_ENDPOINT_POLICY, endpointKey, hasPermission, PUBLIC_API_ROUTES } = P;
 
+// SANDY_TEST_DB_NAME (e.g. sandy_mig_admin) = a database built ONLY from migrations/0001-0004 + tax SQL.
+// Then admin_sessions must already exist: this test never creates it (no runtime/test DDL).
+const DB_NAME = process.env.SANDY_TEST_DB_NAME || "sandy_test_local";
+const MIGRATIONS_ONLY = Boolean(process.env.SANDY_TEST_DB_NAME);
+if (!/^sandy_(test_local|mig_[a-z_]+)$/.test(DB_NAME)) {
+  console.error("refusing to run against database", DB_NAME);
+  process.exit(2);
+}
 const pool = mysql.createPool({
   host: "127.0.0.1",
   port: 3307,
   user: "sandy_test",
   password: process.env.SANDY_TEST_DB_PASSWORD,
-  database: "sandy_test_local",
+  database: DB_NAME,
 });
 
 function hashSessionToken(rawToken) {
@@ -74,6 +82,10 @@ function hashSessionToken(rawToken) {
 }
 
 async function ensureSessions() {
+  if (MIGRATIONS_ONLY) {
+    await pool.query("SELECT 1 FROM admin_sessions LIMIT 0"); // throws if migration 0003 was not applied
+    return;
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_sessions (
       id INT AUTO_INCREMENT PRIMARY KEY,

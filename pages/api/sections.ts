@@ -32,88 +32,11 @@ function validateSectionValue(value: unknown): unknown {
   return value;
 }
 
-const DEFAULTS = [
-  ['home_hero','{"title":"Quality products, delivered across Pakistan","subtitle":"S&Y is your Pakistani online store for accessories, gadgets and everyday essentials.","button_text":"Shop Now","button_link":"/products","secondary_button_text":"Learn More","secondary_button_link":"/about"}','json','home','Hero Section',1,1],
-  ['home_featured_products','{"title":"Our Products","subtitle":"Handpicked quality for every need","show_count":6}','json','home','Featured Products Section',2,1],
-  ['home_features','{"title":"Why Choose Us","items":[{"icon":"⚡","title":"Quality","description":"Handpicked products"},{"icon":"🔒","title":"Authentic","description":"Genuine items"},{"icon":"💬","title":"Support","description":"WhatsApp help"},{"icon":"🚀","title":"Fast Delivery","description":"Across Pakistan"}]}','json','home','Features Section',3,1],
-  ['home_testimonials','{"title":"What Our Customers Say","items":[{"name":"Ahmed Khan","rating":5,"text":"Fast delivery to Lahore and the product was exactly as described."},{"name":"Sara Ali","rating":5,"text":"Easy checkout with COD. Will order again."}]}','json','home','Testimonials Section',4,1],
-  ['home_newsletter','{"title":"Stay in the Loop","subtitle":"Get the latest products, tips and offers delivered to your inbox","button_text":"Subscribe"}','json','home','Newsletter Section',5,1],
-  ['about_hero','{"title":"About S&Y","subtitle":"Your Pakistani online store for accessories, gadgets and everyday products"}','json','about','Hero Section',1,1],
-  ['about_mission','{"title":"Our Mission","text":"We bring quality products to customers across Pakistan — honest prices, authentic items, and delivery you can rely on."}','json','about','Mission Section',2,1],
-  ['about_values','{"title":"Our Values","items":[{"icon":"🎯","title":"Quality","description":"Best in class products every time"},{"icon":"❤️","title":"Trust","description":"Transparent & honest always"},{"icon":"🚀","title":"Speed","description":"Fast delivery nationwide"}]}','json','about','Values Section',3,1],
-];
-
-let initializationPromise: Promise<void> | null = null;
-
-async function initializeSections(): Promise<void> {
-  // Create table if it doesn't exist yet
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS site_content (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      content_key VARCHAR(100) UNIQUE NOT NULL,
-      content_value TEXT,
-      content_type ENUM('text','textarea','image','url','json') DEFAULT 'text',
-      page_name VARCHAR(50),
-      label VARCHAR(100),
-      section_order INT DEFAULT 0,
-      is_visible TINYINT(1) DEFAULT 1,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Add missing columns + extend ENUM to include 'json'
-  for (const sql of [
-    "ALTER TABLE site_content ADD COLUMN section_order INT DEFAULT 0",
-    "ALTER TABLE site_content ADD COLUMN is_visible TINYINT(1) DEFAULT 1",
-    "ALTER TABLE site_content MODIFY COLUMN content_type ENUM('text','textarea','image','url','json') DEFAULT 'text'",
-  ]) { try { await pool.query(sql); } catch {} }
-
-  // Fix rows that have empty content_type due to old ENUM missing 'json'
-  const sectionKeys = DEFAULTS.map(d => d[0]);
-  if (sectionKeys.length) {
-    try {
-      await pool.query(
-        `UPDATE site_content SET content_type='json' WHERE content_key IN (${sectionKeys.map(()=>'?').join(',')}) AND (content_type='' OR content_type IS NULL)`,
-        sectionKeys
-      );
-    } catch {}
-  }
-
-  for (const [key,val,type,page,label,order,vis] of DEFAULTS) {
-    try {
-      await pool.query(
-        'INSERT IGNORE INTO site_content (content_key,content_value,content_type,page_name,label,section_order,is_visible) VALUES (?,?,?,?,?,?,?)',
-        [key,val,type,page,label,order,vis]
-      );
-    } catch {}
-  }
-
-  // Replace IPTV wording in section JSON content
-  for (const [from, to] of [
-    ['Premium IPTV & Streaming', 'Premium Streaming'],
-    ['IPTV & Streaming Solutions', 'Streaming Solutions'],
-    ['Premium IPTV', 'Premium Streaming'],
-    ['IPTV', 'Streaming'],
-  ] as const) {
-    try {
-      await pool.query(
-        `UPDATE site_content SET content_value = REPLACE(content_value, ?, ?)
-         WHERE content_type='json' AND content_value LIKE ?`,
-        [from, to, `%${from}%`]
-      );
-    } catch {}
-  }
-}
-
-function ensureSectionsInitialized(): Promise<void> {
-  if (!initializationPromise) {
-    initializationPromise = initializeSections().catch((error) => {
-      initializationPromise = null;
-      throw error;
-    });
-  }
-  return initializationPromise;
-}
+/*
+ * The site_content table (with section_order / is_visible / json content_type) and the default
+ * section rows come from migrations/0003 and 0004 (owner-run). This handler never creates or
+ * alters tables and never rewrites existing section JSON.
+ */
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -144,7 +67,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const session = await requirePermission(req, res, 'sections:write');
     if (!session) return;
 
-    await ensureSectionsInitialized();
 
     if (req.method === 'POST') {
       const { key, value } = req.body;

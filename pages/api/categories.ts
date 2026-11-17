@@ -2,10 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import pool from "../../lib/db";
 import { requirePermission } from "../../lib/adminPermissions";
-import {
-  ensureCategoriesTable,
-  categorySlugFromName,
-} from "../../lib/ensureCategories";
+import { categorySlugFromName } from "../../lib/categorySlug";
 import { assertSafeImageUrl, UrlValidationError } from "../../lib/urlValidation";
 
 const NAME_MAX = 100;
@@ -139,8 +136,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    await ensureCategoriesTable();
-
     if (req.method === "GET") {
       const [rows] = await pool.query<CategoryRow[]>(
         `SELECT id, name, slug, description, image, parent_id, active, sort_order, created_at, updated_at

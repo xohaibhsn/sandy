@@ -2,18 +2,43 @@
 
 These `.sql` files are for **owner review and a manual run in phpMyAdmin only**.
 
-**The application never executes them.** Nothing under `app/`, `pages/`, `lib/` or `scripts/` reads or runs this folder, and runtime code must not create or alter tables (see `scripts/qa/check-runtime-ddl.mjs`).
+**The application never executes them.** Nothing under `app/`, `pages/`, `lib/` or `scripts/` reads or runs this folder, and runtime code must not create or alter tables (see `scripts/qa/check-runtime-ddl.mjs`; its allowlist is now empty).
 
 ## Before running any file
 
 1. **Check the database name.** In phpMyAdmin, select the correct database in the left tree (the live shop database, not a test or local copy) and confirm its name at the top of the page before opening the SQL tab.
 2. **Back up first.** Use phpMyAdmin Export (Quick, SQL) and save the file in `Web Dev\sandy-db-backups`, with the date in the file name.
-3. Read the file. Every file here is written to be idempotent (`CREATE TABLE IF NOT EXISTS`), so running it twice is harmless.
-4. Paste or import it in the SQL tab and run it, then confirm the table exists.
+3. Read the file. Every file here is written to be idempotent (`CREATE TABLE IF NOT EXISTS`, guarded `ADD COLUMN`), so running it twice is harmless.
+4. Paste or import it in the SQL tab and run it, then confirm the table exists. Import as **UTF-8** (0003 and 0004 contain emoji and typographic dashes).
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `0001-contact-messages.sql` | Creates `contact_messages`, used by `POST /api/contact`. The API no longer creates it, so run this once before the contact form can save messages. |
+| `0001-contact-messages.sql` | Creates `contact_messages`, used by `POST /api/contact`. For fresh databases only: production already has `contact_messages`. The API no longer creates it, so a new empty database needs this file before the contact form can save messages. |
 | `0002-shop-schema.sql` | Reference schema for `products`, `orders`, `order_items` and `order_checkout_attempts` (checkout idempotency). The API no longer creates or alters these tables at runtime, so a fresh database needs this file. On the live shop database every object already exists, so running it changes nothing: each `CREATE` is `IF NOT EXISTS` and each `ADD COLUMN` / `ADD UNIQUE KEY` is guarded by an `INFORMATION_SCHEMA` check. It contains no seed rows, slug backfill or data updates. The duplicate-slug check just before the unique index must return no rows. |
+| `0003-admin-schema.sql` | Schema for the admin / CMS tables: `categories`, `coupons`, `admin_staff`, `admin_sessions`, `faqs`, `redirects`, `site_content` (with `section_order`, `is_visible` and the `json` content type) and `blog_posts` (including the late `canonical_url` and `faqs` columns). Same idempotent / guarded style as 0002. **No data statements at all** (no INSERT, UPDATE, DELETE or REPLACE). Definitions are copied statement for statement from the runtime code that used to create them. Admin login needs `admin_sessions`; without it the app fails closed (503). |
+| `0004-default-content-seed.sql` | Default CMS rows only: `site_content` keys, the home/about sections, and starter FAQs. **Only adds missing rows**: `INSERT IGNORE` on the unique `content_key`, FAQs inserted only when the `faqs` table is empty (the three "required" FAQs only when no FAQ has the same question). It never updates, replaces or deletes anything, so it cannot overwrite content the owner has already edited. Run it after 0003, and only when you want the default rows (a database that already has content gets just the keys it is missing). |
+| `0005-orders-cancel-reason.sql` | Adds `orders.cancel_reason` (`VARCHAR(500) NULL`, after `status`) for admin cancel-reason capture. Same idempotent / guarded style as 0002. Production already has this column; the file is for fresh databases built from migrations. Run after 0002. |
+
+Order: 0001, 0002, 0003, 0004, 0005 (0001 and 0002 are independent of 0003; 0005 depends on 0002).
+
+## Intentionally NOT ported from the removed runtime code (owner decision later)
+
+The old request-time initialisers did more than create tables. These parts were **deliberately left out** of every migration, because they rewrite or delete existing data and must not run automatically:
+
+- **`REPLACE` text rewrites of "IPTV" / "UK" wording** in `site_content` (`pages/api/site-content.ts`), in section JSON (`pages/api/sections.ts`) and in `blog_posts` titles, excerpts, content and meta fields (`pages/api/blog.ts`), e.g. `IPTV` becomes `Streaming`, `Premium IPTV & Streaming` becomes `Premium Streaming`.
+- **The Firestick / UK clean-up `UPDATE`s** on `site_content` (contact email, WhatsApp number, phone, address, Telegram, site title/tagline, footer text), the label/`page_name` re-sync `UPDATE`s, and the `whatsapp_number` = `contact_whatsapp` copy.
+- **Obsolete-FAQ `DELETE`**: the removed code deleted twelve FAQs by exact question text (for example "Do you deliver across the whole UK?", "Do Firesticks come pre-configured?", "Do you offer free trials?").
+- **Other data fix-ups**: `UPDATE blog_posts SET active = 1 WHERE active IS NULL` (a newly added `active` column already defaults to 1) and the section `content_type = 'json'` repair for rows with an empty type.
+- **Sample coupons `WELCOME10` and `SAVE5`** (`INSERT IGNORE` on every admin coupons request). They are live discount codes (10% off and 5 off), so they are not recreated on a fresh database. Add real coupons from the admin screen. If an old copy of the database still contains them, they stay as they are.
+
+If the owner wants any of these, they should be written as a separate, reviewed one-off SQL script (with a backup and a `SELECT` preview of the affected rows first), never as automatic code.
+
+## If a table is missing
+
+Handlers no longer create tables, so a missing table is an explicit failure rather than a silent re-create:
+
+- `admin_sessions` missing: admin login and every protected admin API answer 503 "Service unavailable" (fail closed).
+- `redirects` missing: public redirect lookup is skipped (visitors are never blocked); `/api/admin-redirects` answers 503 `{"error":"Redirects storage not configured"}`.
+- Any other admin table missing: that endpoint answers a generic 500 until the migration is run.

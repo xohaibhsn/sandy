@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { RowDataPacket } from 'mysql2';
 import pool from '../../lib/db';
-import { ensureCategoriesTable } from '../../lib/ensureCategories';
 import { parsePrice } from '../../lib/site';
 import { requirePermission } from '../../lib/adminPermissions';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
@@ -138,7 +137,6 @@ async function resolveProductCategory(
     return { ok: false, error: 'Please choose an active category' };
   }
 
-  await ensureCategoriesTable();
   const [rows] = await pool.query<CategoryLookupRow[]>(
     'SELECT name, active FROM categories WHERE name = ? LIMIT 1',
     [category]

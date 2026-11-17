@@ -17,9 +17,6 @@ const SESSION_MAX_AGE_SEC = 604800; // 7 days
 const TOKEN_HEX_BYTES = 32; // 64 hex chars
 const TOKEN_HEX_RE = /^[a-f0-9]{64}$/i;
 
-let sessionsReady = false;
-let sessionsInFlight: Promise<void> | null = null;
-
 function isProductionHttps(): boolean {
   if (process.env.NODE_ENV === "production") return true;
   const site = String(process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "").toLowerCase();
@@ -48,33 +45,10 @@ export function clearSessionCookie(res: NextApiResponse): void {
   );
 }
 
-export async function ensureAdminSessionsTable(): Promise<void> {
-  if (sessionsReady) return;
-  if (!sessionsInFlight) {
-    sessionsInFlight = (async () => {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS admin_sessions (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          token_hash CHAR(64) NOT NULL,
-          staff_id INT NULL,
-          is_master TINYINT(1) NOT NULL DEFAULT 0,
-          role VARCHAR(32) NOT NULL,
-          name VARCHAR(255) NOT NULL,
-          expires_at DATETIME NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE KEY uq_admin_sessions_token_hash (token_hash),
-          KEY idx_admin_sessions_expires_at (expires_at)
-        )
-      `);
-      sessionsReady = true;
-    })().catch((err) => {
-      sessionsInFlight = null;
-      sessionsReady = false;
-      throw err;
-    });
-  }
-  await sessionsInFlight;
-}
+/*
+ * The admin_sessions table is created by migrations/0003-admin-schema.sql (owner-run, never by the app).
+ * If it is missing, getAdminSession() reports error=true and protected routes fail closed with 503.
+ */
 
 async function bestEffortPurgeExpired(): Promise<void> {
   try {
@@ -90,7 +64,6 @@ export async function createAdminSession(params: {
   role: AdminRole;
   name: string;
 }): Promise<string> {
-  await ensureAdminSessionsTable();
   await bestEffortPurgeExpired();
 
   const rawToken = crypto.randomBytes(TOKEN_HEX_BYTES).toString("hex");
@@ -137,7 +110,6 @@ export async function getAdminSession(req: NextApiRequest): Promise<{
   if (!rawToken) return { session: null, error: false };
 
   try {
-    await ensureAdminSessionsTable();
     const tokenHash = hashSessionToken(rawToken);
     const [rows] = await pool.query(
       `SELECT id, staff_id, is_master, role, name
@@ -364,7 +336,6 @@ export async function destroyAdminSession(
   clearSessionCookie(res);
   if (!rawToken) return;
   try {
-    await ensureAdminSessionsTable();
     const tokenHash = hashSessionToken(rawToken);
     await pool.query("DELETE FROM admin_sessions WHERE token_hash = ?", [tokenHash]);
   } catch {

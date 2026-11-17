@@ -30,17 +30,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // ── Check admin_staff table first (multi-user RBAC) ───────────────────────
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS admin_staff (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        role ENUM('super_admin','manager','writer') DEFAULT 'writer',
-        active TINYINT(1) DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
     const [rows] = await pool.query(
       'SELECT id,name,email,role,password_hash FROM admin_staff WHERE email=? AND active=1 LIMIT 1',
       [username]
@@ -81,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Wrong staff password: do not create a staff session. Fall through so
       // existing master-admin username "admin" behavior remains unchanged.
     }
-  } catch { /* DB not ready yet — fall through to master admin check */ }
+  } catch { /* admin_staff unavailable (migration 0003 not applied) — fall through to master admin check */ }
 
   // ── Master admin login (username must be 'admin') ─────────────────────────
   if (username !== 'admin') {

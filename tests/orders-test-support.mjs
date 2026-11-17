@@ -102,21 +102,10 @@ export async function rebuildFromMigrations() {
     await c.query(readFileSync(path.join(root, "migrations/0001-contact-messages.sql"), "utf8"));
     await c.query(readFileSync(path.join(root, "migrations/0002-shop-schema.sql"), "utf8"));
     await c.query(readFileSync(taxSql, "utf8"));
+    // admin tables (coupons, admin_sessions, ...) come from 0003 too; no default content is seeded here (no 0004).
+    await c.query(readFileSync(path.join(root, "migrations/0003-admin-schema.sql"), "utf8"));
 
-    // --- fixtures outside the shop migrations
-    await c.query(`
-      CREATE TABLE coupons (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        code VARCHAR(50) UNIQUE NOT NULL,
-        type ENUM('percentage','fixed') NOT NULL,
-        value DECIMAL(10,2) NOT NULL,
-        minimum_order DECIMAL(10,2) DEFAULT 0,
-        usage_limit INT DEFAULT NULL,
-        used_count INT DEFAULT 0,
-        expires_at DATE DEFAULT NULL,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`);
+    // --- fixtures outside the migrations
     await c.query("ALTER TABLE orders ADD COLUMN cancel_reason VARCHAR(500) NULL"); // local test DB only
     await c.query(
       `INSERT INTO tax_rates (tax_class_id, rate_percent, effective_from, created_by)

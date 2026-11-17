@@ -62,11 +62,34 @@ const PROTECTED_EXACT = new Set([
 
 const ALLOWED_STATUS = new Set<number>([301, 302, 307, 308]);
 
-let redirectsReady = false;
-let redirectsInFlight: Promise<void> | null = null;
 /** In-process negative backoff when redirects table is missing (public lookup only). */
 let redirectsMissingUntil = 0;
 const REDIRECTS_MISSING_BACKOFF_MS = 60_000;
+
+/**
+ * Admin-side storage probe cache. The redirects table is created by migrations/0003-admin-schema.sql
+ * (owner-run); the app never creates it. `present` is cached for the life of the process, `missing`
+ * only briefly so the admin screens recover soon after the owner runs the migration.
+ */
+let redirectsStorage: { present: boolean; checkedAt: number } | null = null;
+let redirectsStorageProbe: Promise<boolean> | null = null;
+const REDIRECTS_STORAGE_MISSING_TTL_MS = 10_000;
+
+/** Thrown when the redirects table does not exist (migration not applied). Admin API maps it to 503. */
+export class RedirectsStorageMissingError extends Error {
+  readonly code = "STORAGE_MISSING" as const;
+  constructor(message = "Redirects storage not configured") {
+    super(message);
+    this.name = "RedirectsStorageMissingError";
+  }
+}
+
+/** Test hook: forget the cached storage probe result. */
+export function resetRedirectsStorageCache(): void {
+  redirectsStorage = null;
+  redirectsStorageProbe = null;
+  redirectsMissingUntil = 0;
+}
 
 function hasControlOrCrLf(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
@@ -257,32 +280,39 @@ export function extractInternalDestinationPath(destination: string): string | nu
   return normalizeRedirectSource(dest.split(/[?#]/, 1)[0] || dest);
 }
 
-export async function ensureRedirectsTable(): Promise<void> {
-  if (redirectsReady) return;
-  if (!redirectsInFlight) {
-    redirectsInFlight = (async () => {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS redirects (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          source_path VARCHAR(500) NOT NULL,
-          destination VARCHAR(2000) NOT NULL,
-          status_code SMALLINT NOT NULL DEFAULT 301,
-          is_active TINYINT(1) NOT NULL DEFAULT 1,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          UNIQUE KEY uq_redirects_source_path (source_path),
-          KEY idx_redirect_active_source (is_active, source_path)
-        )
-      `);
-      redirectsReady = true;
-      redirectsMissingUntil = 0;
-    })().catch((err) => {
-      redirectsInFlight = null;
-      redirectsReady = false;
-      throw err;
-    });
+/**
+ * Read-only existence probe for the redirects table (no DDL, no writes). Fail closed:
+ * a missing table throws RedirectsStorageMissingError and nothing is created.
+ * Any other database error propagates (the admin API reports it as 503 "Service unavailable").
+ */
+export async function assertRedirectsStorage(): Promise<void> {
+  const now = Date.now();
+  if (redirectsStorage) {
+    if (redirectsStorage.present) return;
+    if (now - redirectsStorage.checkedAt < REDIRECTS_STORAGE_MISSING_TTL_MS) {
+      throw new RedirectsStorageMissingError();
+    }
   }
-  await redirectsInFlight;
+  if (!redirectsStorageProbe) {
+    redirectsStorageProbe = (async () => {
+      try {
+        await pool.query("SELECT 1 FROM redirects LIMIT 0");
+        redirectsStorage = { present: true, checkedAt: Date.now() };
+        redirectsMissingUntil = 0;
+        return true;
+      } catch (err) {
+        if (isMysqlNoSuchTable(err)) {
+          redirectsStorage = { present: false, checkedAt: Date.now() };
+          return false;
+        }
+        throw err;
+      } finally {
+        redirectsStorageProbe = null;
+      }
+    })();
+  }
+  const present = await redirectsStorageProbe;
+  if (!present) throw new RedirectsStorageMissingError();
 }
 
 function mapRow(row: Record<string, unknown>): RedirectRecord {
@@ -301,7 +331,7 @@ function mapRow(row: Record<string, unknown>): RedirectRecord {
  * Read-only public/runtime lookup. Does NOT ensure/create the table.
  * ER_NO_SUCH_TABLE uses a short in-process null backoff (not a redirect cache).
  * Other DB errors propagate; Proxy fail-opens with NextResponse.next().
- * Admin CRUD continues to call ensureRedirectsTable() separately.
+ * Admin CRUD calls assertRedirectsStorage() (read-only probe) instead.
  */
 export async function getActiveRedirectBySource(
   sourcePath: string
@@ -334,7 +364,7 @@ export async function getActiveRedirectBySource(
 }
 
 export async function getRedirectById(id: number): Promise<RedirectRecord | null> {
-  await ensureRedirectsTable();
+  await assertRedirectsStorage();
   const [rows] = await pool.query(
     `SELECT id, source_path, destination, status_code, is_active, created_at, updated_at
      FROM redirects WHERE id = ? LIMIT 1`,
@@ -346,7 +376,7 @@ export async function getRedirectById(id: number): Promise<RedirectRecord | null
 }
 
 export async function listRedirects(): Promise<RedirectRecord[]> {
-  await ensureRedirectsTable();
+  await assertRedirectsStorage();
   const [rows] = await pool.query(
     `SELECT id, source_path, destination, status_code, is_active, created_at, updated_at
      FROM redirects
@@ -367,7 +397,7 @@ export async function assertNoRedirectLoop(params: {
   destination: string;
   excludeId?: number | null;
 }): Promise<void> {
-  await ensureRedirectsTable();
+  await assertRedirectsStorage();
 
   const source = normalizeRedirectSource(params.sourcePath);
   const destination = validateRedirectDestination(params.destination);
@@ -488,7 +518,7 @@ export async function createRedirect(raw: {
   is_active?: unknown;
 }): Promise<RedirectRecord> {
   const input = await validateRedirectInput(raw);
-  await ensureRedirectsTable();
+  await assertRedirectsStorage();
 
   try {
     const [result] = await pool.query(
@@ -522,7 +552,7 @@ export async function updateRedirect(raw: {
     throw new RedirectValidationError("Valid redirect id is required");
   }
 
-  await ensureRedirectsTable();
+  await assertRedirectsStorage();
   const existing = await getRedirectById(id);
   if (!existing) {
     throw new RedirectNotFoundError();
@@ -555,7 +585,7 @@ export async function deleteRedirect(id: number): Promise<void> {
   if (!Number.isInteger(id) || id <= 0) {
     throw new RedirectValidationError("Valid redirect id is required");
   }
-  await ensureRedirectsTable();
+  await assertRedirectsStorage();
   const [result] = await pool.query(`DELETE FROM redirects WHERE id = ?`, [id]);
   const affected = Number((result as { affectedRows?: number }).affectedRows || 0);
   if (affected < 1) {

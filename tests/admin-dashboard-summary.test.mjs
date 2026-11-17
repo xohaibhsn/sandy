@@ -1319,13 +1319,12 @@ async function dash2Assertions(lib, specs) {
 // ---------------------------------------------------------------------------------------------
 async function sourceChecks() {
   const src = await fs.readFile(path.join(root, "pages/api/admin-dashboard-summary.ts"), "utf8");
-  match(src, /requireRole\(req, res, \["super_admin", "manager"\]\)/);
+  // Central RBAC: dashboard:view is granted to super_admin|manager only (see lib/adminPermissions.ts).
+  match(src, /requirePermission\(req, res, "dashboard:view"\)/);
   match(src, /Cache-Control.*private, no-store/);
   match(src, /Invalid date range/);
   match(src, /Asia\/Karachi/);
   match(src, /method !== "GET"/);
-  match(src, /session\.role !== "super_admin"/);
-  match(src, /session\.role !== "manager"/);
   noMatch(src, /admin-orders/);
   noMatch(src, /requireRole\(req, res, \[[^\]]*"writer"/, "writers must never be granted dashboard access");
   // response keys (additive extras)
@@ -1371,7 +1370,7 @@ async function sourceChecks() {
   match(sc, /parseLowStockThreshold\(value\)/);
   match(sc, /ContentValidationError/);
   match(sc, /res\.status\(400\)\.json\(\{ error: error\.message/);
-  match(sc, /const session = await requireAdmin\(req, res\)/);
+  match(sc, /requirePermission\([\s\S]*?site_content:(?:write|manage)/);
   match(sc, /String\(parsed\.value\)/);
 
   const lib = await fs.readFile(path.join(root, "lib/dashboardExtras.ts"), "utf8");

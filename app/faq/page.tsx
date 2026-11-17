@@ -33,7 +33,7 @@ function serializeFaq(row: FaqRow): FaqItem | null {
 
 /**
  * Public FAQ list: visible rows, category then sort_order.
- * Read-only SELECT. Does not call ensureFaqsInitialized().
+ * Read-only SELECT. The faqs table comes from migrations/0003-admin-schema.sql.
  */
 async function listPublicFaqs(): Promise<FaqItem[]> {
   await connection();

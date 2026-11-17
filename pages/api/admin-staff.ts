@@ -5,18 +5,6 @@ import { hashAdminStaffPassword } from '../../lib/adminStaffPassword';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS admin_staff (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        role ENUM('super_admin','manager','writer') DEFAULT 'writer',
-        active TINYINT(1) DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
     if (req.method === 'GET') {
       // Finding 7: staff directory (emails, roles) is super_admin only.
       const session = await requirePermission(req, res, 'staff:view');
