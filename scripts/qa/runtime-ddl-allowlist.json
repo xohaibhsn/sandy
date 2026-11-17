@@ -1,8 +1,6 @@
 {
   "lib/adminAuth.ts": 1,
   "lib/ensureCategories.ts": 1,
-  "lib/ensureOrderIdempotency.ts": 1,
-  "lib/ensureShopTables.ts": 30,
   "lib/redirects.ts": 1,
   "pages/api/admin-login.ts": 1,
   "pages/api/admin-staff.ts": 1,

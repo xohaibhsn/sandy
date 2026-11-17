@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { RowDataPacket } from 'mysql2';
 import pool from '../../lib/db';
-import { ensureProductsTable } from '../../lib/ensureShopTables';
 import { ensureCategoriesTable } from '../../lib/ensureCategories';
 import { parsePrice } from '../../lib/site';
 import { requirePermission } from '../../lib/adminPermissions';
@@ -175,8 +174,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!session) return;
   }
   try {
-    await ensureProductsTable();
-
     if (req.method === 'GET') {
       // Options for the product form tax-class select (any admin role; read-only).
       if (req.query.tax_classes === '1') {

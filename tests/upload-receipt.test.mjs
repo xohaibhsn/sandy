@@ -109,7 +109,7 @@ async function run(body, { cloud = false, method = "POST", uploadImpl } = {}) {
     rec.uploads.push({ file, options });
     if (uploadImpl) return uploadImpl(file, options);
     return {
-      secure_url: `https://res.cloudinary.com/demo/image/upload/v1/${options.folder}/${options.public_id}.png`,
+      secure_url: `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/image/upload/v1/${options.folder}/${options.public_id}.png`,
     };
   };
   fs.existsSync = () => false;

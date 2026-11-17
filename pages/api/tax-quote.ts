@@ -136,7 +136,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const items: TaxedPricedLineItem[] = [];
     for (const reqItem of normalized.items) {
       const p = byId.get(reqItem.id);
-      if (!p || Number(p.active) !== 1) {
+      if (!p || (p.active !== null && p.active !== undefined && Number(p.active) !== 1)) {
         return res.status(400).json({ error: UNAVAILABLE_PRODUCT });
       }
       const price = parseDbMoney(p.price);

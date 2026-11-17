@@ -1,6 +1,7 @@
 /**
  * Pure URL / path validation primitives for server write authority.
- * No DB, network, env, filesystem, or side effects.
+ * No DB, network, filesystem, or side effects. The only environment read is
+ * CLOUDINARY_CLOUD_NAME in assertSafeReceiptUrl (never logged).
  */
 
 export const MAX_URL_REFERENCE_LENGTH = 2048;
@@ -112,22 +113,6 @@ function parseAbsoluteHttpUrl(value: string, allowHttp: boolean): URL {
 
 function normalizeWwwHost(hostname: string): string {
   return hostname.replace(/^www\./i, "").toLowerCase();
-}
-
-function pathSegmentsContainSandyReceipts(pathname: string): boolean {
-  let decoded = pathname;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    return false;
-  }
-  const segments = decoded.split("/").filter(Boolean);
-  for (let i = 0; i < segments.length - 1; i++) {
-    if (segments[i] === "sandy" && segments[i + 1] === "receipts") {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**
@@ -269,9 +254,32 @@ export function assertSafeCanonicalUrl(
   return normalized.toString();
 }
 
+const RECEIPT_UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const RECEIPT_EXT = "(?:jpg|png|webp|pdf)";
+
+/** Local dev fallback written by /api/upload-receipt: /uploads/receipts/<uuid>.<ext> */
+const LOCAL_RECEIPT_RE = new RegExp(`^/uploads/receipts/${RECEIPT_UUID}\\.${RECEIPT_EXT}$`);
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
- * Order receipt references: empty, Cloudinary HTTPS under sandy/receipts,
- * or local /uploads/receipts/... only.
+ * Cloudinary delivery path written by /api/upload-receipt:
+ * /<cloud>/(image|raw)/upload/[v123/]sandy/receipts/receipt-<uuid>[.ext]
+ */
+function cloudinaryReceiptPathRe(cloudName: string): RegExp {
+  return new RegExp(
+    `^/${escapeRegExp(cloudName)}/(?:image|raw)/upload/(?:v\\d+/)?sandy/receipts/receipt-${RECEIPT_UUID}(?:\\.${RECEIPT_EXT})?$`
+  );
+}
+
+/**
+ * Order receipt references: empty, or exactly what /api/upload-receipt produces:
+ * - https://res.cloudinary.com/<CLOUDINARY_CLOUD_NAME>/.../sandy/receipts/receipt-<uuid>[.ext]
+ *   (only when CLOUDINARY_CLOUD_NAME is configured), or
+ * - local /uploads/receipts/<uuid>.<ext>
+ * Anything else is rejected. The configured cloud name is read from the environment and never logged.
  */
 export function assertSafeReceiptUrl(value: unknown): string {
   const raw = requireString(value);
@@ -283,34 +291,20 @@ export function assertSafeReceiptUrl(value: unknown): string {
   if (isProtocolRelative(trimmed)) fail("Invalid URL or path");
 
   if (trimmed.startsWith("/")) {
-    const { path, search, hash } = splitPathQueryHash(trimmed);
-    if (hash) fail("Invalid URL or path");
-    if (!path.startsWith("/") || isProtocolRelative(path)) fail("Invalid URL or path");
-    if (pathHasTraversal(path)) fail("Invalid URL or path");
-    if (hasControlOrBackslash(search)) fail("Invalid URL or path");
-
-    const segments = (() => {
-      try {
-        return decodeURIComponent(path).split("/").filter(Boolean);
-      } catch {
-        fail("Invalid URL or path");
-      }
-    })();
-    if (segments.length < 3) fail("Invalid URL or path");
-    if (segments[0] !== "uploads" || segments[1] !== "receipts") {
-      fail("Invalid URL or path");
-    }
-    return `${path}${search}`;
+    if (!LOCAL_RECEIPT_RE.test(trimmed)) fail("Invalid URL or path");
+    return trimmed;
   }
+
+  const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || "").trim();
+  if (!cloudName) fail("Invalid URL or path");
+
+  // URL parsing would silently normalise dot segments and encoded dots/slashes; reject them in the raw input.
+  if (/%2e|%2f|%5c/i.test(trimmed) || /\/\.\.?(?:[/?#]|$)/.test(trimmed)) fail("Invalid URL or path");
 
   const parsed = parseAbsoluteHttpUrl(trimmed, false);
-  if (parsed.hostname.toLowerCase() !== "res.cloudinary.com") {
-    fail("Invalid URL or path");
-  }
-  if (parsed.hash) fail("Invalid URL or path");
-  if (!pathSegmentsContainSandyReceipts(parsed.pathname || "/")) {
-    fail("Invalid URL or path");
-  }
-  if (pathHasTraversal(parsed.pathname || "/")) fail("Invalid URL or path");
+  if (parsed.hostname.toLowerCase() !== "res.cloudinary.com") fail("Invalid URL or path");
+  if (parsed.port) fail("Invalid URL or path");
+  if (parsed.hash || parsed.search) fail("Invalid URL or path");
+  if (!cloudinaryReceiptPathRe(cloudName).test(parsed.pathname)) fail("Invalid URL or path");
   return parsed.toString();
 }

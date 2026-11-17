@@ -39,7 +39,7 @@ function serializeProduct(row: ProductRow): Product {
 
 /**
  * Default public listing (featured = id ASC, active only).
- * Read-only SELECT. Does not call ensureProductsTable / ensureShopTables.
+ * Read-only SELECT. Does not run any DDL.
  */
 async function listInitialProducts(): Promise<Product[] | null> {
   await connection();
@@ -49,7 +49,7 @@ async function listInitialProducts(): Promise<Product[] | null> {
       `SELECT id, name, description, short_description, slug, price, badge, image, category,
               track_inventory, stock_quantity
        FROM products
-       WHERE active = 1
+       WHERE (active = 1 OR active IS NULL)
        ORDER BY id ASC`
     );
     if (!Array.isArray(rows)) return [];

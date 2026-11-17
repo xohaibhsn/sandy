@@ -36,7 +36,7 @@ export async function isLiveProductSlug(slug: string): Promise<boolean> {
   const [rows] = await pool.query(
     `SELECT 1 AS ok
      FROM products
-     WHERE active = 1
+     WHERE (active = 1 OR active IS NULL)
        AND (
          slug = ?
          OR LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', '')) = ?

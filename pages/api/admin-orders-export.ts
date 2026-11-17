@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { RowDataPacket } from "mysql2/promise";
 import pool from "../../lib/db";
-import { ensureShopTables } from "../../lib/ensureShopTables";
 import { requirePermission } from "../../lib/adminPermissions";
 import { formatPktDateTime, pktTodayYmdString } from "../../lib/pktDateRange";
 import {
@@ -38,8 +37,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!session) return;
 
   try {
-    await ensureShopTables();
-
     const parsed = parseOrderListQuery(req.query);
     if (!parsed.ok) {
       return res.status(400).json({ error: "Invalid request" });

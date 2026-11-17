@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { RowDataPacket } from "mysql2";
 import pool, { isDatabaseConfigured } from "@/lib/db";
-import { ensureProductsTable } from "@/lib/ensureShopTables";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
 import CategoryClient from "./CategoryClient";
@@ -47,12 +46,11 @@ async function getActiveCategory(slug: string): Promise<CategoryRow | null> {
 
 async function getCategoryProducts(categoryName: string): Promise<ProductRow[]> {
   try {
-    await ensureProductsTable();
     const [rows] = await pool.query<ProductRow[]>(
       `SELECT id, name, slug, price, image, category, short_description, description, badge,
               track_inventory, stock_quantity
        FROM products
-       WHERE active = 1 AND category = ?
+       WHERE (active = 1 OR active IS NULL) AND category = ?
        ORDER BY id DESC`,
       [categoryName]
     );

@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       `SELECT id, name, price, image, category, badge,
         COALESCE(NULLIF(slug, ''), LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', ''))) as slug
        FROM products
-       WHERE (active = 1)
+       WHERE (active = 1 OR active IS NULL)
          AND (name LIKE ? OR short_description LIKE ? OR focus_keyword LIKE ?)
        LIMIT 6`,
       [term, term, term]

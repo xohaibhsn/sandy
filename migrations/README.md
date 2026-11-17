@@ -16,3 +16,4 @@ These `.sql` files are for **owner review and a manual run in phpMyAdmin only**.
 | File | Purpose |
 |------|---------|
 | `0001-contact-messages.sql` | Creates `contact_messages`, used by `POST /api/contact`. The API no longer creates it, so run this once before the contact form can save messages. |
+| `0002-shop-schema.sql` | Reference schema for `products`, `orders`, `order_items` and `order_checkout_attempts` (checkout idempotency). The API no longer creates or alters these tables at runtime, so a fresh database needs this file. On the live shop database every object already exists, so running it changes nothing: each `CREATE` is `IF NOT EXISTS` and each `ADD COLUMN` / `ADD UNIQUE KEY` is guarded by an `INFORMATION_SCHEMA` check. It contains no seed rows, slug backfill or data updates. The duplicate-slug check just before the unique index must return no rows. |

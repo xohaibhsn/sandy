@@ -60,10 +60,27 @@ function emailsMatch(provided: string, stored: unknown): boolean {
   return provided === storedNorm;
 }
 
+/**
+ * Canonical Pakistani mobile form (03XXXXXXXXX) for digits-only input, or null when the
+ * digits are not a recognisable PK mobile number.
+ * 0092333... -> 92333...; 92 + 3XXXXXXXXX -> 0 + 3XXXXXXXXX; 3XXXXXXXXX -> 0 + 3XXXXXXXXX; 03XXXXXXXXX stays.
+ */
+function canonicalPkMobile(digits: string): string | null {
+  let d = digits;
+  if (d.startsWith('0092')) d = '92' + d.slice(4);
+  if (/^923\d{9}$/.test(d)) return '0' + d.slice(2);
+  if (/^3\d{9}$/.test(d)) return '0' + d;
+  if (/^03\d{9}$/.test(d)) return d;
+  return null;
+}
+
 function phonesMatch(providedDigits: string, stored: unknown): boolean {
   if (typeof stored !== 'string') return false;
   const storedDigits = stored.replace(/\D/g, '');
   if (!storedDigits) return false;
+  const providedPk = canonicalPkMobile(providedDigits);
+  const storedPk = canonicalPkMobile(storedDigits);
+  if (providedPk && storedPk) return providedPk === storedPk;
   return providedDigits === storedDigits;
 }
 

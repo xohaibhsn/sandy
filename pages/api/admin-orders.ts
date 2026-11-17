@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import pool from "../../lib/db";
-import { ensureShopTables } from "../../lib/ensureShopTables";
 import { requirePermission, type AdminPermission } from "../../lib/adminPermissions";
 import {
   CANCEL_COLUMN_MISSING,
@@ -456,8 +455,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!session) return;
 
   try {
-    await ensureShopTables();
-
     if (req.method === "GET") {
       if (req.query.badge === "1") return handleBadge(res);
       if (req.query.recent === "1") return handleRecent(req, res);

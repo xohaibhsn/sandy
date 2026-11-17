@@ -35,7 +35,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
            ) AS slug,
            created_at
          FROM products
-         WHERE active = 1 AND name IS NOT NULL AND name != ''`
+         WHERE (active = 1 OR active IS NULL) AND name IS NOT NULL AND name != ''`
       );
 
       productPages = (Array.isArray(products) ? products : [])

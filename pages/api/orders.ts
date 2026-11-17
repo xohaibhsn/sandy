@@ -13,8 +13,6 @@ import {
   toTaxUnavailable,
 } from '../../lib/taxStore';
 import type { TaxDestination, TaxSnapshot } from '../../lib/taxEngine';
-import { ensureShopTables } from '../../lib/ensureShopTables';
-import { ensureOrderIdempotencyTable } from '../../lib/ensureOrderIdempotency';
 import {
   normalizeRequestItems,
   calculateSubtotal,
@@ -240,7 +238,25 @@ function escapeHtml(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Escapes user text for HTML and turns line breaks into <br>. */
+function escapeHtmlMultiline(s: string): string {
+  return escapeHtml(s).replace(/\r\n|\r|\n/g, '<br>');
+}
+
+const SUBJECT_NAME_MAX = 80;
+
+/** Single-line, control-character-free, length-capped text for an email subject header. */
+function sanitizeSubjectPart(s: string, max: number): string {
+  return s
+    .replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
+    .trim();
 }
 
 type OrderItemRow = RowDataPacket & {
@@ -449,9 +465,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       items: normalizedItems.items,
     });
 
-    await ensureShopTables();
-    await ensureOrderIdempotencyTable();
-
     // Tax config is loaded server-side BEFORE any order state is created.
     // Missing/unreadable tax tables fail safe (503) — there is no hardcoded fallback rate.
     const taxAsOf = new Date();
@@ -583,7 +596,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!product) {
           throw new OrderHttpError(400, 'One or more products are unavailable');
         }
-        if (!isActiveFlag(product.active)) {
+        // NULL active (legacy rows) is treated as active, matching public catalog reads.
+        if (product.active !== null && product.active !== undefined && !isActiveFlag(product.active)) {
           throw new OrderHttpError(400, 'One or more products are unavailable');
         }
 
@@ -836,7 +850,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .map(
               (i) =>
                 `<tr>
-          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:14px">${i.product_name}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:14px">${escapeHtml(i.product_name)}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:14px">${i.quantity}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:14px;font-weight:600;color:#5B21B6">${formatPrice(i.price * i.quantity)}</td>
         </tr>`
@@ -863,17 +877,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   <div style="padding:28px 32px">
     <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:14px 20px;margin-bottom:24px;display:inline-block">
       <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#7C3AED;margin-bottom:4px;font-weight:700">Order Reference</div>
-      <div style="font-size:20px;font-weight:700;color:#5B21B6">${order_id}</div>
+      <div style="font-size:20px;font-weight:700;color:#5B21B6">${escapeHtml(order_id)}</div>
     </div>
     <h3 style="color:#111;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Customer Details</h3>
     <table style="width:100%;margin-bottom:24px;border-collapse:collapse">
-      <tr><td style="padding:5px 0;color:#888;font-size:13px;width:110px">Name</td><td style="color:#111;font-size:13px;font-weight:600">${customer_name.value}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Email</td><td style="color:#111;font-size:13px">${customer_email.value}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Phone</td><td style="color:#111;font-size:13px">${customer_phone.value}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Address</td><td style="color:#111;font-size:13px">${[delivery_address.value, city.value, postcode.value].filter(Boolean).join(', ')}</td></tr>
-      <tr><td style="padding:5px 0;color:#888;font-size:13px">Payment</td><td style="color:#111;font-size:13px;font-weight:600">${paymentLabel}</td></tr>
-      ${payment_reference.value ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Reference</td><td style="color:#111;font-size:13px">${payment_reference.value}</td></tr>` : ''}
-      ${notes.value ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Notes</td><td style="color:#111;font-size:13px">${notes.value}</td></tr>` : ''}
+      <tr><td style="padding:5px 0;color:#888;font-size:13px;width:110px">Name</td><td style="color:#111;font-size:13px;font-weight:600">${escapeHtml(customer_name.value)}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Email</td><td style="color:#111;font-size:13px">${escapeHtml(customer_email.value)}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Phone</td><td style="color:#111;font-size:13px">${escapeHtml(customer_phone.value)}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Address</td><td style="color:#111;font-size:13px">${[delivery_address.value, city.value, postcode.value].filter(Boolean).map((part) => escapeHtml(part)).join(', ')}</td></tr>
+      <tr><td style="padding:5px 0;color:#888;font-size:13px">Payment</td><td style="color:#111;font-size:13px;font-weight:600">${escapeHtml(paymentLabel)}</td></tr>
+      ${payment_reference.value ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Reference</td><td style="color:#111;font-size:13px">${escapeHtml(payment_reference.value)}</td></tr>` : ''}
+      ${notes.value ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Notes</td><td style="color:#111;font-size:13px">${escapeHtmlMultiline(notes.value)}</td></tr>` : ''}
     </table>
     <h3 style="color:#111;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Order Items</h3>
     <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
@@ -886,7 +900,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     </table>
     <div style="background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:16px 20px">
       ${vat_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">${escapeHtml(taxLabel)}</span><span style="color:#111">${formatPrice(vat_amount)}</span></div>` : ''}
-      ${discount_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#16A34A"><span>Discount${persistedCoupon ? ` (${persistedCoupon})` : ''}</span><span>−${formatPrice(discount_amount)}</span></div>` : ''}
+      ${discount_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#16A34A"><span>Discount${persistedCoupon ? ` (${escapeHtml(persistedCoupon)})` : ''}</span><span>−${formatPrice(discount_amount)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:10px 0 4px;font-size:18px;font-weight:700;border-top:1px solid #e5e5e5;margin-top:6px"><span style="color:#111">Grand Total</span><span style="color:#5B21B6">${formatPrice(total)}</span></div>
     </div>
   </div>
@@ -899,7 +913,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .sendMail({
               from: `"${SITE_NAME} Orders" <${ORDERS_FROM_EMAIL}>`,
               to: contact.email,
-              subject: `🛍️ New Order ${order_id} — ${customer_name.value}`,
+              subject: `🛍️ New Order ${sanitizeSubjectPart(order_id, 64)} — ${sanitizeSubjectPart(customer_name.value, SUBJECT_NAME_MAX)}`,
               html,
             })
             .catch((err: unknown) => console.error('[orders] Email notification failed:', err));
