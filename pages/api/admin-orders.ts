@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import pool from "../../lib/db";
 import { ensureShopTables } from "../../lib/ensureShopTables";
-import { requireRole } from "../../lib/adminAuth";
+import { requirePermission, type AdminPermission } from "../../lib/adminPermissions";
 import {
   CANCEL_COLUMN_MISSING,
   CANCEL_COLUMN_MISSING_MESSAGE,
@@ -441,8 +441,18 @@ async function handleList(req: NextApiRequest, res: NextApiResponse) {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   setNoStore(res);
 
-  // Finding 7: writers must not call order endpoints.
-  const session = await requireRole(req, res, ["super_admin", "manager"]);
+  // Central RBAC (P3b). Permission depends on method/variant; unknown methods fall back to
+  // orders:view so auth/role ordering (401 -> 403 -> 405) is unchanged.
+  const method = String(req.method || "").toUpperCase();
+  const permission: AdminPermission =
+    method === "PATCH"
+      ? "orders:update"
+      : method === "DELETE"
+        ? "orders:delete"
+        : method === "GET" && req.query.customers === "1"
+          ? "customers:view"
+          : "orders:view";
+  const session = await requirePermission(req, res, permission);
   if (!session) return;
 
   try {

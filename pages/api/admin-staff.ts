@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
-import { requireAdmin, requireRole } from '../../lib/adminAuth';
+import { requirePermission } from '../../lib/adminPermissions';
 import { hashAdminStaffPassword } from '../../lib/adminStaffPassword';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -18,14 +18,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `);
 
     if (req.method === 'GET') {
-      const session = await requireAdmin(req, res);
+      // Finding 7: staff directory (emails, roles) is super_admin only.
+      const session = await requirePermission(req, res, 'staff:view');
       if (!session) return;
       const [rows] = await pool.query('SELECT id,name,email,role,active,created_at FROM admin_staff ORDER BY created_at DESC');
       return res.status(200).json(Array.isArray(rows) ? rows : []);
     }
 
     // POST/PUT/DELETE require super_admin
-    const session = await requireRole(req, res, ['super_admin']);
+    const session = await requirePermission(req, res, 'staff:write');
     if (!session) return;
 
     if (req.method === 'POST') {

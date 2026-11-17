@@ -1,13 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import cloudinary from '../../lib/cloudinary';
-import { requireAdmin } from '../../lib/adminAuth';
+import { requirePermission } from '../../lib/adminPermissions';
 
 export const config = { api: { bodyParser: { sizeLimit: '2mb' } } };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  const session = await requireAdmin(req, res);
+  const session = await requirePermission(req, res, 'uploads:favicon');
   if (!session) return;
   try {
     const { file, name } = req.body;

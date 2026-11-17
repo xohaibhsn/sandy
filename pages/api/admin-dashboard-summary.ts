@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { RowDataPacket } from "mysql2";
 import pool from "../../lib/db";
-import { requireRole } from "../../lib/adminAuth";
+import { requirePermission } from "../../lib/adminPermissions";
 import {
   LOW_STOCK_CONTENT_KEY,
   LOW_STOCK_DEFAULT,
@@ -388,11 +388,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Explicit server-side RBAC (finding 7): writers must not see order/revenue aggregates.
-  const session = await requireRole(req, res, ["super_admin", "manager"]);
+  const session = await requirePermission(req, res, "dashboard:view");
   if (!session) return;
-  if (session.role !== "super_admin" && session.role !== "manager") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
 
   try {
     const range = resolveRange(req);

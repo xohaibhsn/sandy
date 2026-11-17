@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
-import { requireAdmin } from '../../lib/adminAuth';
+import { requirePermission } from '../../lib/adminPermissions';
 import {
   assertSafeImageUrl,
   assertSafeInternalPath,
@@ -134,7 +134,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json(result);
     }
 
-    const session = await requireAdmin(req, res);
+    const session = await requirePermission(req, res, 'sections:write');
     if (!session) return;
 
     await ensureSectionsInitialized();

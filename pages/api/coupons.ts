@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import { formatPrice } from '../../lib/site';
-import { requireAdmin } from '../../lib/adminAuth';
+import { requirePermission } from '../../lib/adminPermissions';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { allowed } = RL_GENERAL(getClientIp(req));
@@ -10,7 +10,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const isValidate = req.method === 'POST' && req.query.action === 'validate';
   if (!isValidate) {
-    const session = await requireAdmin(req, res);
+    const session = await requirePermission(
+      req,
+      res,
+      req.method === 'GET' ? 'coupons:view' : 'coupons:write'
+    );
     if (!session) return;
   }
 

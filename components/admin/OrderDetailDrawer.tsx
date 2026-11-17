@@ -61,6 +61,8 @@ export type OrderDetailDrawerProps = {
   onClose: () => void;
   onStatusChange: (orderId: string, status: OrderStatus) => void;
   onDelete: (orderId: string, total: string, status: string) => void;
+  /** Order delete is super_admin only server-side; hide the control for other roles. Defaults to true. */
+  canDelete?: boolean;
   onViewReceipt: (orderId: string, receiptUrl: string) => void;
 };
 
@@ -101,6 +103,7 @@ export default function OrderDetailDrawer({
   onClose,
   onStatusChange,
   onDelete,
+  canDelete = true,
   onViewReceipt,
 }: OrderDetailDrawerProps) {
   const [attempt, setAttempt] = useState(0);
@@ -373,21 +376,23 @@ export default function OrderDetailDrawer({
               )}
             </div>
 
-            <div style={{ marginTop: 8 }}>
-              <button
-                type="button"
-                className="modal-cancel"
-                data-order-detail-delete="1"
-                style={{
-                  background: "rgba(220,38,38,0.1)",
-                  color: "#DC2626",
-                  border: "1px solid rgba(220,38,38,0.25)",
-                }}
-                onClick={() => onDelete(orderId, money(order.total), status)}
-              >
-                Delete Order
-              </button>
-            </div>
+            {canDelete && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="modal-cancel"
+                  data-order-detail-delete="1"
+                  style={{
+                    background: "rgba(220,38,38,0.1)",
+                    color: "#DC2626",
+                    border: "1px solid rgba(220,38,38,0.25)",
+                  }}
+                  onClick={() => onDelete(orderId, money(order.total), status)}
+                >
+                  Delete Order
+                </button>
+              </div>
+            )}
           </>
         ) : null}
       </aside>

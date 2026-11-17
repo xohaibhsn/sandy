@@ -4,7 +4,7 @@ import pool from '../../lib/db';
 import { ensureProductsTable } from '../../lib/ensureShopTables';
 import { ensureCategoriesTable } from '../../lib/ensureCategories';
 import { parsePrice } from '../../lib/site';
-import { requireAdmin, requireRole } from '../../lib/adminAuth';
+import { requirePermission } from '../../lib/adminPermissions';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 import { assertSafeImageUrl, UrlValidationError } from '../../lib/urlValidation';
 import { TAX_CONFIG_UNAVAILABLE_MESSAGE, toTaxUnavailable } from '../../lib/taxStore';
@@ -168,10 +168,10 @@ async function resolveProductCategory(
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
-    const session = await requireAdmin(req, res);
+    const session = await requirePermission(req, res, 'products:view');
     if (!session) return;
   } else {
-    const session = await requireRole(req, res, ['super_admin', 'manager']);
+    const session = await requirePermission(req, res, 'products:write');
     if (!session) return;
   }
   try {

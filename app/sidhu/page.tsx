@@ -674,17 +674,17 @@ export default function AdminPage() {
   // splitting staff out of this effect adds a react-hooks/set-state-in-effect finding.
   useEffect(() => {
     if (!loggedIn) return;
-    void loadProducts();
-    // Writers must not call any /api/admin-orders* endpoint.
+    // Writers must not call catalogue / coupon / order admin endpoints (server returns 403).
     if (adminRole === "super_admin" || adminRole === "manager") {
+      void loadProducts();
       void loadOrders();
       void loadPendingBadge();
       void loadRecentOrders();
       void loadCustomers(1);
+      void loadCategories();
+      void loadCoupons();
     }
-    void loadCategories();
     void loadBlog();
-    void loadCoupons();
     void loadSections("home");
     void loadFaqs();
     if (adminRole === "super_admin") {
@@ -1368,6 +1368,7 @@ export default function AdminPage() {
         onClose={() => setDetailOrderId(null)}
         onStatusChange={(id, status) => { void updateStatus(id, status); }}
         onDelete={(id, total, status) => { void deleteOrder(id, total, status); }}
+        canDelete={adminRole === "super_admin"}
         onViewReceipt={(id, url) => { setDetailOrderId(null); setReceiptModal({ id, url }); }}
       />
 
@@ -1809,7 +1810,8 @@ export default function AdminPage() {
               {adminRole === "writer" ? (
               <div className="stats-grid">
                 {[
-                  { icon:"📦", label:"Products", value:products.length, trend:"Catalogue" },
+                  // Writers cannot read the catalogue (server 403), so no count is shown.
+                  { icon:"📦", label:"Products", value:"—", trend:"Catalogue" },
                   { icon:"📝", label:"Blog Posts", value:blogPosts.length, trend:"Content" },
                   { icon:"❓", label:"FAQs", value:faqs.length, trend:"Content" },
                 ].map((s,i) => (
@@ -1948,7 +1950,7 @@ export default function AdminPage() {
                         <td style={{whiteSpace:"nowrap"}}>
                           <button className="action-btn btn-view" onClick={() => setDetailOrderId(o.id)}>View</button>
                           {o.status==="pending" && o.receipt && <button className="action-btn btn-verify" onClick={() => setDetailOrderId(o.id)}>Verify</button>}
-                          <button className="action-btn btn-delete" onClick={() => deleteOrder(o.id, o.total, o.status)}>Delete</button>
+                          {adminRole === "super_admin" && <button className="action-btn btn-delete" onClick={() => deleteOrder(o.id, o.total, o.status)}>Delete</button>}
                         </td>
                       </tr>
                     ))}

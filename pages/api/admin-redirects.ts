@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { requireRole } from "../../lib/adminAuth";
+import { requirePermission } from "../../lib/adminPermissions";
 import {
   RedirectConflictError,
   RedirectNotFoundError,
@@ -33,7 +33,7 @@ function sendError(res: NextApiResponse, err: unknown): void {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await requireRole(req, res, ["super_admin", "manager"]);
+  const session = await requirePermission(req, res, "redirects:manage");
   if (!session) return;
 
   try {

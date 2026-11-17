@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import pool from "../../lib/db";
-import { requireAdmin, requireRole } from "../../lib/adminAuth";
+import { requirePermission } from "../../lib/adminPermissions";
 import {
   ensureCategoriesTable,
   categorySlugFromName,
@@ -125,14 +125,14 @@ function safeImage(value: unknown): string {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === "GET") {
-    const session = await requireAdmin(req, res);
+    const session = await requirePermission(req, res, "categories:view");
     if (!session) return;
   } else if (
     req.method === "POST" ||
     req.method === "PUT" ||
     req.method === "DELETE"
   ) {
-    const session = await requireRole(req, res, ["super_admin", "manager"]);
+    const session = await requirePermission(req, res, "categories:write");
     if (!session) return;
   } else {
     return res.status(405).json({ error: "Method not allowed" });

@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import pool from '../../lib/db';
-import { requireRole } from '../../lib/adminAuth';
+import { requirePermission } from '../../lib/adminPermissions';
 import {
   TAX_CONFIG_UNAVAILABLE_MESSAGE,
   classifyTaxDbError,
@@ -85,11 +85,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('Cache-Control', 'private, no-store, max-age=0');
 
   // super_admin only, for every method (known RBAC gap: do not rely on UI hiding).
-  const session = await requireRole(req, res, ['super_admin']);
+  const session = await requirePermission(req, res, 'tax:manage');
   if (!session) return;
-  if (session.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
 
   try {
     if (req.method === 'GET') {

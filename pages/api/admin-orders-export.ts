@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import type { RowDataPacket } from "mysql2/promise";
 import pool from "../../lib/db";
 import { ensureShopTables } from "../../lib/ensureShopTables";
-import { requireRole } from "../../lib/adminAuth";
+import { requirePermission } from "../../lib/adminPermissions";
 import { formatPktDateTime, pktTodayYmdString } from "../../lib/pktDateRange";
 import {
   EXPORT_MAX,
@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const session = await requireRole(req, res, ["super_admin", "manager"]);
+  const session = await requirePermission(req, res, "orders:export");
   if (!session) return;
 
   try {

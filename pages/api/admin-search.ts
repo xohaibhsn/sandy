@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import pool from "../../lib/db";
-import { requireAdmin } from "../../lib/adminAuth";
+import { requirePermission } from "../../lib/adminPermissions";
 import { getClientIp, RL_SEARCH } from "../../lib/rateLimit";
 import {
   ADMIN_SEARCH_MAX,
@@ -40,7 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const session = await requireAdmin(req, res);
+  const session = await requirePermission(req, res, "search:query");
   if (!session) return;
 
   const rl = RL_SEARCH(getClientIp(req));

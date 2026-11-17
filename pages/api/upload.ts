@@ -1,7 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs';
 import path from 'path';
-import { requireAdmin } from '../../lib/adminAuth';
+import {
+  permissionForUploadFolder,
+  requirePermission,
+  requireSessionPermission,
+} from '../../lib/adminPermissions';
 
 export const config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
@@ -47,7 +51,7 @@ function assertSafeUploadDataUrl(file: unknown, isReceipt: boolean): string {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  const session = await requireAdmin(req, res);
+  const session = await requirePermission(req, res, 'uploads:content');
   if (!session) return;
 
   try {
@@ -56,6 +60,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const cloudinaryFolder = resolveUploadFolder(folder);
     if (!cloudinaryFolder) {
       return res.status(400).json({ error: 'Invalid upload folder' });
+    }
+
+    // Per-folder ownership: branding folders are super_admin only, receipts manager+.
+    const folderPermission = permissionForUploadFolder(cloudinaryFolder);
+    if (!folderPermission || !requireSessionPermission(session, res, folderPermission)) {
+      if (!folderPermission) res.status(403).json({ error: 'Forbidden' });
+      return;
     }
 
     if (typeof name !== 'string' || !name.trim()) {

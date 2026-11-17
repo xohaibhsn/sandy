@@ -1,7 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { SITE_URL } from '../../lib/site';
-import { getAdminSession, requireAdmin } from '../../lib/adminAuth';
+import { getAdminSession } from '../../lib/adminAuth';
+import { requirePermission } from '../../lib/adminPermissions';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 import {
   assertSafeCanonicalUrl,
@@ -133,7 +134,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json(Array.isArray(rows) ? rows : []);
     }
 
-    const session = await requireAdmin(req, res);
+    const session = await requirePermission(req, res, 'blog:write');
     if (!session) return;
 
     await ensureBlogInitialized();

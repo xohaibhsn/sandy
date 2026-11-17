@@ -8,7 +8,11 @@ import {
   SITE_NAME,
   WHATSAPP_DIGITS,
 } from '../../lib/site';
-import { requireAdmin } from '../../lib/adminAuth';
+import {
+  isSuperAdminOnlySiteContentKey,
+  requirePermission,
+  requireSessionPermission,
+} from '../../lib/adminPermissions';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 import {
   assertSafeHttpUrl,
@@ -492,13 +496,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json(result);
     }
 
-    const session = await requireAdmin(req, res);
+    // Central RBAC (P3b): POST = content/manager keys; PUT/DELETE (arbitrary key upsert/removal,
+    // no UI caller) = super_admin only. Writers have no site-content access.
+    const session = await requirePermission(
+      req,
+      res,
+      req.method === 'POST' ? 'site_content:write' : 'site_content:manage'
+    );
     if (!session) return;
 
     await ensureSiteContentInitialized();
 
     if (req.method === 'POST') {
       const { key, value, updates } = req.body;
+
+      // Branding / Site Settings keys are super_admin only (matches the Site Settings tab gate).
+      const requestedKeys: unknown[] = Array.isArray(updates)
+        ? updates.map((u: { key?: unknown } | null) => u?.key)
+        : key
+          ? [key]
+          : [];
+      if (
+        requestedKeys.some((k) => k && isSuperAdminOnlySiteContentKey(k)) &&
+        !requireSessionPermission(session, res, 'site_content:write_branding')
+      ) {
+        return;
+      }
 
       const upsert = async (contentKey: string, contentValue: string) => {
         const defaults = DEFAULTS.find((d) => d[0] === contentKey);
