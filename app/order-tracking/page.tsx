@@ -119,7 +119,22 @@ type OrderResult = {
   /** Stored at order time; label from the order's own tax snapshot when present. */
   vatAmount?: number;
   taxLabel?: string;
+  /** Present only when the API returns courier details (shipping enabled + order dispatched manually). */
+  courierName?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
 };
+
+/** https-only: never render a link the API (or a tampered response) gave us over any other scheme. */
+function safeHttpsUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  try {
+    const u = new URL(raw.trim());
+    return u.protocol === "https:" ? u.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const statusSteps = [
   { key: "pending", icon: "🕐", title: "Order Received", desc: "We have received your order and payment receipt." },
@@ -182,6 +197,11 @@ export default function OrderTrackingPage() {
             : undefined,
           taxLabel:
             typeof o.tax_label === "string" && o.tax_label.trim() ? o.tax_label.trim() : undefined,
+          courierName:
+            typeof o.courier_name === "string" && o.courier_name.trim() ? o.courier_name.trim() : undefined,
+          trackingNumber:
+            typeof o.tracking_number === "string" && o.tracking_number.trim() ? o.tracking_number.trim() : undefined,
+          trackingUrl: safeHttpsUrl(o.tracking_url),
         });
       } else {
         setNotFound(true);
@@ -305,6 +325,35 @@ export default function OrderTrackingPage() {
                     <span>{formatPrice(result.total)}</span>
                   </div>
                 </div>
+
+                {/* Courier / tracking number: rendered only when the API returned them (shipping enabled). */}
+                {result.courierName || result.trackingNumber ? (
+                  <div className="customer-info" data-shipment-info="1" style={{ marginTop: 0, marginBottom: 24 }}>
+                    <h4>Shipment</h4>
+                    {result.courierName ? (
+                      <div className="info-row"><span>Courier</span><span data-courier-name="1">{result.courierName}</span></div>
+                    ) : null}
+                    {result.trackingNumber ? (
+                      <div className="info-row"><span>Tracking number</span><span data-tracking-number="1">{result.trackingNumber}</span></div>
+                    ) : null}
+                    {result.trackingUrl ? (
+                      <div className="info-row">
+                        <span>Tracking link</span>
+                        <span>
+                          <a
+                            href={result.trackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-tracking-link="1"
+                            style={{ color: "#5B21B6", fontWeight: 600 }}
+                          >
+                            Track shipment
+                          </a>
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {/* Progress */}
                 <div className="progress-section">

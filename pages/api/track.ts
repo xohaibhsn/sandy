@@ -3,6 +3,8 @@ import pool from '../../lib/db';
 import { getClientIp, rateLimit } from '../../lib/rateLimit';
 import { hasCancelReasonColumn } from '../../lib/orderCancel';
 import { canonicalPkMobile } from '../../lib/customerIdentity';
+import { hasShippingOrderColumns } from '../../lib/shippingSchema';
+import { buildTrackingUrl } from '../../lib/shipping';
 
 const TRACK_LIMIT = 15;
 const TRACK_WINDOW_MS = 15 * 60 * 1000;
@@ -99,8 +101,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? `order_id, status, cancel_reason, created_at, total, vat_amount, customer_email, customer_phone`
       : `order_id, status, created_at, total, vat_amount, customer_email, customer_phone`;
 
+    // Courier / tracking number only exist after migration 0009; without it the query is unchanged.
+    const includeShipping = await hasShippingOrderColumns(pool);
+    const selectColsFinal = includeShipping ? `${selectCols}, courier_id, tracking_number` : selectCols;
+
     const [orderResult] = await pool.query(
-      `SELECT ${selectCols}
+      `SELECT ${selectColsFinal}
        FROM orders
        WHERE order_id = ?
        LIMIT 1`,
@@ -115,6 +121,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       vat_amount?: number | string | null;
       customer_email: string | null;
       customer_phone: string | null;
+      courier_id?: number | string | null;
+      tracking_number?: string | null;
     }>;
 
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -149,6 +157,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       vat_amount?: number | string;
       tax_label?: string;
       cancel_reason?: string;
+      courier_name?: string;
+      tracking_number?: string;
+      tracking_url?: string;
     } = {
       order_id: row.order_id,
       status: row.status,
@@ -173,6 +184,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     } catch {
       /* no snapshot table / row: tracking still works without a label */
+    }
+
+    // Courier + tracking (only when present). The link is https-only with {tracking} URL-encoded.
+    if (includeShipping) {
+      const trackingNumber =
+        typeof row.tracking_number === 'string' && row.tracking_number.trim()
+          ? row.tracking_number.trim()
+          : '';
+      if (trackingNumber) orderPayload.tracking_number = trackingNumber;
+      if (row.courier_id !== null && row.courier_id !== undefined) {
+        try {
+          const [courierResult] = await pool.query(
+            `SELECT name, tracking_url_template FROM couriers WHERE id = ? LIMIT 1`,
+            [row.courier_id]
+          );
+          const courierRows = courierResult as Array<{
+            name: string | null;
+            tracking_url_template: string | null;
+          }>;
+          const courier = Array.isArray(courierRows) ? courierRows[0] : undefined;
+          if (courier) {
+            if (typeof courier.name === 'string' && courier.name.trim()) {
+              orderPayload.courier_name = courier.name.trim();
+            }
+            const url = trackingNumber
+              ? buildTrackingUrl(courier.tracking_url_template, trackingNumber)
+              : null;
+            if (url) orderPayload.tracking_url = url;
+          }
+        } catch {
+          /* couriers table absent: tracking still works without courier details */
+        }
+      }
     }
 
     if (

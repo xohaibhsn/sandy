@@ -4,6 +4,10 @@
  */
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import type { AdvanceMethod, OrderProtectionSettings, RiskyMode } from "./orderProtectionSettings";
+import { hasRtoColumn, resetRtoColumnCache } from "./shippingSchema";
+
+/** Test-only: reset the cached orders.rto probe (re-exported from lib/shippingSchema.ts). */
+export { resetRtoColumnCache };
 
 export type RiskReasonCode =
   | "BLACKLIST"
@@ -225,14 +229,39 @@ export async function loadCodRiskHistory(
       [phoneNorm]
     );
     const row = Array.isArray(rows) ? rows[0] : undefined;
-    return {
+    const history: CodRiskHistory = {
       deliveredCount: Number(row?.delivered_count || 0),
       cancelledCount: Number(row?.cancelled_count || 0),
       refusedCount: 0, // reserved; no refused status in schema yet
       openCodPendingCount: Number(row?.open_cod || 0),
     };
+    // BATCH-12: RTO history. Separate, optional query so a database without migration 0009 behaves
+    // exactly as before. Any failure here zeroes ONLY refusedCount (never the counts above).
+    history.refusedCount = await loadRefusedCount(conn, phoneNorm);
+    return history;
   } catch {
     return { deliveredCount: 0, cancelledCount: 0, refusedCount: 0, openCodPendingCount: 0 };
+  }
+}
+
+/**
+ * Orders returned to origin (orders.rto = 1) for this phone. Runs ONLY when the orders.rto column
+ * exists (cached INFORMATION_SCHEMA probe: positive forever, negative re-checked every 30s).
+ * Never throws: probe or query failure => 0.
+ */
+async function loadRefusedCount(conn: HistoryQueryConn, phoneNorm: string): Promise<number> {
+  try {
+    if (!(await hasRtoColumn(conn))) return 0;
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS refused_count FROM orders
+       WHERE customer_phone_norm = ? AND rto = 1`,
+      [phoneNorm]
+    );
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    const n = Number(row?.refused_count || 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
   }
 }
 

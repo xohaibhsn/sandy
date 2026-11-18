@@ -114,6 +114,7 @@ export async function rebuildFromMigrations() {
     await c.query(readFileSync(path.join(root, "migrations/0006-customer-protection.sql"), "utf8"));
     await c.query(readFileSync(path.join(root, "migrations/0007-orders-protection-columns.sql"), "utf8"));
     await c.query(readFileSync(path.join(root, "migrations/0008-customer-accounts.sql"), "utf8"));
+    await c.query(readFileSync(path.join(root, "migrations/0009-shipping-courier.sql"), "utf8"));
 
     // --- fixtures outside the migrations
     await c.query(

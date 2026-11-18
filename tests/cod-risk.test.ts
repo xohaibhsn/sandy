@@ -153,7 +153,9 @@ describe("loadCodRiskHistory open-COD SQL (D34)", () => {
     };
     const h = await loadCodRiskHistory(conn as never, "03331234567");
     assert.equal(h.openCodPendingCount, 2);
-    assert.equal(queries.length, 1);
+    // queries[0] is always the primary history SELECT (byte-identity is asserted in
+    // cod-risk-rto.test.ts); the optional BATCH-12 RTO probe/query, if any, comes after it.
+    assert.ok(queries.length >= 1);
     assert.match(queries[0], /status IN \('pending','confirmed'\)/);
     assert.match(queries[0], /payment_method = 'cod'/);
     assert.doesNotMatch(queries[0], /status = 'pending'/);

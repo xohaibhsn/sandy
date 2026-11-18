@@ -25,6 +25,9 @@ import {
 import { RISK_REASON_LABELS, type RiskReasonCode } from "../../lib/codRisk";
 import { loadOrderProtectionSettings } from "../../lib/orderProtectionSettings";
 import { normaliseEmail, normalisePhone } from "../../lib/customerIdentity";
+import { loadShippingSettings } from "../../lib/shippingSettings";
+import { hasShippingOrderColumns } from "../../lib/shippingSchema";
+import { TRACKING_NUMBER_RE, buildTrackingUrl } from "../../lib/shipping";
 
 const ALLOWED_STATUSES = ORDER_STATUSES;
 
@@ -48,9 +51,13 @@ function safeLog(err: unknown) {
   console.error("[admin-orders]", msg.slice(0, 200));
 }
 
+/** Preset reason stored on cancel_reason when an order comes back undelivered (RTO). */
+const RTO_CANCEL_REASON = "Returned to origin (RTO)";
+
 async function cancelOrderWithRollback(
   orderId: string,
-  cancelReason: string
+  cancelReason: string,
+  options: { rto?: boolean } = {}
 ): Promise<
   | { ok: true; already_cancelled: boolean }
   | { ok: false; status: number; error: string; code?: string }
@@ -74,6 +81,11 @@ async function cancelOrderWithRollback(
     }
 
     const order = orderRows[0];
+    if (options.rto && String(order.status) !== "dispatched") {
+      // RTO only applies to orders that actually left the warehouse (and never twice).
+      await connection.rollback();
+      return { ok: false, status: 409, error: "Only dispatched orders can be marked as returned to origin" };
+    }
     if (String(order.status) === "cancelled") {
       await connection.commit();
       return { ok: true, already_cancelled: true };
@@ -124,6 +136,14 @@ async function cancelOrderWithRollback(
     if (!updateResult || Number(updateResult.affectedRows) === 0) {
       await connection.rollback();
       return { ok: false, status: 404, error: "Order not found" };
+    }
+
+    if (options.rto) {
+      // Same transaction as the restock / coupon / cancel above: all or nothing.
+      await connection.query(
+        `UPDATE orders SET rto = 1, rto_at = NOW() WHERE order_id = ?`,
+        [orderId]
+      );
     }
 
     await connection.commit();
@@ -377,6 +397,54 @@ async function handleDetail(res: NextApiResponse, orderId: string) {
     (code) => RISK_REASON_LABELS[code] || code
   );
 
+  // Shipping / courier / RTO (migration 0009). `SELECT *` already carries the columns when they
+  // exist, so their presence on the row is the probe; nothing is added to the response otherwise.
+  let shippingFields: Record<string, unknown> = {};
+  if ("shipping_amount" in order && "courier_id" in order) {
+    let courierName: string | null = null;
+    let trackingUrl: string | null = null;
+    if (order.courier_id != null) {
+      try {
+        const [courierRows] = await pool.query<RowDataPacket[]>(
+          `SELECT name, tracking_url_template FROM couriers WHERE id = ? LIMIT 1`,
+          [order.courier_id]
+        );
+        const c = Array.isArray(courierRows) ? courierRows[0] : undefined;
+        if (c) {
+          courierName = c.name != null ? String(c.name) : null;
+          trackingUrl = buildTrackingUrl(c.tracking_url_template, order.tracking_number);
+        }
+      } catch {
+        /* couriers table absent: leave name/link empty */
+      }
+    }
+    let couriers: Array<{ id: number; name: string }> = [];
+    try {
+      const [activeRows] = await pool.query<RowDataPacket[]>(
+        `SELECT id, name FROM couriers WHERE active = 1 ORDER BY sort_order ASC, id ASC`
+      );
+      couriers = (Array.isArray(activeRows) ? activeRows : []).map((r) => ({
+        id: Number(r.id),
+        name: String(r.name ?? ""),
+      }));
+    } catch {
+      couriers = [];
+    }
+    shippingFields = {
+      shipping_amount: order.shipping_amount ?? null,
+      shipping_zone: order.shipping_zone ?? null,
+      courier_id: order.courier_id ?? null,
+      courier_name: courierName,
+      tracking_number: order.tracking_number ?? null,
+      tracking_url: trackingUrl,
+      shipped_at: order.shipped_at ?? null,
+      delivered_at: order.delivered_at ?? null,
+      rto: order.rto == null ? null : Number(order.rto) === 1,
+      rto_at: order.rto_at ?? null,
+      couriers,
+    };
+  }
+
   return res.status(200).json({
     success: true,
     order: {
@@ -410,6 +478,7 @@ async function handleDetail(res: NextApiResponse, orderId: string) {
       advance_amount: order.advance_amount ?? null,
       advance_reference: order.advance_reference ?? null,
       advance_receipt_path: order.advance_receipt_path ?? null,
+      ...shippingFields,
     },
     items,
     tax,
@@ -544,6 +613,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (typeof order_id !== "string" || !order_id.trim()) {
         return res.status(400).json({ error: "Valid order_id is required" });
       }
+
+      // Returned to origin (BATCH-12): dispatched order -> existing cancel transaction (restock,
+      // coupon rollback, cancelled status) + rto = 1 / rto_at = NOW() in the SAME transaction.
+      if (body.action === "rto") {
+        const rtoOrderId = order_id.trim();
+        if (!(await hasCancelReasonColumn(pool))) {
+          return res.status(409).json({
+            error: CANCEL_COLUMN_MISSING_MESSAGE,
+            code: CANCEL_COLUMN_MISSING,
+          });
+        }
+        if (!(await hasShippingOrderColumns(pool))) {
+          return res.status(409).json({
+            error: "Marking returns needs a one-time database update (shipping columns). Ask the owner to apply it.",
+            code: "RTO_COLUMN_MISSING",
+          });
+        }
+        const rtoOutcome = await cancelOrderWithRollback(rtoOrderId, RTO_CANCEL_REASON, { rto: true });
+        if (!rtoOutcome.ok) {
+          return res.status(rtoOutcome.status).json({ error: rtoOutcome.error });
+        }
+        return res.status(200).json({
+          success: true,
+          order_id: rtoOrderId,
+          status: "cancelled",
+          rto: true,
+        });
+      }
+
       if (
         typeof status !== "string" ||
         !(ALLOWED_STATUSES as readonly string[]).includes(status)
@@ -690,10 +788,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         }
 
-        const [result] = await pool.query(
-          "UPDATE orders SET status = ? WHERE order_id = ? AND status <> 'cancelled'",
-          [status, trimmedId]
-        );
+        // Flag off (or any other status): the original single-column UPDATE, unchanged.
+        let updateSql = "UPDATE orders SET status = ? WHERE order_id = ? AND status <> 'cancelled'";
+        let updateParams: unknown[] = [status, trimmedId];
+
+        if (status === "dispatched" || status === "delivered") {
+          const shippingOn = (await loadShippingSettings()).shipping_enabled;
+          if (shippingOn) {
+            if (!(await hasShippingOrderColumns(pool))) {
+              return res.status(503).json({ error: "Service unavailable" });
+            }
+            const sets: string[] = ["status = ?"];
+            const setParams: unknown[] = [status];
+
+            if (status === "dispatched") {
+              // Timestamp is write-once: COALESCE keeps the first dispatch time.
+              sets.push("shipped_at = COALESCE(shipped_at, NOW())");
+
+              const rawCourier = body.courier_id;
+              if (rawCourier !== undefined && rawCourier !== null && rawCourier !== "") {
+                const courierId = typeof rawCourier === "number" ? rawCourier : Number(String(rawCourier).trim());
+                if (!Number.isInteger(courierId) || courierId <= 0) {
+                  return res.status(400).json({ error: "Invalid courier" });
+                }
+                let courierOk = false;
+                try {
+                  const [courierRows] = await pool.query<RowDataPacket[]>(
+                    "SELECT id FROM couriers WHERE id = ? AND active = 1 LIMIT 1",
+                    [courierId]
+                  );
+                  courierOk = Array.isArray(courierRows) && courierRows.length > 0;
+                } catch {
+                  return res.status(503).json({ error: "Service unavailable" });
+                }
+                if (!courierOk) return res.status(400).json({ error: "Invalid courier" });
+                sets.push("courier_id = ?");
+                setParams.push(courierId);
+              }
+
+              const rawTracking = body.tracking_number;
+              if (rawTracking !== undefined && rawTracking !== null && rawTracking !== "") {
+                if (typeof rawTracking !== "string" || !TRACKING_NUMBER_RE.test(rawTracking.trim())) {
+                  return res.status(400).json({ error: "Invalid tracking number" });
+                }
+                sets.push("tracking_number = ?");
+                setParams.push(rawTracking.trim());
+              }
+            } else {
+              sets.push("delivered_at = COALESCE(delivered_at, NOW())");
+            }
+
+            updateSql = `UPDATE orders SET ${sets.join(", ")} WHERE order_id = ? AND status <> 'cancelled'`;
+            updateParams = [...setParams, trimmedId];
+          }
+        }
+
+        const [result] = await pool.query(updateSql, updateParams);
         if (!result || Number((result as ResultSetHeader).affectedRows) === 0) {
           const [again] = await pool.query<OrderLockRow[]>(
             `SELECT order_id, status FROM orders WHERE order_id = ? LIMIT 1`,

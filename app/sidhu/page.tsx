@@ -14,7 +14,7 @@ import OrdersToolbar, {
   type OrderFilterDraft,
 } from "../../components/admin/OrdersToolbar";
 import Pagination from "../../components/admin/Pagination";
-import OrderDetailDrawer from "../../components/admin/OrderDetailDrawer";
+import OrderDetailDrawer, { type DispatchShipping } from "../../components/admin/OrderDetailDrawer";
 import {
   CANCEL_COLUMN_MISSING,
   CANCEL_COLUMN_MISSING_MESSAGE,
@@ -23,6 +23,7 @@ import {
 import RedirectManager from "../../components/admin/RedirectManager";
 import TaxSettingsPanel from "../../components/admin/TaxSettingsPanel";
 import OrderProtectionSettingsPanel from "../../components/admin/OrderProtectionSettingsPanel";
+import ShippingSettingsPanel from "../../components/admin/ShippingSettingsPanel";
 import BlacklistPanel, { CustomerBlockButton } from "../../components/admin/BlacklistPanel";
 import DashboardCards from "../../components/admin/DashboardCards";
 import AdminGlobalSearch, { type AdminSearchTarget } from "../../components/admin/AdminGlobalSearch";
@@ -354,7 +355,7 @@ export default function AdminPage() {
   const [receiptModal, setReceiptModal] = useState<{ id: string; url: string }|null>(null);
   const [detailOrderId, setDetailOrderId] = useState<string|null>(null);
   const [productModal, setProductModal] = useState<any|null|"new">(null);
-  const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", track_inventory:1 as number, stock_quantity:0 as number | null, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number, tax_class_id:"" as string });
+  const [editProduct, setEditProduct] = useState({ name:"", slug:"", category:"", price:"", track_inventory:1 as number, stock_quantity:0 as number | null, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1 as number, tax_class_id:"" as string, requires_shipping:1 as number });
   const [taxClassOptions, setTaxClassOptions] = useState<Array<{ id:number; name:string; active:number|boolean }>>([]);
   const [taxClassOptionsError, setTaxClassOptionsError] = useState("");
   const [categories, setCategories] = useState<StoreCategory[]>([]);
@@ -386,6 +387,8 @@ export default function AdminPage() {
 
   // Site Content
   const [siteContent, setSiteContent] = useState<Record<string,string>>({});
+  // Shipping flag (BATCH-12) from the already-loaded site_content; absent key = off.
+  const shippingEnabled = siteContent.shipping_enabled === "1";
   const [contentSaving, setContentSaving] = useState(false);
   const [contentMsg, setContentMsg] = useState("");
   const [activePage, setActivePage] = useState("home");
@@ -954,7 +957,8 @@ export default function AdminPage() {
     cancelFields?: {
       cancel_reason_code: CancelPresetCode;
       cancel_reason_note?: string;
-    }
+    },
+    shippingFields?: DispatchShipping
   ) => {
     if (status === "cancelled" && !cancelFields) {
       setDetailOrderId(null);
@@ -971,6 +975,11 @@ export default function AdminPage() {
       if (cancelFields.cancel_reason_note !== undefined) {
         body.cancel_reason_note = cancelFields.cancel_reason_note;
       }
+    }
+    // Dispatch courier / tracking number (only ever supplied by the drawer while shipping is enabled).
+    if (status === "dispatched" && shippingFields) {
+      if (shippingFields.courier_id !== undefined) body.courier_id = shippingFields.courier_id;
+      if (shippingFields.tracking_number) body.tracking_number = shippingFields.tracking_number;
     }
     const res = await adminRequest("/api/admin-orders", {
       method: "PATCH",
@@ -1156,6 +1165,8 @@ export default function AdminPage() {
       ...(taxClassOptions.length > 0
         ? { tax_class_id: editProduct.tax_class_id === "" ? null : Number(editProduct.tax_class_id) }
         : {}),
+      // Only sent while shipping is enabled (the checkbox is only shown then); otherwise the payload is unchanged.
+      ...(shippingEnabled ? { requires_shipping: editProduct.requires_shipping === 0 ? 0 : 1 } : {}),
     };
     setAdminBanner("");
     if (productModal === "new") {
@@ -1182,13 +1193,13 @@ export default function AdminPage() {
     const tracked = !(p.track_inventory === 0 || p.track_inventory === false || p.track_inventory === "0");
     const qtyRaw = p.stock_quantity;
     const qtyNum = qtyRaw === null || qtyRaw === undefined || qtyRaw === "" ? 0 : Number(qtyRaw);
-    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||defaultProductCategory(), price:rawPrice, track_inventory: tracked ? 1 : 0, stock_quantity: tracked ? (Number.isFinite(qtyNum) ? qtyNum : 0) : null, image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1, tax_class_id: p.tax_class_id != null && Number(p.tax_class_id) > 0 ? String(p.tax_class_id) : "" });
+    setEditProduct({ name:p.name||"", slug:p.slug||toSlug(p.name||""), category:p.category||defaultProductCategory(), price:rawPrice, track_inventory: tracked ? 1 : 0, stock_quantity: tracked ? (Number.isFinite(qtyNum) ? qtyNum : 0) : null, image:p.image||"", short_description:p.short_description||"", full_description:p.full_description||"", features:p.features||"", seo_title:p.seo_title||"", meta_description:p.meta_description||"", focus_keyword:p.focus_keyword||"", active: (p.active === 0 || p.active === false || p.active === "0") ? 0 : 1, tax_class_id: p.tax_class_id != null && Number(p.tax_class_id) > 0 ? String(p.tax_class_id) : "", requires_shipping: (p.requires_shipping === 0 || p.requires_shipping === false || p.requires_shipping === "0") ? 0 : 1 });
     void loadTaxClassOptions();
     setProductModal(p);
   };
 
   const openNewProduct = () => {
-    setEditProduct({ name:"", slug:"", category:defaultProductCategory(), price:"", track_inventory:1, stock_quantity:0, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1, tax_class_id:"" });
+    setEditProduct({ name:"", slug:"", category:defaultProductCategory(), price:"", track_inventory:1, stock_quantity:0, image:"", short_description:"", full_description:"", features:"", seo_title:"", meta_description:"", focus_keyword:"", active:1, tax_class_id:"", requires_shipping:1 });
     void loadTaxClassOptions();
     setProductModal("new");
   };
@@ -1370,7 +1381,9 @@ export default function AdminPage() {
         orderId={detailOrderId}
         open={!!detailOrderId}
         onClose={() => setDetailOrderId(null)}
-        onStatusChange={(id, status) => { void updateStatus(id, status); }}
+        onStatusChange={(id, status, shipping) => { void updateStatus(id, status, undefined, shipping); }}
+        shippingEnabled={shippingEnabled}
+        onReturned={() => { void refreshOrderData(); void loadCoupons(); }}
         onDelete={(id, total, status) => { void deleteOrder(id, total, status); }}
         canDelete={adminRole === "super_admin"}
         canBlock={adminRole === "super_admin" || adminRole === "manager"}
@@ -1477,6 +1490,18 @@ export default function AdminPage() {
                 Track inventory
               </label>
             </div>
+            {shippingEnabled ? (
+              <div className="modal-field" data-product-requires-shipping="1">
+                <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                  <input
+                    type="checkbox"
+                    checked={editProduct.requires_shipping !== 0}
+                    onChange={e => setEditProduct({ ...editProduct, requires_shipping: e.target.checked ? 1 : 0 })}
+                  />
+                  Requires shipping
+                </label>
+              </div>
+            ) : null}
             {editProduct.track_inventory === 1 ? (
               <div className="modal-field">
                 <label>Stock Quantity</label>
@@ -2583,6 +2608,9 @@ export default function AdminPage() {
           )}
 
           {tab==="settings" && adminRole==="super_admin" && <OrderProtectionSettingsPanel />}
+          {tab==="settings" && adminRole==="super_admin" && (
+            <ShippingSettingsPanel onFlagChange={(on) => setSiteContent(s => ({ ...s, shipping_enabled: on ? "1" : "0" }))} />
+          )}
 
           {/* ⚙️ SITE SETTINGS */}
           {tab==="settings" && (

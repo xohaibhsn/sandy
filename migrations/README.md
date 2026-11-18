@@ -22,8 +22,10 @@ These `.sql` files are for **owner review and a manual run in phpMyAdmin only**.
 | `0005-orders-cancel-reason.sql` | Adds `orders.cancel_reason` (`VARCHAR(500) NULL`, after `status`) for admin cancel-reason capture. Same idempotent / guarded style as 0002. Production already has this column; the file is for fresh databases built from migrations. Run after 0002. |
 | `0006-customer-protection.sql` | Creates `customer_blacklist`, `otp_challenges`, and BATCH-08 prep tables `customers` / `customer_sessions`. Idempotent `CREATE TABLE IF NOT EXISTS`. No data rows. |
 | `0007-orders-protection-columns.sql` | Adds nullable COD-protection columns on `orders` (norms, risk, OTP, confirmation, advance). Guarded ADD COLUMN / indexes. No backfill — legacy rows keep NULL norms. |
+| `0008-customer-accounts.sql` | Creates `customer_addresses` and `customer_wishlist`, and adds nullable `orders.customer_id` (+ index). Guarded / idempotent. No data rows, no backfill. Requires `customers` from 0006 and `orders` from 0002. |
+| `0009-shipping-courier.sql` | SANDY-BATCH-12. Creates `shipping_zones` and `couriers` (no seed rows), adds `products.requires_shipping` (`TINYINT(1) NOT NULL DEFAULT 1`) and nullable `orders` columns `shipping_amount`, `shipping_zone`, `courier_id`, `tracking_number`, `shipped_at`, `delivered_at`, `rto`, `rto_at`, plus index `idx_orders_rto_phone (rto, customer_phone_norm)`. Guarded / idempotent (INFORMATION_SCHEMA + PREPARE). No backfill. Run after 0007 (the index uses `customer_phone_norm`). Harmless while `site_content.shipping_enabled` is `0` / absent. |
 
-Order: 0001, 0002, 0003, 0004, 0005, 0006, 0007 (0001 and 0002 are independent of 0003; 0005–0007 depend on 0002; 0006 and 0007 are independent of each other).
+Order: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009 (0001 and 0002 are independent of 0003; 0005–0007 depend on 0002; 0006 and 0007 are independent of each other; 0008 needs 0006 + 0002; 0009 needs 0002 + 0007).
 
 ## Intentionally NOT ported from the removed runtime code (owner decision later)
 

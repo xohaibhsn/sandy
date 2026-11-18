@@ -82,6 +82,17 @@ export const PROBES = {
 
   "GET /api/admin-accounts-settings": { url: "/api/admin-accounts-settings", ok: [200] },
 
+  // BATCH-12 shipping (settings:shipping, super_admin only). Write probes fail validation (400) before any write.
+  "GET /api/admin-shipping-zones": { url: "/api/admin-shipping-zones", ok: [200, 503] },
+  "POST /api/admin-shipping-zones": { url: "/api/admin-shipping-zones", body: {}, ok: [400] },
+  "PATCH /api/admin-shipping-zones": { url: "/api/admin-shipping-zones", body: {}, ok: [400] },
+  "DELETE /api/admin-shipping-zones": { url: "/api/admin-shipping-zones", body: {}, ok: [400] },
+  "GET /api/admin-couriers": { url: "/api/admin-couriers", ok: [200, 503] },
+  "POST /api/admin-couriers": { url: "/api/admin-couriers", body: {}, ok: [400] },
+  "PATCH /api/admin-couriers": { url: "/api/admin-couriers", body: {}, ok: [400] },
+  "DELETE /api/admin-couriers": { url: "/api/admin-couriers", body: {}, ok: [400] },
+  "GET /api/admin-shipping-settings": { url: "/api/admin-shipping-settings", ok: [200] },
+
   "POST /api/upload": { url: "/api/upload", body: {}, ok: [400] },
   "POST /api/upload-favicon": { url: "/api/upload-favicon", body: {}, ok: [400] },
 };
@@ -93,6 +104,9 @@ export const EXTRAS = [
   ["site-content single branding key", "/api/site-content", "POST", { key: "site_logo_url", value: BAD_URL }, { writer: 403, manager: 403, super_admin: 400 }],
   ["site-content content key", "/api/site-content", "POST", { updates: [{ key: "home_hero_btn_link", value: "https://evil.example/x" }] }, { writer: 400, manager: 400, super_admin: 400 }],
   ["site-content mixed keys", "/api/site-content", "POST", { updates: [{ key: "home_hero_btn_link", value: "/ok" }, { key: "hero_slide_1", value: BAD_URL }] }, { writer: 403, manager: 403, super_admin: 400 }],
+  // BATCH-12: shipping_enabled needs settings:shipping (super_admin); an invalid value fails validation (400) before any write
+  ["site-content shipping flag", "/api/site-content", "POST", { key: "shipping_enabled", value: "2" }, { writer: 403, manager: 403, super_admin: 400 }],
+  ["site-content shipping flag (batch)", "/api/site-content", "POST", { updates: [{ key: "home_hero_btn_link", value: "/ok" }, { key: "shipping_enabled", value: "2" }] }, { writer: 403, manager: 403, super_admin: 400 }],
   // uploads: folder ownership
   ["upload default folder", "/api/upload", "POST", {}, { writer: 400, manager: 400, super_admin: 400 }],
   ["upload products folder", "/api/upload", "POST", { folder: "sandy/products" }, { writer: 400, manager: 400, super_admin: 400 }],

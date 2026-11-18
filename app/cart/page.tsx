@@ -98,6 +98,9 @@ type TaxQuote = {
   total: number;
   tax_label: string;
   prices_include_tax: boolean;
+  /** Present only when shipping_enabled = 1 on the server (tax-quote adds the keys). */
+  shipping_flag_on: boolean;
+  shipping_estimate: string;
 };
 
 function parseNonNegMoney(value: unknown): number | null {
@@ -467,14 +470,25 @@ export default function CartPage() {
   // arrives (or if it fails), tax and total are shown as unavailable and checkout is disabled.
   const [quote, setQuote] = useState<TaxQuote | null>(null);
   const [quoteError, setQuoteError] = useState<{ key: string; message: string } | null>(null);
+  // Shipping (BATCH-12): the destination only joins the quote key once the server has reported
+  // shipping_enabled = 1 (tax-quote adds shipping_zone / shipping_estimate). With the flag off the key,
+  // and therefore the fetch / re-quote behaviour, is exactly what it was before.
+  const [shippingFlagOn, setShippingFlagOn] = useState(false);
   const quoteKey = JSON.stringify({
     items: cart.map((item) => [item.id, item.qty]),
     coupon: couponApplied?.code ?? null,
+    ...(shippingFlagOn ? { dest: [form.city.trim().slice(0, 100), form.province.trim().slice(0, 100)] } : {}),
   });
 
   useEffect(() => {
-    const parsed = JSON.parse(quoteKey) as { items: Array<[number, number]>; coupon: string | null };
+    const parsed = JSON.parse(quoteKey) as {
+      items: Array<[number, number]>;
+      coupon: string | null;
+      dest?: [string, string];
+    };
     if (parsed.items.length === 0) return;
+    // Before the server has said shipping is on there is no destination in the key (blank city/province).
+    const requestDest: [string, string] = parsed.dest ?? ["", ""];
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -484,10 +498,20 @@ export default function CartPage() {
           body: JSON.stringify({
             items: parsed.items.map(([id, qty]) => ({ id, qty })),
             coupon: parsed.coupon,
+            city: requestDest[0],
+            province: requestDest[1],
           }),
         });
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         if (cancelled) return;
+        // tax-quote only emits shipping_zone / shipping_estimate while shipping_enabled = 1.
+        const flagOn = "shipping_zone" in data || "shipping_estimate" in data;
+        const estimateQ = flagOn && typeof data.shipping_estimate === "string" ? data.shipping_estimate.trim() : "";
+        const resultKey = JSON.stringify({
+          items: parsed.items,
+          coupon: parsed.coupon,
+          ...(flagOn ? { dest: requestDest } : {}),
+        });
         const subtotalQ = parseNonNegMoney(data.subtotal);
         const shippingQ = parseNonNegMoney(data.shipping);
         const discountQ = parseNonNegMoney(data.discount);
@@ -499,7 +523,7 @@ export default function CartPage() {
           subtotalQ !== null && shippingQ !== null && discountQ !== null && vatQ !== null && totalQ !== null
         ) {
           setQuote({
-            key: quoteKey,
+            key: resultKey,
             subtotal: subtotalQ,
             shipping: shippingQ,
             discount: discountQ,
@@ -507,7 +531,10 @@ export default function CartPage() {
             total: totalQ,
             tax_label: label,
             prices_include_tax: data.prices_include_tax === true,
+            shipping_flag_on: flagOn,
+            shipping_estimate: estimateQ,
           });
+          setShippingFlagOn(flagOn);
           setQuoteError(null);
         } else {
           setQuoteError({
@@ -580,6 +607,8 @@ export default function CartPage() {
   const quoteReady = quote !== null && quote.key === quoteKey;
   const currentQuoteError = quoteError && quoteError.key === quoteKey ? quoteError.message : "";
   const shipping = quoteReady ? quote.shipping : 0;
+  // Only ever non-empty when the server returned a zone estimate (flag on); otherwise no extra line.
+  const shippingEstimate = quoteReady ? quote.shipping_estimate : "";
   const subtotal = quoteReady ? quote.subtotal : total;
   const discountAmount = quoteReady ? quote.discount : couponApplied ? couponApplied.discount_amount : 0;
   const taxLabelDisplay = quoteReady
@@ -681,6 +710,7 @@ export default function CartPage() {
           payment_reference: paymentReference || null,
           items: cart.map((item) => ({ id: item.id, qty: item.qty })),
           coupon_code: couponApplied?.code || null,
+          ...(shippingFlagOn ? { province: form.province } : {}),
           ...(codOtpActive && otpToken ? { verification_token: otpToken } : {}),
           ...(advanceCharge > 0
             ? { advance_reference: advanceReference.trim(), advance_receipt_path: advanceReceiptPath }
@@ -864,6 +894,7 @@ export default function CartPage() {
               <div className="summary-body">
                 <div className="summary-row"><span>{cmsText(sc, "cart_subtotal", "Subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                 <div className="summary-row"><span>{cmsText(sc, "cart_shipping", "Shipping")}</span><span>{shipping === 0 ? cmsText(sc, "cart_shipping_free", "Free") : formatPrice(shipping)}</span></div>
+                {shippingEstimate && <div className="summary-row" data-shipping-estimate="1" style={{fontSize:12,opacity:0.7,marginTop:-4}}><span>{shippingEstimate}</span></div>}
                 <div className="summary-row"><span>{taxLabelDisplay}</span><span>{taxAmountDisplay}</span></div>
                 {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                 <hr className="summary-divider" />
@@ -1010,6 +1041,7 @@ export default function CartPage() {
                   <div className="summary-body" style={{background:"rgba(139,0,255,0.05)", borderRadius:"12px", marginBottom:"16px"}}>
                     <div className="summary-row"><span>{cmsText(sc, "cart_subtotal", "Subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                     <div className="summary-row"><span>{cmsText(sc, "cart_shipping", "Shipping")}</span><span>{shipping === 0 ? cmsText(sc, "cart_shipping_free", "Free") : formatPrice(shipping)}</span></div>
+                {shippingEstimate && <div className="summary-row" data-shipping-estimate="1" style={{fontSize:12,opacity:0.7,marginTop:-4}}><span>{shippingEstimate}</span></div>}
                     <div className="summary-row"><span>{taxLabelDisplay}</span><span>{taxAmountDisplay}</span></div>
                     {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                     <hr className="summary-divider" />

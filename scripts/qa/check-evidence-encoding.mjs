@@ -11,13 +11,24 @@
  * Also flags .js/.mjs/.cjs/.ts/.tsx/.py/.ps1/.sh as SOURCE_IN_EVIDENCE.
  *
  * Usage: node scripts/qa/check-evidence-encoding.mjs <folder> [--fix]
+ *        node scripts/qa/check-evidence-encoding.mjs --zip <zipfile> [<folder>]
  * Exit: 0 = clean, 1 = offenders remain, 2 = usage/runtime error.
  *
  * --fix rewrites UTF-16 / UTF-8-BOM text files as UTF-8 without BOM, then rescans.
  * Source files are never rewritten (remove them by hand).
+ *
+ * --zip <zipfile> (post-zip gate, BATCH-12 H3) parses the ZIP central directory itself
+ * (Node built-ins only: fs, zlib, path) and FAILS when:
+ *   - any arcname contains a backslash (BACKSLASH)
+ *   - any entry has a source extension .js .mjs .cjs .ts .tsx .py .ps1 .sh (SOURCE)
+ *   - any text-extension entry has a UTF-16 / UTF-8 BOM or a NUL byte (UTF16/UTF8_BOM/NUL)
+ *   - the entry cannot be read (encrypted / unsupported method / corrupt) (UNREADABLE)
+ *   - a <folder> is also given and the ZIP file is not inside it (ZIP_OUTSIDE_FOLDER)
+ * --fix never modifies a ZIP.
  */
 import { readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { inflateRawSync } from "node:zlib";
 
 const EXIT_OK = 0;
 const EXIT_FAIL = 1;
@@ -50,7 +61,8 @@ const BOM_UTF8 = Buffer.from([0xef, 0xbb, 0xbf]);
 
 function usage(code = EXIT_USAGE) {
   console.error(
-    "Usage: node scripts/qa/check-evidence-encoding.mjs <folder> [--fix]\n\n" +
+    "Usage: node scripts/qa/check-evidence-encoding.mjs <folder> [--fix]\n" +
+      "       node scripts/qa/check-evidence-encoding.mjs --zip <zipfile> [<folder>]\n\n" +
       "Byte-level scan of evidence files for UTF-16 / UTF-8 BOM / NUL bytes and source files.\n" +
       "Exit: 0=clean, 1=offenders, 2=usage/runtime error."
   );
@@ -58,11 +70,16 @@ function usage(code = EXIT_USAGE) {
 }
 
 function parseArgs(argv) {
-  const out = { folder: null, fix: false, help: false };
+  const out = { folder: null, fix: false, help: false, zip: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") out.help = true;
     else if (a === "--fix") out.fix = true;
+    else if (a === "--zip") {
+      const v = argv[++i];
+      if (!v || v.startsWith("-") || out.zip != null) usage();
+      out.zip = v;
+    }
     else if (a.startsWith("-")) usage();
     else if (out.folder == null) out.folder = a;
     else usage();
@@ -221,35 +238,217 @@ function applyFixes(root, offenders) {
   return fixed;
 }
 
+/* ------------------------------------------------------------------ */
+/* ZIP mode (--zip): minimal central-directory reader, Node built-ins  */
+/* ------------------------------------------------------------------ */
+
+const SIG_EOCD = 0x06054b50;
+const SIG_CEN = 0x02014b50;
+const SIG_LOC = 0x04034b50;
+
+/**
+ * Parse a ZIP buffer into entries [{ name, method, flags, compSize, size, localOffset }].
+ * ZIP64 and multi-disk archives are rejected (throws).
+ */
+function readZipEntries(buf) {
+  const minEocd = 22;
+  let eocd = -1;
+  const lowest = Math.max(0, buf.length - (0xffff + minEocd));
+  for (let i = buf.length - minEocd; i >= lowest; i--) {
+    if (buf.readUInt32LE(i) === SIG_EOCD) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("not a ZIP file (end-of-central-directory not found)");
+
+  const disk = buf.readUInt16LE(eocd + 4);
+  const cdDisk = buf.readUInt16LE(eocd + 6);
+  const total = buf.readUInt16LE(eocd + 10);
+  const cdSize = buf.readUInt32LE(eocd + 12);
+  const cdOffset = buf.readUInt32LE(eocd + 16);
+  if (disk !== 0 || cdDisk !== 0) throw new Error("multi-disk ZIP is not supported");
+  if (total === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) {
+    throw new Error("ZIP64 archives are not supported");
+  }
+  if (cdOffset + cdSize > eocd) throw new Error("corrupt ZIP (central directory out of range)");
+
+  const entries = [];
+  let p = cdOffset;
+  for (let n = 0; n < total; n++) {
+    if (p + 46 > buf.length || buf.readUInt32LE(p) !== SIG_CEN) {
+      throw new Error("corrupt ZIP (bad central directory entry)");
+    }
+    const flags = buf.readUInt16LE(p + 8);
+    const method = buf.readUInt16LE(p + 10);
+    const compSize = buf.readUInt32LE(p + 20);
+    const size = buf.readUInt32LE(p + 24);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const extraLen = buf.readUInt16LE(p + 30);
+    const commentLen = buf.readUInt16LE(p + 32);
+    const localOffset = buf.readUInt32LE(p + 42);
+    if (p + 46 + nameLen > buf.length) throw new Error("corrupt ZIP (entry name out of range)");
+    const rawName = buf.subarray(p + 46, p + 46 + nameLen);
+    // Bit 11 = UTF-8 names; otherwise legacy (latin1 is enough: we only look at ASCII markers).
+    const name = rawName.toString(flags & 0x800 ? "utf8" : "latin1");
+    entries.push({ name, flags, method, compSize, size, localOffset });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+/** Return the uncompressed bytes of an entry, or null when unreadable. */
+function readZipEntryData(buf, e) {
+  if (e.flags & 0x1) return null; // encrypted
+  const lo = e.localOffset;
+  if (lo + 30 > buf.length || buf.readUInt32LE(lo) !== SIG_LOC) return null;
+  const start = lo + 30 + buf.readUInt16LE(lo + 26) + buf.readUInt16LE(lo + 28);
+  const end = start + e.compSize;
+  if (end > buf.length) return null;
+  const raw = buf.subarray(start, end);
+  try {
+    if (e.method === 0) return Buffer.from(raw);
+    if (e.method === 8) return inflateRawSync(raw);
+  } catch {
+    return null;
+  }
+  return null; // unsupported method
+}
+
+function isInsideFolder(root, file) {
+  const rel = path.relative(root, file);
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+function scanZip(zipPath, folderRoot) {
+  let st;
+  try {
+    st = statSync(zipPath);
+  } catch {
+    throw new Error(`zip not found: ${zipPath}`);
+  }
+  if (!st.isFile()) throw new Error(`not a file: ${zipPath}`);
+  const buf = readFileSync(zipPath);
+  const entries = readZipEntries(buf);
+
+  const res = {
+    zip: zipPath,
+    scanned: 0,
+    backslash: 0,
+    utf16: 0,
+    utf8Bom: 0,
+    nul: 0,
+    source: 0,
+    unreadable: 0,
+    outside: 0,
+    offenders: [],
+    dirty: false,
+  };
+
+  if (folderRoot && !isInsideFolder(folderRoot, zipPath)) {
+    res.outside = 1;
+    res.offenders.push({ path: path.basename(zipPath), kinds: ["ZIP_OUTSIDE_FOLDER"] });
+  }
+
+  for (const e of entries) {
+    res.scanned += 1;
+    const kinds = [];
+    if (e.name.includes("\\")) {
+      kinds.push("BACKSLASH");
+      res.backslash += 1;
+    }
+    const ext = path.posix.extname(e.name.replace(/\\/g, "/")).toLowerCase();
+    if (SOURCE_EXT.has(ext)) {
+      kinds.push("SOURCE");
+      res.source += 1;
+    } else if (TEXT_EXT.has(ext)) {
+      const data = readZipEntryData(buf, e);
+      if (data === null) {
+        kinds.push("UNREADABLE");
+        res.unreadable += 1;
+      } else {
+        const c = classifyText(data);
+        for (const k of c.kinds) kinds.push(k);
+        if (c.kinds.includes("UTF16")) res.utf16 += 1;
+        if (c.kinds.includes("UTF8_BOM")) res.utf8Bom += 1;
+        if (c.kinds.includes("NUL")) res.nul += 1;
+      }
+    }
+    if (kinds.length > 0) res.offenders.push({ path: e.name, kinds });
+  }
+
+  res.dirty = res.offenders.length > 0;
+  return res;
+}
+
+function printZipScan(r) {
+  for (const o of r.offenders) {
+    console.log(`${o.path}: ${o.kinds.join(",")}`);
+  }
+  console.log(`ZIP_SCANNED=${r.scanned}`);
+  console.log(`ZIP_BACKSLASH=${r.backslash}`);
+  console.log(`ZIP_UTF16=${r.utf16}`);
+  console.log(`ZIP_UTF8_BOM=${r.utf8Bom}`);
+  console.log(`ZIP_NUL=${r.nul}`);
+  console.log(`ZIP_SOURCE=${r.source}`);
+  console.log(`ZIP_UNREADABLE=${r.unreadable}`);
+  console.log(`ZIP_OUTSIDE_FOLDER=${r.outside}`);
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) usage(EXIT_OK);
-  if (!args.folder) usage();
-
-  const root = path.resolve(args.folder);
-  let st;
-  try {
-    st = statSync(root);
-  } catch (err) {
-    console.error(`error: folder not found: ${root}`);
-    process.exit(EXIT_USAGE);
-  }
-  if (!st.isDirectory()) {
-    console.error(`error: not a directory: ${root}`);
+  if (!args.folder && !args.zip) usage();
+  if (args.fix && !args.folder) {
+    console.error("error: --fix needs a <folder> (ZIP files are never modified)");
     process.exit(EXIT_USAGE);
   }
 
-  let result = scanOnce(root);
-  if (args.fix && result.offenders.length > 0) {
-    const n = applyFixes(root, result.offenders);
-    console.log(`FIX_PASS rewritten=${n}`);
-    result = scanOnce(root);
+  let root = null;
+  if (args.folder) {
+    root = path.resolve(args.folder);
+    let st;
+    try {
+      st = statSync(root);
+    } catch (err) {
+      console.error(`error: folder not found: ${root}`);
+      process.exit(EXIT_USAGE);
+    }
+    if (!st.isDirectory()) {
+      console.error(`error: not a directory: ${root}`);
+      process.exit(EXIT_USAGE);
+    }
   }
 
-  printScan(result);
-  const dirty =
-    result.utf16 + result.utf8Bom + result.nul + result.source > 0 ||
-    result.offenders.length > 0;
+  let dirty = false;
+
+  if (root) {
+    let result = scanOnce(root);
+    if (args.fix && result.offenders.length > 0) {
+      const n = applyFixes(root, result.offenders);
+      console.log(`FIX_PASS rewritten=${n}`);
+      result = scanOnce(root);
+    }
+
+    printScan(result);
+    dirty =
+      result.utf16 + result.utf8Bom + result.nul + result.source > 0 ||
+      result.offenders.length > 0;
+  }
+
+  if (args.zip) {
+    const zipPath = path.resolve(args.zip);
+    let zipResult;
+    try {
+      zipResult = scanZip(zipPath, root);
+    } catch (err) {
+      console.error(`error: ${err.message}`);
+      process.exit(EXIT_USAGE);
+    }
+    printZipScan(zipResult);
+    if (zipResult.dirty) dirty = true;
+  }
+
   process.exit(dirty ? EXIT_FAIL : EXIT_OK);
 }
 

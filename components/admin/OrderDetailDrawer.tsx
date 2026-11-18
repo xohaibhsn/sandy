@@ -33,7 +33,38 @@ type DetailOrder = {
   confirmation_note?: string | null;
   confirmed_by?: string | null;
   confirmed_at?: string | null;
+  // Shipping / courier / RTO: only present when migration 0009 is applied (BATCH-12).
+  shipping_amount?: number | string | null;
+  shipping_zone?: string | null;
+  courier_id?: number | null;
+  courier_name?: string | null;
+  tracking_number?: string | null;
+  tracking_url?: string | null;
+  shipped_at?: string | null;
+  delivered_at?: string | null;
+  rto?: boolean | null;
+  rto_at?: string | null;
+  couriers?: Array<{ id: number; name: string }>;
 };
+
+/** Courier + tracking number sent with a status change to "dispatched" (shipping enabled only). */
+export type DispatchShipping = { courier_id?: number; tracking_number?: string };
+
+const TRACKING_NUMBER_RE = /^[A-Za-z0-9-]{3,100}$/;
+
+function formatWhen(v: unknown): string {
+  if (v == null || v === "") return "";
+  const d = new Date(String(v));
+  if (!Number.isFinite(d.getTime())) return "";
+  return d.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Karachi",
+  });
+}
 
 type DetailItem = {
   id?: number;
@@ -66,7 +97,7 @@ export type OrderDetailDrawerProps = {
   orderId: string | null;
   open: boolean;
   onClose: () => void;
-  onStatusChange: (orderId: string, status: OrderStatus) => void;
+  onStatusChange: (orderId: string, status: OrderStatus, shipping?: DispatchShipping) => void;
   onDelete: (orderId: string, total: string, status: string) => void;
   /** Order delete is super_admin only server-side; hide the control for other roles. Defaults to true. */
   canDelete?: boolean;
@@ -75,9 +106,16 @@ export type OrderDetailDrawerProps = {
   canBlock?: boolean;
   /** Called after a COD order is confirmed from the drawer so the parent can refresh its lists. */
   onConfirmed?: () => void;
+  /**
+   * shipping_enabled flag as known by the parent. Dispatch courier fields and the RTO action only
+   * appear when this is true; with it off the drawer is exactly as before. Defaults to false.
+   */
+  shippingEnabled?: boolean;
+  /** Called after an order is marked returned-to-origin (it is cancelled + restocked server-side). */
+  onReturned?: () => void;
 };
 
-type ProtectionDialog = { orderId: string; kind: "confirm" | "block" };
+type ProtectionDialog = { orderId: string; kind: "confirm" | "block" | "rto" | "dispatch" };
 
 const fieldStyle: React.CSSProperties = {
   padding: "8px 10px",
@@ -130,6 +168,8 @@ export default function OrderDetailDrawer({
   onViewReceipt,
   canBlock = false,
   onConfirmed,
+  shippingEnabled = false,
+  onReturned,
 }: OrderDetailDrawerProps) {
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<FetchState | null>(null);
@@ -137,6 +177,9 @@ export default function OrderDetailDrawer({
   const [confirmMethod, setConfirmMethod] = useState<"call" | "whatsapp">("call");
   const [confirmNote, setConfirmNote] = useState("");
   const [blockReason, setBlockReason] = useState("");
+  const [dispatchCourier, setDispatchCourier] = useState("");
+  const [dispatchTracking, setDispatchTracking] = useState("");
+  const [statusSelectNonce, setStatusSelectNonce] = useState(0);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ orderId: string; tone: "ok" | "error"; text: string } | null>(null);
 
@@ -207,6 +250,71 @@ export default function OrderDetailDrawer({
   const canConfirmCod = isCod && status === "pending" && !order?.confirmed_at;
   const activeDialog = dialog && dialog.orderId === orderId ? dialog.kind : null;
   const msg = actionMsg && actionMsg.orderId === orderId ? actionMsg : null;
+
+  // Shipping (BATCH-12). Everything below stays inert while the flag is off / columns are absent.
+  const shippingUi = shippingEnabled && Array.isArray(order?.couriers);
+  const courierOptions = Array.isArray(order?.couriers) ? order.couriers : [];
+  const isRto = order?.rto === true;
+  const canRto = shippingUi && status === "dispatched" && !isRto;
+  const shipZone = order?.shipping_zone && String(order.shipping_zone).trim() ? String(order.shipping_zone).trim() : "";
+  const shipAmountNum = Number(order?.shipping_amount || 0);
+  const showShipping = !!shipZone || shipAmountNum > 0;
+  const shippedAt = formatWhen(order?.shipped_at);
+  const deliveredAt = formatWhen(order?.delivered_at);
+  const rtoAt = formatWhen(order?.rto_at);
+  const courierName = order?.courier_name && String(order.courier_name).trim() ? String(order.courier_name).trim() : "";
+  const trackingNumber =
+    order?.tracking_number && String(order.tracking_number).trim() ? String(order.tracking_number).trim() : "";
+  const trackingUrl = order?.tracking_url && /^https:\/\//i.test(String(order.tracking_url)) ? String(order.tracking_url) : "";
+
+  const handleStatusSelect = (next: OrderStatus) => {
+    if (next === "dispatched" && shippingUi) {
+      setActionMsg(null);
+      setDispatchCourier(order?.courier_id != null ? String(order.courier_id) : "");
+      setDispatchTracking(trackingNumber);
+      setDialog({ orderId, kind: "dispatch" });
+      return;
+    }
+    onStatusChange(orderId, next);
+  };
+
+  const cancelDispatch = () => {
+    setDialog(null);
+    // The status <select> is uncontrolled: remount it so it shows the real status again.
+    setStatusSelectNonce((n) => n + 1);
+  };
+
+  const submitDispatch = () => {
+    const tracking = dispatchTracking.trim();
+    if (tracking && !TRACKING_NUMBER_RE.test(tracking)) {
+      setActionMsg({ orderId, tone: "error", text: "Tracking number must be 3-100 letters, numbers or dashes." });
+      return;
+    }
+    const shipping: DispatchShipping = {};
+    if (dispatchCourier) shipping.courier_id = Number(dispatchCourier);
+    if (tracking) shipping.tracking_number = tracking;
+    setDialog(null);
+    onStatusChange(orderId, "dispatched", shipping);
+  };
+
+  const submitRto = async () => {
+    setActionBusy(true);
+    setActionMsg(null);
+    const res = await adminRequest("/api/admin-orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: orderId, action: "rto" }),
+    });
+    setActionBusy(false);
+    if (!res.ok) {
+      setActionMsg({ orderId, tone: "error", text: res.errorMessage || "Could not mark order as returned." });
+      return;
+    }
+    setDialog(null);
+    setActionMsg({ orderId, tone: "ok", text: "Order marked as returned to origin and cancelled." });
+    setAttempt((n) => n + 1);
+    onReturned?.();
+  };
 
   const submitConfirm = async () => {
     setActionBusy(true);
@@ -343,6 +451,11 @@ export default function OrderDetailDrawer({
               <span className={`status-badge status-${status}`} data-order-status={status}>
                 {status}
               </span>
+              {isRto ? (
+                <span className="status-badge status-cancelled" data-order-rto="1" style={{ marginLeft: 8 }}>
+                  RTO
+                </span>
+              ) : null}
             </div>
 
             {riskScore !== null || order.otp_verified === true ? (
@@ -442,9 +555,34 @@ export default function OrderDetailDrawer({
               {discountNum > 0 ? (
                 <Row label="Discount" value={`− ${money(discountNum)}`} />
               ) : null}
+              {showShipping ? (
+                <div data-order-shipping="1">
+                  <Row
+                    label="Shipping"
+                    value={`${money(shipAmountNum)}${shipZone ? ` (${shipZone})` : ""}`}
+                  />
+                </div>
+              ) : null}
               <Row label={taxLabel} value={money(taxAmount)} />
               <Row label="Total" value={money(order.total)} />
             </div>
+
+            {courierName || trackingNumber || shippedAt || deliveredAt || rtoAt ? (
+              <div style={{ marginTop: 12 }} data-order-shipment="1">
+                {courierName ? <Row label="Courier" value={courierName} /> : null}
+                {trackingNumber ? <Row label="Tracking number" value={trackingNumber} mono /> : null}
+                {trackingUrl ? (
+                  <div style={{ padding: "6px 0", fontSize: 13 }}>
+                    <a href={trackingUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#5B21B6" }}>
+                      Track shipment
+                    </a>
+                  </div>
+                ) : null}
+                {shippedAt ? <Row label="Shipped at" value={shippedAt} /> : null}
+                {deliveredAt ? <Row label="Delivered at" value={deliveredAt} /> : null}
+                {rtoAt ? <Row label="Returned at" value={rtoAt} /> : null}
+              </div>
+            ) : null}
 
             <div style={{ marginTop: 12 }}>
               {receiptUrl ? (
@@ -486,10 +624,10 @@ export default function OrderDetailDrawer({
               ) : (
                 <select
                   id="order-detail-status"
-                  key={`status-${orderId}-${status}`}
+                  key={`status-${orderId}-${status}-${statusSelectNonce}`}
                   defaultValue={status}
                   data-status-select="1"
-                  onChange={(e) => onStatusChange(orderId, e.target.value as OrderStatus)}
+                  onChange={(e) => handleStatusSelect(e.target.value as OrderStatus)}
                 >
                   <option value="pending">Pending</option>
                   <option value="confirmed">Confirmed</option>
@@ -506,6 +644,76 @@ export default function OrderDetailDrawer({
                 style={{ marginTop: 12, fontSize: 13, color: msg.tone === "error" ? "#DC2626" : "#15803D" }}
               >
                 {msg.text}
+              </div>
+            ) : null}
+
+            {activeDialog === "dispatch" ? (
+              <div
+                data-dispatch-dialog="1"
+                style={{ marginTop: 12, padding: 14, border: "1px solid #E5E5E5", borderRadius: 10, background: "#FAFAFA" }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Dispatch order</div>
+                <div className="modal-field">
+                  <label htmlFor="dispatch-courier">Courier</label>
+                  <select
+                    id="dispatch-courier"
+                    value={dispatchCourier}
+                    onChange={(e) => setDispatchCourier(e.target.value)}
+                  >
+                    <option value="">No courier</option>
+                    {courierOptions.map((c) => (
+                      <option key={c.id} value={String(c.id)}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="modal-field">
+                  <label htmlFor="dispatch-tracking">Tracking number (optional)</label>
+                  <input
+                    id="dispatch-tracking"
+                    style={fieldStyle}
+                    maxLength={100}
+                    value={dispatchTracking}
+                    onChange={(e) => setDispatchTracking(e.target.value)}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="modal-cancel" onClick={cancelDispatch}>Cancel</button>
+                  <button type="button" className="modal-save" data-dispatch-confirm="1" onClick={submitDispatch}>
+                    Mark dispatched
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {canRto ? (
+              <div style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="action-btn btn-delete"
+                  data-order-detail-rto="1"
+                  onClick={() => { setActionMsg(null); setDialog({ orderId, kind: "rto" }); }}
+                >
+                  Returned to origin (RTO)
+                </button>
+              </div>
+            ) : null}
+
+            {activeDialog === "rto" ? (
+              <div
+                data-rto-dialog="1"
+                style={{ marginTop: 12, padding: 14, border: "1px solid #E5E5E5", borderRadius: 10, background: "#FAFAFA" }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Mark as returned to origin?</div>
+                <p style={{ fontSize: 12, color: "#666", margin: "0 0 10px", lineHeight: 1.5 }}>
+                  The courier brought this parcel back. The order will be cancelled, stock restored and any coupon use
+                  released. This cannot be undone.
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="modal-cancel" disabled={actionBusy} onClick={() => setDialog(null)}>Cancel</button>
+                  <button type="button" className="modal-save" data-rto-confirm="1" disabled={actionBusy} onClick={() => { void submitRto(); }}>
+                    {actionBusy ? "Saving…" : "Confirm return"}
+                  </button>
+                </div>
               </div>
             ) : null}
 

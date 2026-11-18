@@ -34,6 +34,14 @@ import {
   validateAccountSetting,
   resetAccountSettingsCache,
 } from '../../lib/accountSettings';
+import {
+  isShippingSettingsContentKey,
+  validateShippingSetting,
+  resetShippingSettingsCache,
+  SHIPPING_NEEDS_DEFAULT_ZONE_MESSAGE,
+} from '../../lib/shippingSettings';
+import { countActiveDefaultZones } from '../../lib/shipping';
+import { hasShippingSchema } from '../../lib/shippingSchema';
 
 export class ContentValidationError extends Error {
   constructor(message: string) {
@@ -104,6 +112,14 @@ function persistSiteContentValue(
     return parsed.value;
   }
 
+  if (isShippingSettingsContentKey(key)) {
+    const parsed = validateShippingSetting(key, value);
+    if (!parsed.ok) {
+      throw new ContentValidationError(parsed.error);
+    }
+    return parsed.value;
+  }
+
   if (RICH_HTML_CONTENT_KEYS.has(key)) {
     return sanitizeRichHtml(value);
   }
@@ -133,6 +149,26 @@ function persistSiteContentValue(
   }
 
   return String(value ?? '');
+}
+
+/**
+ * shipping_enabled = 1 is only allowed while exactly one ACTIVE default shipping zone exists
+ * (checked on every write path that can set the key: POST single / batch and PUT). Turning the
+ * flag off ("0") is always allowed. A missing shipping_zones table counts as "no default zone".
+ */
+async function assertShippingEnableAllowed(contentKey: string, safeValue: string): Promise<void> {
+  if (!isShippingSettingsContentKey(contentKey) || safeValue !== '1') return;
+  let activeDefaults = 0;
+  let schemaOk = false;
+  try {
+    schemaOk = await hasShippingSchema(pool);
+    activeDefaults = schemaOk ? await countActiveDefaultZones(pool) : 0;
+  } catch {
+    activeDefaults = 0;
+  }
+  if (!schemaOk || activeDefaults !== 1) {
+    throw new ContentValidationError(SHIPPING_NEEDS_DEFAULT_ZONE_MESSAGE);
+  }
 }
 
 const DEFAULTS = [
@@ -447,6 +483,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ) {
         return;
       }
+      if (
+        requestedKeys.some((k) => k && isShippingSettingsContentKey(k)) &&
+        !requireSessionPermission(session, res, 'settings:shipping')
+      ) {
+        return;
+      }
 
       const upsert = async (contentKey: string, contentValue: string) => {
         const defaults = DEFAULTS.find((d) => d[0] === contentKey);
@@ -471,8 +513,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             safeValue: persistSiteContentValue(contentKey, u.value),
           });
         }
+        // Gate BEFORE any write so a rejected shipping_enabled=1 leaves the whole batch unapplied.
+        for (const row of prepared) {
+          await assertShippingEnableAllowed(row.contentKey, row.safeValue);
+        }
         for (const row of prepared) {
           await upsert(row.contentKey, row.safeValue);
+        }
+        if (prepared.some((row) => isShippingSettingsContentKey(row.contentKey))) {
+          resetShippingSettingsCache();
         }
         if (prepared.some((row) => isOrderProtectionContentKey(row.contentKey))) {
           resetOrderProtectionSettingsCache();
@@ -483,7 +532,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } else if (key) {
         const contentKey = String(key);
         const safeValue = persistSiteContentValue(contentKey, value);
+        await assertShippingEnableAllowed(contentKey, safeValue);
         await upsert(contentKey, safeValue);
+        if (isShippingSettingsContentKey(contentKey)) {
+          resetShippingSettingsCache();
+        }
         if (isOrderProtectionContentKey(contentKey)) {
           resetOrderProtectionSettingsCache();
         }
@@ -500,12 +553,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { content_key, content_value, content_type, page_name, label } = req.body;
       const key = String(content_key || '');
       const safeValue = persistSiteContentValue(key, content_value, content_type);
+      await assertShippingEnableAllowed(key, safeValue);
       await pool.query(
         'INSERT INTO site_content (content_key,content_value,content_type,page_name,label) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE content_value=?,label=?',
         [content_key, safeValue, content_type||'text', page_name||'', label||content_key, safeValue, label||content_key]
       );
       if (isAccountSettingsContentKey(key)) {
         resetAccountSettingsCache();
+      }
+      if (isShippingSettingsContentKey(key)) {
+        resetShippingSettingsCache();
       }
       return res.status(200).json({ success: true });
     }
@@ -515,6 +572,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await pool.query('DELETE FROM site_content WHERE content_key=?', [key]);
       if (isAccountSettingsContentKey(key)) {
         resetAccountSettingsCache();
+      }
+      if (isShippingSettingsContentKey(key)) {
+        resetShippingSettingsCache();
       }
       return res.status(200).json({ success: true });
     }

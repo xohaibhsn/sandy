@@ -360,8 +360,7 @@ try {
     eq(unauth.statusCode, 401, "me without cookie");
     eq(unauth.body, { error: "Unauthorized" });
     eq((await call(H.me, { token: "f".repeat(64) })).statusCode, 401, "me with unknown (well-formed) cookie");
-    const malformed = ["not-a-", "token"].join("");
-    eq((await call(H.me, { token: malformed })).statusCode, 401, "me with malformed cookie");
+    eq((await call(H.me, { token: "not-a-token" })).statusCode, 401, "me with malformed cookie");
 
     const ip = freshIp();
     const s = await call(H.loginStart, { method: "POST", body: { phone: p.phoneFormatted }, ip });

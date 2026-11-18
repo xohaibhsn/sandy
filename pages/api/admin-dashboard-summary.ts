@@ -512,7 +512,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
+/**
+ * Log an error CODE only — never the message, stack, SQL or row data (may contain PII).
+ * Prefers a short driver/system code (e.g. ER_BAD_FIELD_ERROR, ECONNREFUSED); else the error class name.
+ */
 function toSafeError(err: unknown): void {
-  const msg = err instanceof Error ? err.message : String(err || "");
-  console.error("[admin-dashboard-summary]", msg.slice(0, 200));
+  let code = "UNKNOWN";
+  const raw = (err as { code?: unknown } | null)?.code;
+  if (typeof raw === "string" && /^[A-Z0-9_]{2,40}$/.test(raw)) {
+    code = raw;
+  } else if (err instanceof Error && /^[A-Za-z0-9_]{1,40}$/.test(err.name)) {
+    code = err.name;
+  }
+  console.error("DASHBOARD_SUMMARY_ERROR", code);
 }

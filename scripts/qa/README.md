@@ -93,6 +93,8 @@ Patterns: private key blocks, URL-embedded credentials, bearer/basic literals, A
 
 Reports **only** file path, line number, pattern id, and match **length**. Never prints matched values or full lines. Skips binaries, lockfiles, `node_modules`.
 
+Test placeholders: `secret_assignment` ignores values that are ENTIRELY a known fake (e.g. `not-a-token`, `test`, `dummy`, `placeholder`, `<your-token>`, `\`). Substring matches such as `test-9fK2…` are still flagged. Covered by `--self-test` and `tests/secrets-gate.test.ts`.
+
 Baseline mode fails only on new or increased path+pattern counts. Do not commit baseline files from routine runs into the app repo unless intentionally adopted.
 
 ---
@@ -143,7 +145,10 @@ Byte-level encoding + source-file scan for evidence folders **before** zipping. 
 
 ```bash
 node scripts/qa/check-evidence-encoding.mjs <folder> [--fix]
+node scripts/qa/check-evidence-encoding.mjs --zip <zipfile> [<folder>]
 ```
+
+**Post-zip mode (`--zip`)** parses the ZIP central directory itself (`fs` + `zlib` only) and fails on: any arcname containing `\` (`BACKSLASH`), any source-extension entry (`SOURCE`), any text-extension entry with a UTF-16/UTF-8 BOM or NUL (inflated before checking), unreadable entries, and — when a `<folder>` is also given — a ZIP that is not inside that folder (`ZIP_OUTSIDE_FOLDER`). Output totals are prefixed `ZIP_` (`ZIP_SCANNED`, `ZIP_BACKSLASH`, `ZIP_UTF16`, `ZIP_UTF8_BOM`, `ZIP_NUL`, `ZIP_SOURCE`, `ZIP_UNREADABLE`, `ZIP_OUTSIDE_FOLDER`). `--fix` never modifies a ZIP.
 
 Walks `<folder>` recursively. For every `.txt` `.md` `.json` `.log` `.tsv` `.csv` `.patch` `.sql` file, reads **raw bytes** and flags:
 

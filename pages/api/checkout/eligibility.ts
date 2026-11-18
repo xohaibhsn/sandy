@@ -17,6 +17,14 @@ import {
   type TaxedPricedLineItem,
 } from "../../../lib/orderPricing";
 import type { TaxDestination } from "../../../lib/taxEngine";
+import { loadShippingSettings } from "../../../lib/shippingSettings";
+import { hasShippingSchema } from "../../../lib/shippingSchema";
+import {
+  isShippableItem,
+  loadShippingZones,
+  quoteShippingFromLines,
+  type QuoteLine,
+} from "../../../lib/shipping";
 
 const ELIG_LIMIT = 30;
 const ELIG_WINDOW_MS = 15 * 60 * 1000;
@@ -74,6 +82,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // Shipping (BATCH-12): flag off => shipping stays 0, no new reads. Flag on => same server-side
+    // quote as /api/orders and /api/tax-quote so the COD risk total includes shipping.
+    const shippingOn = (await loadShippingSettings()).shipping_enabled;
+    let shippingCity = "";
+    let shippingProvince = "";
+    if (shippingOn) {
+      shippingCity = typeof body.city === "string" ? body.city.trim().slice(0, 100) : "";
+      shippingProvince = typeof body.province === "string" ? body.province.trim().slice(0, 100) : "";
+      if (!(await hasShippingSchema(pool))) {
+        return res.status(503).json({ error: "Service unavailable" });
+      }
+    }
+
     let config: Awaited<ReturnType<typeof loadEffectiveTaxConfig>>;
     try {
       config = await loadEffectiveTaxConfig(pool, new Date());
@@ -85,7 +106,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const ids = normalized.items.map((i) => i.id);
     const placeholders = ids.map(() => "?").join(",");
     const [productRows] = await pool.query<RowDataPacket[]>(
-      `SELECT id, name, price, active, tax_class_id FROM products WHERE id IN (${placeholders})`,
+      `SELECT id, name, price, active, tax_class_id${
+        shippingOn ? ", stock, track_inventory, requires_shipping" : ""
+      } FROM products WHERE id IN (${placeholders})`,
       ids
     );
     const byId = new Map<number, RowDataPacket>();
@@ -111,7 +134,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const shipping = 0;
+    let shipping = 0;
     const goodsSubtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
     let discount = 0;
 
@@ -134,6 +157,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch {
         /* coupons table optional for eligibility soft path */
       }
+    }
+
+    if (shippingOn) {
+      const lines: QuoteLine[] = items.map((item) => {
+        const p = byId.get(item.product_id);
+        return {
+          price: item.price,
+          quantity: item.quantity,
+          shippable: isShippableItem({
+            requires_shipping: p?.requires_shipping,
+            stock: p?.stock,
+            track_inventory: p?.track_inventory,
+          }),
+        };
+      });
+      const zones = await loadShippingZones(pool);
+      const quote = quoteShippingFromLines({
+        zones,
+        lines,
+        city: shippingCity,
+        province: shippingProvince,
+        discountAmount: discount,
+        goodsSubtotal,
+      });
+      if (quote.unavailable) {
+        return res.status(503).json({ error: "Service unavailable" });
+      }
+      shipping = quote.amount;
     }
 
     const result = computeOrderTaxTotals({

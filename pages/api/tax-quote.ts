@@ -14,6 +14,14 @@ import {
   toTaxUnavailable,
 } from '../../lib/taxStore';
 import type { TaxDestination } from '../../lib/taxEngine';
+import { loadShippingSettings } from '../../lib/shippingSettings';
+import { hasShippingSchema } from '../../lib/shippingSchema';
+import {
+  isShippableItem,
+  loadShippingZones,
+  quoteShippingFromLines,
+  type QuoteLine,
+} from '../../lib/shipping';
 
 /**
  * Public, read-only checkout quote. The browser never computes tax: it sends
@@ -32,6 +40,10 @@ type QuoteProductRow = RowDataPacket & {
   price: unknown;
   active: unknown;
   tax_class_id: unknown;
+  /** Selected only when shipping_enabled = 1. */
+  stock?: unknown;
+  track_inventory?: unknown;
+  requires_shipping?: unknown;
 };
 
 type QuoteCouponRow = RowDataPacket & {
@@ -104,6 +116,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       destination = body.destination;
     }
 
+    // Shipping (BATCH-12): flag off => shipping stays 0 with no new reads or response keys.
+    const shippingOn = (await loadShippingSettings()).shipping_enabled;
+    let shippingCity = '';
+    let shippingProvince = '';
+    if (shippingOn) {
+      for (const field of ['city', 'province'] as const) {
+        const raw = body[field];
+        if (raw !== undefined && raw !== null && typeof raw !== 'string') {
+          return res.status(400).json({ error: 'Invalid request' });
+        }
+        const v = typeof raw === 'string' ? raw.trim() : '';
+        if (v.length > 100) return res.status(400).json({ error: 'Invalid request' });
+        if (field === 'city') shippingCity = v;
+        else shippingProvince = v;
+      }
+      if (!(await hasShippingSchema(pool))) {
+        return res.status(503).json({ error: 'Service unavailable' });
+      }
+    }
+
     // Tax config first: missing tables => fail safe, never a guessed rate.
     let config: Awaited<ReturnType<typeof loadEffectiveTaxConfig>>;
     try {
@@ -118,7 +150,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let productRows: QuoteProductRow[];
     try {
       [productRows] = await pool.query<QuoteProductRow[]>(
-        `SELECT id, name, price, active, tax_class_id FROM products WHERE id IN (${placeholders})`,
+        `SELECT id, name, price, active, tax_class_id${
+          shippingOn ? ', stock, track_inventory, requires_shipping' : ''
+        } FROM products WHERE id IN (${placeholders})`,
         ids
       );
     } catch (err) {
@@ -150,7 +184,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const shipping = 0;
+    // Coupon base is goods + shipping-so-far (0 here). Flag on: shipping is computed AFTER the discount.
+    let shipping = 0;
+    let shippingZone: string | null = null;
+    let shippingEstimate: string | null = null;
     const goodsSubtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
     let discount = 0;
     let persistedCoupon: string | null = null;
@@ -184,6 +221,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!d.ok) return res.status(500).json({ error: 'Unable to calculate totals' });
       discount = d.discount_amount;
       persistedCoupon = String(coupon.code);
+    }
+
+    if (shippingOn) {
+      const lines: QuoteLine[] = items.map((item) => {
+        const p = byId.get(item.product_id);
+        return {
+          price: item.price,
+          quantity: item.quantity,
+          shippable: isShippableItem({
+            requires_shipping: p?.requires_shipping,
+            stock: p?.stock,
+            track_inventory: p?.track_inventory,
+          }),
+        };
+      });
+      const zones = await loadShippingZones(pool);
+      const quote = quoteShippingFromLines({
+        zones,
+        lines,
+        city: shippingCity,
+        province: shippingProvince,
+        discountAmount: discount,
+        goodsSubtotal,
+      });
+      if (quote.unavailable) {
+        return res.status(503).json({ error: 'Service unavailable' });
+      }
+      shipping = quote.amount;
+      shippingZone = quote.zoneName;
+      shippingEstimate = quote.estimateText;
     }
 
     const result = computeOrderTaxTotals({
@@ -221,6 +288,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })),
       vat_amount: t.vat_amount,
       total: t.total,
+      ...(shippingOn
+        ? { shipping_zone: shippingZone, shipping_estimate: shippingEstimate }
+        : {}),
     });
   } catch (error: unknown) {
     console.error('[tax-quote] Unexpected failure:', error instanceof Error ? error.message : error);

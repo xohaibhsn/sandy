@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it, before, after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { deflateRawSync } from "node:zlib";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const script = path.join(repoRoot, "scripts", "qa", "check-evidence-encoding.mjs");
@@ -158,5 +159,223 @@ describe("check-evidence-encoding", () => {
     } finally {
       rmSync(clean, { recursive: true, force: true });
     }
+  });
+});
+
+/* ---------------- --zip mode (BATCH-12 H3) ---------------- */
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff;
+  for (const b of buf) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+type ZipSpec = { name: string; data: Buffer | string; method?: "store" | "deflate" };
+
+/** Build a ZIP in memory (stored or deflated entries), arcnames written verbatim (backslashes allowed). */
+function makeZip(specs: ZipSpec[]): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const s of specs) {
+    const raw = Buffer.isBuffer(s.data) ? s.data : Buffer.from(s.data, "utf8");
+    const deflate = (s.method ?? "deflate") === "deflate";
+    const body = deflate ? deflateRawSync(raw) : raw;
+    const name = Buffer.from(s.name, "utf8");
+    const crc = crc32(raw);
+
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0);
+    lh.writeUInt16LE(20, 4);
+    lh.writeUInt16LE(0x800, 6); // UTF-8 names
+    lh.writeUInt16LE(deflate ? 8 : 0, 8);
+    lh.writeUInt32LE(crc, 14);
+    lh.writeUInt32LE(body.length, 18);
+    lh.writeUInt32LE(raw.length, 22);
+    lh.writeUInt16LE(name.length, 26);
+    const local = Buffer.concat([lh, name, body]);
+
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0);
+    ch.writeUInt16LE(20, 4);
+    ch.writeUInt16LE(20, 6);
+    ch.writeUInt16LE(0x800, 8);
+    ch.writeUInt16LE(deflate ? 8 : 0, 10);
+    ch.writeUInt32LE(crc, 16);
+    ch.writeUInt32LE(body.length, 20);
+    ch.writeUInt32LE(raw.length, 24);
+    ch.writeUInt16LE(name.length, 28);
+    ch.writeUInt32LE(offset, 42);
+    centrals.push(Buffer.concat([ch, name]));
+
+    locals.push(local);
+    offset += local.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(specs.length, 8);
+  eocd.writeUInt16LE(specs.length, 10);
+  eocd.writeUInt32LE(cd.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, eocd]);
+}
+
+function runArgs(args: string[]) {
+  return spawnSync(process.execPath, [script, ...args], { encoding: "utf8", cwd: repoRoot });
+}
+
+function parseZipTotals(stdout: string) {
+  const get = (k: string) => {
+    const m = stdout.match(new RegExp(`^ZIP_${k}=(\\d+)$`, "m"));
+    assert.ok(m, `missing ZIP_${k} in output:\n${stdout}`);
+    return Number(m[1]);
+  };
+  return {
+    SCANNED: get("SCANNED"),
+    BACKSLASH: get("BACKSLASH"),
+    UTF16: get("UTF16"),
+    UTF8_BOM: get("UTF8_BOM"),
+    NUL: get("NUL"),
+    SOURCE: get("SOURCE"),
+    UNREADABLE: get("UNREADABLE"),
+    OUTSIDE_FOLDER: get("OUTSIDE_FOLDER"),
+  };
+}
+
+describe("check-evidence-encoding --zip", () => {
+  let dir: string;
+  before(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "sandy-zip-"));
+  });
+  after(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function zipFile(name: string, specs: ZipSpec[], where = dir) {
+    mkdirSync(where, { recursive: true });
+    const p = path.join(where, name);
+    writeFileSync(p, makeZip(specs));
+    return p;
+  }
+
+  it("passes a clean zip (deflated + stored entries, forward-slash arcnames)", () => {
+    const z = zipFile("clean.zip", [
+      { name: "evidence/report.md", data: "# ok\n" },
+      { name: "evidence/data.json", data: '{"a":1}\n', method: "store" },
+      { name: "evidence/img.png", data: Buffer.from([0x89, 0x50, 0x00, 0x01]) }, // binary ext not scanned
+      { name: "evidence/", data: "", method: "store" },
+    ]);
+    const r = runArgs(["--zip", z]);
+    assert.equal(r.status, 0, r.stderr || r.stdout);
+    const t = parseZipTotals(r.stdout);
+    assert.deepEqual(t, { SCANNED: 4, BACKSLASH: 0, UTF16: 0, UTF8_BOM: 0, NUL: 0, SOURCE: 0, UNREADABLE: 0, OUTSIDE_FOLDER: 0 });
+  });
+
+  it("fails on a backslash arcname", () => {
+    const z = zipFile("backslash.zip", [
+      { name: "evidence\\win.txt", data: "hello\n" },
+      { name: "evidence/ok.txt", data: "fine\n" },
+    ]);
+    const r = runArgs(["--zip", z]);
+    assert.equal(r.status, 1, r.stderr || r.stdout);
+    assert.match(r.stdout, /evidence\\win\.txt: BACKSLASH/);
+    assert.equal(parseZipTotals(r.stdout).BACKSLASH, 1);
+  });
+
+  it("fails on source-extension entries", () => {
+    for (const ext of ["js", "mjs", "cjs", "ts", "tsx", "py", "ps1", "sh"]) {
+      const z = zipFile(`src-${ext}.zip`, [{ name: `evidence/helper.${ext}`, data: "x\n" }]);
+      const r = runArgs(["--zip", z]);
+      assert.equal(r.status, 1, `.${ext}: ${r.stderr || r.stdout}`);
+      assert.match(r.stdout, new RegExp(`helper\\.${ext}: SOURCE`));
+      assert.equal(parseZipTotals(r.stdout).SOURCE, 1);
+    }
+  });
+
+  it("fails on UTF-16LE/BE BOM, UTF-8 BOM, and NUL in text entries (inflated before checking)", () => {
+    const z = zipFile("encoding.zip", [
+      { name: "le.md", data: Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("le", "utf16le")]) },
+      { name: "be.json", data: Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from([0x00, 0x62])]), method: "store" },
+      { name: "sub/bom.log", data: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("bom")]) },
+      { name: "nul.csv", data: Buffer.from([0x61, 0x00, 0x62]) },
+      { name: "clean.txt", data: "clean\n" },
+    ]);
+    const r = runArgs(["--zip", z]);
+    assert.equal(r.status, 1, r.stderr || r.stdout);
+    assert.match(r.stdout, /le\.md: UTF16,NUL/);
+    assert.match(r.stdout, /be\.json: UTF16,NUL/);
+    assert.match(r.stdout, /sub\/bom\.log: UTF8_BOM/);
+    assert.match(r.stdout, /nul\.csv: NUL/);
+    assert.doesNotMatch(r.stdout, /clean\.txt:/);
+    const t = parseZipTotals(r.stdout);
+    assert.equal(t.UTF16, 2);
+    assert.equal(t.UTF8_BOM, 1);
+    assert.equal(t.NUL, 3);
+    assert.equal(t.SCANNED, 5);
+  });
+
+  it("with a folder arg: passes when the zip is inside the folder", () => {
+    const folder = path.join(dir, "bundle");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(path.join(folder, "ok.md"), "fine\n", "utf8");
+    const z = zipFile("inside.zip", [{ name: "ok.md", data: "fine\n" }], folder);
+    const r = runArgs([folder, "--zip", z]);
+    assert.equal(r.status, 0, r.stderr || r.stdout);
+    assert.equal(parseZipTotals(r.stdout).OUTSIDE_FOLDER, 0);
+    assert.equal(parseTotals(r.stdout).SCANNED, 1); // folder scan still runs; zip ext not scanned
+  });
+
+  it("with a folder arg: fails when the zip is outside the folder", () => {
+    const folder = path.join(dir, "bundle2");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(path.join(folder, "ok.md"), "fine\n", "utf8");
+    const z = zipFile("outside.zip", [{ name: "ok.md", data: "fine\n" }]); // in `dir`, not `folder`
+    const r = runArgs([folder, "--zip", z]);
+    assert.equal(r.status, 1, r.stderr || r.stdout);
+    assert.match(r.stdout, /outside\.zip: ZIP_OUTSIDE_FOLDER/);
+    assert.equal(parseZipTotals(r.stdout).OUTSIDE_FOLDER, 1);
+  });
+
+  it("a sibling folder with a shared name prefix does not count as inside", () => {
+    const folder = path.join(dir, "ev");
+    const sibling = path.join(dir, "ev-other");
+    mkdirSync(folder, { recursive: true });
+    const z = zipFile("prefix.zip", [{ name: "a.md", data: "x\n" }], sibling);
+    const r = runArgs([folder, "--zip", z]);
+    assert.equal(r.status, 1, r.stderr || r.stdout);
+    assert.equal(parseZipTotals(r.stdout).OUTSIDE_FOLDER, 1);
+  });
+
+  it("folder scan alone is unchanged (no ZIP_ lines) and folder offenders still fail alongside a clean zip", () => {
+    const folder = path.join(dir, "bundle3");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(path.join(folder, "bad.md"), Buffer.from([0xef, 0xbb, 0xbf, 0x61]));
+    const noZip = runArgs([folder]);
+    assert.equal(noZip.status, 1);
+    assert.doesNotMatch(noZip.stdout, /ZIP_/);
+    const z = zipFile("clean3.zip", [{ name: "ok.md", data: "ok\n" }], folder);
+    const r = runArgs([folder, "--zip", z]);
+    assert.equal(r.status, 1, "folder BOM must still fail");
+    assert.match(r.stdout, /bad\.md: UTF8_BOM/);
+  });
+
+  it("usage/runtime errors exit 2: missing zip, non-zip file, --zip without value, --fix without folder", () => {
+    assert.equal(runArgs(["--zip", path.join(dir, "nope.zip")]).status, 2);
+    const notZip = path.join(dir, "notzip.zip");
+    writeFileSync(notZip, "this is not a zip file at all, just text padding.....");
+    assert.equal(runArgs(["--zip", notZip]).status, 2);
+    assert.equal(runArgs(["--zip"]).status, 2);
+    assert.equal(runArgs(["--zip", path.join(dir, "clean.zip"), "--fix"]).status, 2);
   });
 });

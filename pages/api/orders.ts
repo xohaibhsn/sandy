@@ -29,6 +29,14 @@ import { consumeVerificationToken } from '../../lib/otp';
 import { loadOrderProtectionSettings } from '../../lib/orderProtectionSettings';
 import { loadAccountSettings } from '../../lib/accountSettings';
 import { getCustomerSession } from '../../lib/customerAuth';
+import { loadShippingSettings } from '../../lib/shippingSettings';
+import { hasShippingSchema } from '../../lib/shippingSchema';
+import {
+  isShippableItem,
+  loadShippingZones,
+  quoteShippingFromLines,
+  type QuoteLine,
+} from '../../lib/shipping';
 
 const ALLOWED_PAYMENT_METHODS = new Set(['cod', 'jazzcash', 'easypaisa', 'bank']);
 
@@ -180,6 +188,10 @@ function buildCheckoutFingerprint(input: {
     advance_reference: string;
     advance_receipt_path: string;
   };
+  /** Only present when shipping_enabled = 1 (city is already part of the fingerprint). */
+  shippingExtras?: {
+    province: string;
+  };
 }): string {
   const items = [...input.items]
     .sort((a, b) => a.id - b.id)
@@ -207,6 +219,10 @@ function buildCheckoutFingerprint(input: {
     canonical.advance_receipt_path = input.protectionExtras.advance_receipt_path;
   }
 
+  if (input.shippingExtras) {
+    canonical.province = input.shippingExtras.province;
+  }
+
   return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
@@ -218,6 +234,9 @@ type ProductRow = RowDataPacket & {
   track_inventory: unknown;
   stock_quantity: unknown;
   tax_class_id: unknown;
+  /** Present only when shipping_enabled = 1 (selected conditionally). */
+  stock?: unknown;
+  requires_shipping?: unknown;
 };
 
 type CouponRow = RowDataPacket & {
@@ -243,6 +262,9 @@ type OrderRow = RowDataPacket & {
   coupon_code: unknown;
   discount_amount: unknown;
   vat_amount: unknown;
+  /** Present only when shipping_enabled = 1 (selected conditionally). */
+  shipping_amount?: unknown;
+  shipping_zone?: unknown;
 };
 
 type SnapshotLabelRow = RowDataPacket & { tax_label: unknown };
@@ -290,10 +312,13 @@ type ContactConfig = Awaited<ReturnType<typeof getContactConfig>>;
 
 async function buildAuthoritativeReplayResponse(
   orderId: string,
-  contact: ContactConfig
+  contact: ContactConfig,
+  shippingOn = false
 ): Promise<Record<string, unknown> | null> {
   const [orderRows] = await pool.query<OrderRow[]>(
-    `SELECT order_id, total, coupon_code, discount_amount, vat_amount
+    `SELECT order_id, total, coupon_code, discount_amount, vat_amount${
+      shippingOn ? ', shipping_amount, shipping_zone' : ''
+    }
      FROM orders WHERE order_id = ? LIMIT 1`,
     [orderId]
   );
@@ -348,6 +373,17 @@ async function buildAuthoritativeReplayResponse(
     tax_label = null;
   }
 
+  // Flag off: shipping is always 0 (unchanged). Flag on: the amount stored at create time.
+  let shipping = 0;
+  let shippingZone: string | null = null;
+  if (shippingOn) {
+    const storedShipping = parseDbMoney(order.shipping_amount ?? 0);
+    if (storedShipping === null) return null;
+    shipping = storedShipping;
+    const zoneRaw = order.shipping_zone;
+    shippingZone = typeof zoneRaw === 'string' && zoneRaw.trim() ? zoneRaw.trim() : null;
+  }
+
   return {
     tax_label,
     success: true,
@@ -355,7 +391,7 @@ async function buildAuthoritativeReplayResponse(
     whatsappUrl: contact.whatsappUrl,
     telegramUrl: contact.telegramUrl,
     subtotal: subtotalResult.amount,
-    shipping: 0,
+    shipping,
     vat_amount,
     discount_amount,
     total,
@@ -366,6 +402,7 @@ async function buildAuthoritativeReplayResponse(
       price: item.price,
       quantity: item.quantity,
     })),
+    ...(shippingOn ? { shipping_zone: shippingZone } : {}),
   };
 }
 
@@ -467,6 +504,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const protectionSettings = await loadOrderProtectionSettings();
     const protectionOn = protectionSettings.cod_protection_enabled;
 
+    // Shipping (BATCH-12). Flag off => shipping stays 0 with NO new reads, columns or response keys.
+    const shippingOn = (await loadShippingSettings()).shipping_enabled;
+    let shippingProvince = '';
+    if (shippingOn) {
+      const provinceRaw = readStringField(body.province, FIELD_MAX.city);
+      if (!provinceRaw.ok) {
+        return res.status(400).json({ error: 'Invalid request' });
+      }
+      shippingProvince = provinceRaw.value;
+    }
+
     const verificationToken =
       typeof body.verification_token === 'string' ? body.verification_token.trim() : '';
     const advanceReferenceRaw = readStringField(body.advance_reference, FIELD_MAX.payment_reference);
@@ -517,6 +565,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             },
           }
         : {}),
+      ...(shippingOn ? { shippingExtras: { province: shippingProvince } } : {}),
     });
 
     // Tax config is loaded server-side BEFORE any order state is created.
@@ -547,7 +596,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       accountCustomerId = null;
     }
 
-    const shipping = 0;
+    // Migration 0009 must be applied before shipping can be charged (never a wrong total).
+    if (shippingOn && !(await hasShippingSchema(pool))) {
+      return res.status(503).json({ error: 'Service unavailable' });
+    }
+
+    // Flag off: always 0. Flag on: computed server-side below, after the coupon discount is known.
+    let shipping = 0;
+    let shippingZoneName: string | null = null;
     let order_id = '';
     let createdNewOrder = false;
 
@@ -611,7 +667,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(409).json({ error: 'Checkout attempt conflict. Please try again.' });
         }
 
-        const replay = await buildAuthoritativeReplayResponse(existingOrderId, contact);
+        const replay = await buildAuthoritativeReplayResponse(existingOrderId, contact, shippingOn);
         if (!replay) {
           return res.status(500).json({ error: 'Unable to place order' });
         }
@@ -626,7 +682,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let productRows: ProductRow[];
       try {
         [productRows] = await connection.query<ProductRow[]>(
-          `SELECT id, name, price, active, track_inventory, stock_quantity, tax_class_id
+          `SELECT id, name, price, active, track_inventory, stock_quantity, tax_class_id${
+            shippingOn ? ', stock, requires_shipping' : ''
+          }
            FROM products
            WHERE id IN (${placeholders})
            ORDER BY id ASC
@@ -770,6 +828,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         persistedCoupon = null;
       }
 
+      if (shippingOn) {
+        // Server-authoritative shipping from the validated address + the shippable lines AFTER the
+        // coupon discount (free_min base). The coupon base above was goods-only, so there is no cycle.
+        try {
+          const lines: QuoteLine[] = authoritativeItems.map((item) => {
+            const p = byId.get(item.product_id);
+            return {
+              price: item.price,
+              quantity: item.quantity,
+              shippable: isShippableItem({
+                requires_shipping: p?.requires_shipping,
+                stock: p?.stock,
+                track_inventory: p?.track_inventory,
+              }),
+            };
+          });
+          const zones = await loadShippingZones(connection);
+          const quote = quoteShippingFromLines({
+            zones,
+            lines,
+            city: city.value,
+            province: shippingProvince,
+            discountAmount: discount_amount,
+            goodsSubtotal: subtotal,
+          });
+          if (quote.unavailable) {
+            // Items need shipping but no zone (not even a default) applies: fail closed.
+            throw new OrderHttpError(503, 'Service unavailable');
+          }
+          shipping = quote.amount;
+          shippingZoneName = quote.zoneName;
+        } catch (shipErr) {
+          if (shipErr instanceof OrderHttpError) throw shipErr;
+          console.error('[orders] Shipping computation failed');
+          throw new OrderHttpError(503, 'Service unavailable');
+        }
+      }
+
       const totalsResult = computeOrderTaxTotals({
         items: authoritativeItems,
         discountAmount: discount_amount,
@@ -883,8 +979,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,
               payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status,
               customer_phone_norm,customer_email_norm,risk_score,risk_reasons,otp_verified,
-              advance_amount,advance_reference,advance_receipt_path
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              advance_amount,advance_reference,advance_receipt_path${shippingOn ? ',shipping_amount,shipping_zone' : ''}
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${shippingOn ? ',?,?' : ''})`,
             [
               order_id,
               customer_name.value,
@@ -910,6 +1006,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               advanceAmount,
               advanceReference,
               advanceReceiptPath,
+              ...(shippingOn ? [shipping, shippingZoneName] : []),
             ]
           );
         } catch (insErr) {
@@ -920,7 +1017,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       } else {
         await connection.query(
-          'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status' +
+            (shippingOn ? ',shipping_amount,shipping_zone' : '') +
+            ') VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?' +
+            (shippingOn ? ',?,?' : '') +
+            ')',
           [
             order_id,
             customer_name.value,
@@ -938,6 +1039,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             vat_amount,
             payment_reference.value || null,
             'pending',
+            ...(shippingOn ? [shipping, shippingZoneName] : []),
           ]
         );
       }
@@ -1079,6 +1181,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     ? 'Bank Transfer'
                     : payment_method;
 
+          // Shipping row only when the flag is on AND there is something to show; flag off => ''.
+          const shippingRowHtml =
+            shippingOn && (shipping > 0 || shippingZoneName)
+              ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">Shipping${shippingZoneName ? ` (${escapeHtml(shippingZoneName)})` : ''}</span><span style="color:#111">${shipping > 0 ? formatPrice(shipping) : 'Free'}</span></div>`
+              : '';
+
           const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f5f5f5">
 <div style="max-width:620px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e5e5">
   <div style="background:#5B21B6;padding:28px 32px">
@@ -1110,7 +1218,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       <tbody>${itemRows}</tbody>
     </table>
     <div style="background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:16px 20px">
-      ${vat_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">${escapeHtml(taxLabel)}</span><span style="color:#111">${formatPrice(vat_amount)}</span></div>` : ''}
+      ${shippingRowHtml}${vat_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px"><span style="color:#888">${escapeHtml(taxLabel)}</span><span style="color:#111">${formatPrice(vat_amount)}</span></div>` : ''}
       ${discount_amount ? `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#16A34A"><span>Discount${persistedCoupon ? ` (${escapeHtml(persistedCoupon)})` : ''}</span><span>−${formatPrice(discount_amount)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:10px 0 4px;font-size:18px;font-weight:700;border-top:1px solid #e5e5e5;margin-top:6px"><span style="color:#111">Grand Total</span><span style="color:#5B21B6">${formatPrice(total)}</span></div>
     </div>
@@ -1153,6 +1261,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         price: item.price,
         quantity: item.quantity,
       })),
+      ...(shippingOn ? { shipping_zone: shippingZoneName } : {}),
     });
   } catch (error: unknown) {
     if (error instanceof OrderHttpError) {

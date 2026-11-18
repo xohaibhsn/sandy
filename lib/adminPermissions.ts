@@ -46,6 +46,7 @@ export type AdminPermission =
   | "audit:view"
   | "settings:order_protection"
   | "settings:accounts"
+  | "settings:shipping"
   | "customers:block";
 
 export const ALL_ADMIN_ROLES: readonly AdminRole[] = ["super_admin", "manager", "writer"];
@@ -81,6 +82,7 @@ const SUPER_ADMIN_PERMISSIONS: readonly AdminPermission[] = [
   "audit:view",
   "settings:order_protection",
   "settings:accounts",
+  "settings:shipping",
   "customers:block",
 ];
 
@@ -309,6 +311,16 @@ export const ADMIN_ENDPOINT_POLICY: readonly AdminEndpointPolicy[] = [
 
   { route: "/api/admin-order-protection", method: "GET", permission: "settings:order_protection" },
   { route: "/api/admin-accounts-settings", method: "GET", permission: "settings:accounts" },
+
+  { route: "/api/admin-shipping-zones", method: "GET", permission: "settings:shipping" },
+  { route: "/api/admin-shipping-zones", method: "POST", permission: "settings:shipping" },
+  { route: "/api/admin-shipping-zones", method: "PATCH", permission: "settings:shipping" },
+  { route: "/api/admin-shipping-zones", method: "DELETE", permission: "settings:shipping" },
+  { route: "/api/admin-couriers", method: "GET", permission: "settings:shipping" },
+  { route: "/api/admin-couriers", method: "POST", permission: "settings:shipping" },
+  { route: "/api/admin-couriers", method: "PATCH", permission: "settings:shipping" },
+  { route: "/api/admin-couriers", method: "DELETE", permission: "settings:shipping" },
+  { route: "/api/admin-shipping-settings", method: "GET", permission: "settings:shipping" },
 
   { route: "/api/upload", method: "POST", permission: "uploads:content" },
   { route: "/api/upload-favicon", method: "POST", permission: "uploads:favicon" },

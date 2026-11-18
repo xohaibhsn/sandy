@@ -6,6 +6,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const EXIT_OK = 0;
 const EXIT_FAIL = 1;
@@ -49,6 +50,45 @@ function parseArgs(argv) {
     } else usage();
   }
   return out;
+}
+
+/**
+ * Exact (whole-value, case-insensitive) test placeholders that are never real credentials.
+ * Intentionally narrow: a value only passes if the ENTIRE string is a known fake, so
+ * "test-9fK2xQ..." or "dummy-live-key-1234" style values stay flagged.
+ */
+const PLACEHOLDER_EXACT = new Set([
+  "not-a-token",
+  "not-a-real-token",
+  "not-a-secret",
+  "not-a-password",
+  "not-a-key",
+  "test",
+  "dummy",
+  "placeholder",
+  "changeme",
+  "change-me",
+  "example",
+  "sample",
+  "fake",
+  "mock",
+  "redacted",
+  "undefined",
+  "null",
+]);
+const PLACEHOLDER_PATTERNS = [
+  /^(?:test|dummy|fake|mock|sample|example|placeholder)[-_ ]?(?:token|secret|password|passwd|key|value)$/i,
+  /^your[-_ ]?(?:[a-z_-]+[-_ ])?(?:token|secret|password|key)(?:[-_ ]?here)?$/i,
+  /^<[^<>]{1,40}>$/, // <token>, <your-password>
+  /^\$\{[^}]{1,60}\}$/, // ${TOKEN}
+  /^x{4,}$/i,
+  /^\*{4,}$/,
+];
+
+function isKnownPlaceholderValue(value) {
+  const v = String(value).trim();
+  if (PLACEHOLDER_EXACT.has(v.toLowerCase())) return true;
+  return PLACEHOLDER_PATTERNS.some((re) => re.test(v));
 }
 
 /** Build patterns without embedding contiguous private-key / credential marker literals. */
@@ -105,7 +145,9 @@ function buildPatterns() {
     },
     {
       id: "secret_assignment",
-      re: /\b(?:password|passwd|secret|token|api_key|db_pass|db_user|db_host)\b\s*[:=]\s*['"][^'"]{4,}['"]/gi,
+      re: /\b(?:password|passwd|secret|token|api_key|db_pass|db_user|db_host)\b\s*[:=]\s*['"]([^'"]{4,})['"]/gi,
+      // H2: skip only whole-value, obviously fake test placeholders (never substring matches).
+      allow: (value) => isKnownPlaceholderValue(value),
     },
   ];
 }
@@ -188,6 +230,10 @@ function scanContent(filePath, text, patterns) {
       p.re.lastIndex = 0;
       let m;
       while ((m = p.re.exec(line))) {
+        if (typeof p.allow === "function" && m[1] !== undefined && p.allow(m[1])) {
+          if (m[0].length === 0) p.re.lastIndex += 1;
+          continue;
+        }
         findings.push({
           path: filePath.replace(/\\/g, "/"),
           line: i + 1,
@@ -339,6 +385,29 @@ function selfTest() {
   check("found slack", findings.some((f) => f.patternId === "slack_token"));
   check("found jwt", findings.some((f) => f.patternId === "jwt_shaped"));
   check("found assignment", findings.some((f) => f.patternId === "secret_assignment"));
+  // H2: placeholder tuning — negatives (not flagged) and positives (still flagged).
+  const fakeLine = (name, value) => [name, ': "', value, '"'].join("");
+  const negSample = [
+    fakeLine("token", "not-a-token"),
+    fakeLine("token", "not-a-real-token"),
+    fakeLine("password", "test"),
+    fakeLine("secret", "dummy"),
+    fakeLine("api_key", "placeholder"),
+    fakeLine("token", "<your-token>"),
+  ].join("\n");
+  check("placeholders not flagged", scanContent("neg.txt", negSample, patterns).length === 0);
+  const realish = [
+    fakeLine("password", "Rbac-Db-Staff-Pass-1!x"),
+    fakeLine("token", "test-9fK2xQvL8mPz"),
+    fakeLine("api_key", "dummy-live-4f8a9c2e7b1d"),
+    fakeLine("secret", "wJalrXUtnFEMI/K7MDENG/bPxRfiCY"),
+    fakeLine("db_pass", "Sup3r$ecretDbPw!"),
+  ].join("\n");
+  check(
+    "realistic secrets still flagged",
+    scanContent("pos.txt", realish, patterns).filter((f) => f.patternId === "secret_assignment").length === 5
+  );
+  check("placeholder helper exact only", isKnownPlaceholderValue("not-a-token") && !isKnownPlaceholderValue("not-a-token-xyz9"));
   check("reports length only shape", findings.every((f) => typeof f.length === "number" && f.length > 0));
   check("skip lockfile", isSkippedPath("package-lock.json"));
   check("skip node_modules", isSkippedPath("node_modules/x/y.js"));
@@ -366,4 +435,9 @@ function main() {
   }
 }
 
-main();
+export { buildPatterns, scanContent, isKnownPlaceholderValue };
+
+// Only run the CLI when executed directly (tests import the helpers above).
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}

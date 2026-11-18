@@ -6,6 +6,7 @@ import { requirePermission } from '../../lib/adminPermissions';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 import { assertSafeImageUrl, UrlValidationError } from '../../lib/urlValidation';
 import { TAX_CONFIG_UNAVAILABLE_MESSAGE, toTaxUnavailable } from '../../lib/taxStore';
+import { hasRequiresShippingColumn } from '../../lib/shippingSchema';
 
 /**
  * Optional products.tax_class_id from the product form.
@@ -51,6 +52,36 @@ async function writeProductTaxClass(productId: number, value: number | null): Pr
     const missingColumn = e?.errno === 1054 || e?.code === 'ER_BAD_FIELD_ERROR';
     // Clearing to default while the column does not exist yet is a no-op; anything else must surface.
     if (missingColumn && value === null) return;
+    throw err;
+  }
+}
+
+/**
+ * Optional products.requires_shipping from the product form (BATCH-12).
+ *  - undefined/null/'' => not sent: leave as-is (column default 1 on create)
+ *  - 0/1/true/false/'0'/'1' => write it (when the column exists)
+ */
+function readRequiresShippingInput(
+  raw: unknown
+): { ok: true; provided: false } | { ok: true; provided: true; value: 0 | 1 } | { ok: false; error: string } {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, provided: false };
+  if (raw === true || raw === 1 || raw === '1') return { ok: true, provided: true, value: 1 };
+  if (raw === false || raw === 0 || raw === '0') return { ok: true, provided: true, value: 0 };
+  return { ok: false, error: 'Requires shipping must be 0 or 1' };
+}
+
+/**
+ * Separate UPDATE (like tax_class_id) so products keep saving before migration 0009 is applied.
+ * Returns false when the column does not exist (nothing written, never an error).
+ */
+async function writeRequiresShipping(productId: number, value: 0 | 1): Promise<boolean> {
+  if (!(await hasRequiresShippingColumn(pool))) return false;
+  try {
+    await pool.query('UPDATE products SET requires_shipping = ? WHERE id = ?', [value, productId]);
+    return true;
+  } catch (err) {
+    const e = err as { errno?: number; code?: string };
+    if (e?.errno === 1054 || e?.code === 'ER_BAD_FIELD_ERROR') return false;
     throw err;
   }
 }
@@ -198,7 +229,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'POST') {
       const { name, description, price, category, badge, image, slug, track_inventory, stock_quantity,
         short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image,
-        tax_class_id } = req.body;
+        tax_class_id, requires_shipping } = req.body;
 
       const finalSlug = toSlug(slug || name);
       if (!name || !finalSlug) {
@@ -208,6 +239,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const taxInput = await readTaxClassInput(tax_class_id);
       if (!taxInput.ok) {
         return res.status(taxInput.status).json({ error: taxInput.error });
+      }
+
+      const shipInput = readRequiresShippingInput(requires_shipping);
+      if (!shipInput.ok) {
+        return res.status(400).json({ error: shipInput.error });
       }
 
       const trackResult = normalizeTrackInventory(
@@ -274,6 +310,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
           }
         }
+        // Default is 1 (ships); only write when the form sent a value (and the column exists).
+        if (shipInput.provided && shipInput.value === 0) {
+          await writeRequiresShipping(Number(result.insertId), 0);
+        }
         return res.status(200).json({ success: true, id: result.insertId, slug: finalSlug });
       } catch (err: any) {
         if (err?.code === 'ER_DUP_ENTRY') {
@@ -286,7 +326,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'PUT') {
       const { id, name, description, price, category, badge, image, active, slug, track_inventory, stock_quantity,
         short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image,
-        tax_class_id } = req.body;
+        tax_class_id, requires_shipping } = req.body;
 
       const finalSlug = toSlug(slug || name);
       if (!id || !name || !finalSlug) {
@@ -296,6 +336,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const taxInput = await readTaxClassInput(tax_class_id);
       if (!taxInput.ok) {
         return res.status(taxInput.status).json({ error: taxInput.error });
+      }
+
+      const shipInput = readRequiresShippingInput(requires_shipping);
+      if (!shipInput.ok) {
+        return res.status(400).json({ error: shipInput.error });
       }
 
       const numericPrice = parsePrice(price);
@@ -385,6 +430,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               error: 'Product was saved but its tax class could not be updated. Tax configuration unavailable.',
             });
           }
+        }
+        if (shipInput.provided) {
+          await writeRequiresShipping(Number(id), shipInput.value);
         }
         return res.status(200).json({ success: true, slug: finalSlug });
       } catch (err: any) {

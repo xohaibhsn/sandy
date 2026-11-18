@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { adminRequest } from "@/lib/adminRequest";
+import { fetchDashboardSummaryWithRetry } from "@/lib/dashboardSummaryFetch";
 import AdminBanner from "./AdminBanner";
 import { formatPrice } from "@/lib/site";
 import { LOW_STOCK_CONTENT_KEY } from "@/lib/dashboardExtras";
@@ -213,7 +214,10 @@ export default function DashboardCards({ enabled, onOpenOrder, onNavigateTab }: 
       q.set("from", from);
       q.set("to", to);
     }
-    const res = await adminRequest<DashboardSummary>(`/api/admin-dashboard-summary?${q.toString()}`);
+    // Finding 49: one retry (~1.5s) on network error / 5xx before the error banner.
+    const res = await fetchDashboardSummaryWithRetry<DashboardSummary>(
+      `/api/admin-dashboard-summary?${q.toString()}`
+    );
     applyResult(res);
   }, [enabled, preset, from, to, applyResult]);
 
@@ -228,7 +232,10 @@ export default function DashboardCards({ enabled, onOpenOrder, onNavigateTab }: 
         q.set("from", from);
         q.set("to", to);
       }
-      const res = await adminRequest<DashboardSummary>(`/api/admin-dashboard-summary?${q.toString()}`);
+      const res = await fetchDashboardSummaryWithRetry<DashboardSummary>(
+        `/api/admin-dashboard-summary?${q.toString()}`,
+        { isCancelled: () => cancelled }
+      );
       if (cancelled) return;
       applyResult(res);
     })();
