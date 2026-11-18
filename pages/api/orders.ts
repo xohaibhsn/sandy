@@ -27,6 +27,8 @@ import { evaluateCheckoutProtection } from '../../lib/codProtection';
 import { CUSTOMER_TEXTS } from '../../lib/customerTexts';
 import { consumeVerificationToken } from '../../lib/otp';
 import { loadOrderProtectionSettings } from '../../lib/orderProtectionSettings';
+import { loadAccountSettings } from '../../lib/accountSettings';
+import { getCustomerSession } from '../../lib/customerAuth';
 
 const ALLOWED_PAYMENT_METHODS = new Set(['cod', 'jazzcash', 'easypaisa', 'bank']);
 
@@ -531,6 +533,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Fail before creating an order if contact config cannot be retrieved.
     const contact = await getContactConfig();
 
+    // Customer accounts (BATCH-09): resolved BEFORE taking the transaction connection (the pool is tiny;
+    // a second pool query while holding one could starve under load). Flag off / guest / any lookup
+    // failure => null => no stamping and checkout behaves exactly as before.
+    let accountCustomerId: number | null = null;
+    try {
+      const accountSettings = await loadAccountSettings();
+      if (accountSettings.accounts_enabled) {
+        const { customer } = await getCustomerSession(req);
+        if (customer) accountCustomerId = customer.id;
+      }
+    } catch {
+      accountCustomerId = null;
+    }
+
     const shipping = 0;
     let order_id = '';
     let createdNewOrder = false;
@@ -924,6 +940,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             'pending',
           ]
         );
+      }
+
+      // Link the order to the signed-in customer (same transaction). Guests are untouched; a missing
+      // orders.customer_id column (migration 0008 not applied) skips the stamp instead of failing checkout.
+      if (accountCustomerId !== null) {
+        try {
+          await connection.query(
+            'UPDATE orders SET customer_id = ? WHERE order_id = ? AND customer_id IS NULL',
+            [accountCustomerId, order_id]
+          );
+        } catch (stampErr) {
+          if (!isMissingColumnError(stampErr)) throw stampErr;
+        }
       }
 
       for (const item of authoritativeItems) {

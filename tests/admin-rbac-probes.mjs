@@ -80,6 +80,8 @@ export const PROBES = {
 
   "GET /api/admin-order-protection": { url: "/api/admin-order-protection", ok: [200] },
 
+  "GET /api/admin-accounts-settings": { url: "/api/admin-accounts-settings", ok: [200] },
+
   "POST /api/upload": { url: "/api/upload", body: {}, ok: [400] },
   "POST /api/upload-favicon": { url: "/api/upload-favicon", body: {}, ok: [400] },
 };

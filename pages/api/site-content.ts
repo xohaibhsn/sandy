@@ -29,6 +29,11 @@ import {
   validateOrderProtectionSetting,
   resetOrderProtectionSettingsCache,
 } from '../../lib/orderProtectionSettings';
+import {
+  isAccountSettingsContentKey,
+  validateAccountSetting,
+  resetAccountSettingsCache,
+} from '../../lib/accountSettings';
 
 export class ContentValidationError extends Error {
   constructor(message: string) {
@@ -85,6 +90,14 @@ function persistSiteContentValue(
 
   if (isOrderProtectionContentKey(key)) {
     const parsed = validateOrderProtectionSetting(key, value);
+    if (!parsed.ok) {
+      throw new ContentValidationError(parsed.error);
+    }
+    return parsed.value;
+  }
+
+  if (isAccountSettingsContentKey(key)) {
+    const parsed = validateAccountSetting(key, value);
     if (!parsed.ok) {
       throw new ContentValidationError(parsed.error);
     }
@@ -428,6 +441,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ) {
         return;
       }
+      if (
+        requestedKeys.some((k) => k && isAccountSettingsContentKey(k)) &&
+        !requireSessionPermission(session, res, 'settings:accounts')
+      ) {
+        return;
+      }
 
       const upsert = async (contentKey: string, contentValue: string) => {
         const defaults = DEFAULTS.find((d) => d[0] === contentKey);
@@ -458,12 +477,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (prepared.some((row) => isOrderProtectionContentKey(row.contentKey))) {
           resetOrderProtectionSettingsCache();
         }
+        if (prepared.some((row) => isAccountSettingsContentKey(row.contentKey))) {
+          resetAccountSettingsCache();
+        }
       } else if (key) {
         const contentKey = String(key);
         const safeValue = persistSiteContentValue(contentKey, value);
         await upsert(contentKey, safeValue);
         if (isOrderProtectionContentKey(contentKey)) {
           resetOrderProtectionSettingsCache();
+        }
+        if (isAccountSettingsContentKey(contentKey)) {
+          resetAccountSettingsCache();
         }
       } else {
         return res.status(400).json({ error: 'No content keys provided' });
@@ -479,12 +504,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         'INSERT INTO site_content (content_key,content_value,content_type,page_name,label) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE content_value=?,label=?',
         [content_key, safeValue, content_type||'text', page_name||'', label||content_key, safeValue, label||content_key]
       );
+      if (isAccountSettingsContentKey(key)) {
+        resetAccountSettingsCache();
+      }
       return res.status(200).json({ success: true });
     }
 
     if (req.method === 'DELETE') {
       const { key } = req.query;
       await pool.query('DELETE FROM site_content WHERE content_key=?', [key]);
+      if (isAccountSettingsContentKey(key)) {
+        resetAccountSettingsCache();
+      }
       return res.status(200).json({ success: true });
     }
 

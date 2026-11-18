@@ -110,6 +110,7 @@ check("D3 matrix", () => {
     "tax:manage": [1, 0, 0],
     "audit:view": [1, 0, 0],
     "settings:order_protection": [1, 0, 0],
+    "settings:accounts": [1, 0, 0],
     "customers:block": [1, 1, 0],
   };
   const known = new Set(Object.keys(D3));
@@ -222,6 +223,7 @@ check("requirePermission() permissions match registry per route", () => {
       // second-stage permissions: branding keys and the COD order-protection keys
       allowed.add("site_content:write_branding");
       allowed.add("settings:order_protection");
+      allowed.add("settings:accounts");
     }
     const text = src[route];
     // Every permission-shaped literal in the route file (covers computed permissions in admin-orders).

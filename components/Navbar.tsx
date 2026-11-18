@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 import { SITE_NAME, SITE_NAME_CAPS } from "@/lib/site";
+import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
 
 export interface NavbarProps {
   logoUrl?: string;
@@ -27,6 +28,24 @@ export default function Navbar({
   const [logo, setLogo] = useState(logoUrl || "");
   const [categories, setCategories] = useState<{ name: string; slug: string }[]>([]);
   const brand = cmsText(sc, "site_title", SITE_NAME).toUpperCase() || SITE_NAME_CAPS;
+  // Customer accounts: strictly opt-in. Flag off => no link, no probe, no extra DOM.
+  const accountsOn = sc?.accounts_enabled === "1";
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    if (!accountsOn) return;
+    let cancelled = false;
+    fetch("/api/account/me", { credentials: "include", cache: "no-store" })
+      .then((r) => {
+        if (!cancelled) setSignedIn(r.ok);
+      })
+      .catch(() => {
+        if (!cancelled) setSignedIn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountsOn]);
 
   useEffect(() => {
     fetch("/api/public-categories")
@@ -192,6 +211,13 @@ export default function Navbar({
           <li><a href="/order-tracking" onClick={close}>{cmsText(sc, "nav_track", "Track Order")}</a></li>
           <li><a href="/blog" onClick={close}>{cmsText(sc, "nav_blog", "Blog")}</a></li>
           <li><a href="/contact" onClick={close}>{cmsText(sc, "nav_contact", "Contact")}</a></li>
+          {accountsOn && (
+            <li>
+              <a href={signedIn ? "/account" : "/account/login"} onClick={close}>
+                {signedIn ? CUSTOMER_TEXTS.NAV_ACCOUNT : CUSTOMER_TEXTS.NAV_LOGIN}
+              </a>
+            </li>
+          )}
           {cta === "cart" && (
             <li>
               <a href="/cart" className="nav-cta" onClick={close}>

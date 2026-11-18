@@ -320,6 +320,61 @@ export default function CartPage() {
   const [form, setForm] = useState({
     name: "", email: "", phone: "", address: "", area: "", city: "", postcode: "", province: "", notes: ""
   });
+  const accountsOn = sc?.accounts_enabled === "1";
+  const [addressPrefillDone, setAddressPrefillDone] = useState(false);
+
+  // Flag-gated client prefill from the customer's default saved address. No-op when accounts are off.
+  useEffect(() => {
+    if (!accountsOn || addressPrefillDone) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/account/addresses", { credentials: "include", cache: "no-store" });
+        if (!res.ok) {
+          if (!cancelled) setAddressPrefillDone(true);
+          return;
+        }
+        const data = (await res.json().catch(() => ({}))) as {
+          addresses?: Array<{
+            is_default?: number | boolean;
+            full_name?: string;
+            phone?: string;
+            line1?: string;
+            line2?: string;
+            city?: string;
+            province?: string;
+            postcode?: string;
+          }>;
+        };
+        const list = Array.isArray(data.addresses) ? data.addresses : [];
+        const preferred =
+          list.find((a) => a.is_default === 1 || a.is_default === true) || list[0];
+        if (!preferred || cancelled) {
+          if (!cancelled) setAddressPrefillDone(true);
+          return;
+        }
+        setForm((prev) => {
+          // Only fill empty fields so we never overwrite typing.
+          const next = { ...prev };
+          if (!next.name && preferred.full_name) next.name = String(preferred.full_name);
+          if (!next.phone && preferred.phone) next.phone = String(preferred.phone);
+          if (!next.address && preferred.line1) next.address = String(preferred.line1);
+          if (!next.area && preferred.line2) next.area = String(preferred.line2);
+          if (!next.city && preferred.city) next.city = String(preferred.city);
+          if (!next.province && preferred.province) next.province = String(preferred.province);
+          if (!next.postcode && preferred.postcode) next.postcode = String(preferred.postcode);
+          return next;
+        });
+      } catch {
+        /* ignore — guest checkout unchanged */
+      } finally {
+        if (!cancelled) setAddressPrefillDone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountsOn, addressPrefillDone]);
 
   // Coupon state
   const [couponCode, setCouponCode] = useState("");

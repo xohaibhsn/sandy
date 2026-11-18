@@ -45,6 +45,7 @@ export type AdminPermission =
   | "tax:manage"
   | "audit:view"
   | "settings:order_protection"
+  | "settings:accounts"
   | "customers:block";
 
 export const ALL_ADMIN_ROLES: readonly AdminRole[] = ["super_admin", "manager", "writer"];
@@ -79,6 +80,7 @@ const SUPER_ADMIN_PERMISSIONS: readonly AdminPermission[] = [
   "tax:manage",
   "audit:view",
   "settings:order_protection",
+  "settings:accounts",
   "customers:block",
 ];
 
@@ -306,6 +308,7 @@ export const ADMIN_ENDPOINT_POLICY: readonly AdminEndpointPolicy[] = [
   { route: "/api/admin-blacklist", method: "DELETE", permission: "customers:block" },
 
   { route: "/api/admin-order-protection", method: "GET", permission: "settings:order_protection" },
+  { route: "/api/admin-accounts-settings", method: "GET", permission: "settings:accounts" },
 
   { route: "/api/upload", method: "POST", permission: "uploads:content" },
   { route: "/api/upload-favicon", method: "POST", permission: "uploads:favicon" },
@@ -344,4 +347,16 @@ export const PUBLIC_API_ROUTES: readonly string[] = [
   "/api/checkout/eligibility",
   "/api/checkout/otp-start",
   "/api/checkout/otp-verify",
+  // Customer accounts (BATCH-09): flag-gated 404 when off; customer-cookie auth, never admin.
+  "/api/account/login-start",
+  "/api/account/login-verify",
+  "/api/account/logout",
+  "/api/account/me",
+  "/api/account/addresses",
+  "/api/account/wishlist",
+  "/api/account/profile",
+  "/api/account/delete",
+  "/api/account/orders/index",
+  "/api/account/orders/claim",
+  "/api/account/orders/[orderId]",
 ];

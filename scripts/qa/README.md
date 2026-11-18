@@ -134,3 +134,38 @@ Scans `app/`, `pages/`, `lib/`, `components/`, `hooks/` and root `*.ts` for `CRE
 `runtime-ddl-allowlist.json` is `{ "<file>": <max DDL count> }` and lists the runtime DDL that still exists. **It is now empty (`{}`): no runtime code creates or alters tables, so any DDL in `app/`, `pages/`, `lib/`, `components/` or `hooks/` fails the check.** Exit **1** if a file that is not in the allowlist contains DDL, or if a file's count goes above its allowlisted maximum. Exit **2** if the allowlist cannot be read. Counts that drop are reported as a NOTE: lower the number (or delete the entry) when you remove DDL from a file. Never raise a number to make the check pass; schema changes belong in `migrations/` and are run by the owner by hand.
 
 Output contains only file paths, counts and rule names. It never prints source lines.
+
+---
+
+## `check-evidence-encoding.mjs` (mandatory pre-zip gate — D36)
+
+Byte-level encoding + source-file scan for evidence folders **before** zipping. Node built-ins only.
+
+```bash
+node scripts/qa/check-evidence-encoding.mjs <folder> [--fix]
+```
+
+Walks `<folder>` recursively. For every `.txt` `.md` `.json` `.log` `.tsv` `.csv` `.patch` `.sql` file, reads **raw bytes** and flags:
+
+- UTF-16LE BOM (`FF FE`)
+- UTF-16BE BOM (`FE FF`)
+- UTF-8 BOM (`EF BB BF`)
+- any `NUL` (`0x00`) byte
+
+Also flags `.js` `.mjs` `.cjs` `.ts` `.tsx` `.py` `.ps1` `.sh` as `SOURCE_IN_EVIDENCE` (must be removed by hand — never shipped in the ZIP).
+
+Prints one line per offender (`rel/path: KIND[,KIND…]`) then totals:
+
+```
+SCANNED=…
+UTF16=…
+UTF8_BOM=…
+NUL=…
+SOURCE=…
+```
+
+Exit **1** if any offender remains; exit **0** only when all totals are 0. A scan that prints zeros while offenders still exist is a gate failure — this script must not false-pass.
+
+`--fix` rewrites UTF-16 / UTF-8-BOM text files to UTF-8 **without** BOM, then rescans. It never touches source files. NUL-only files without a BOM are reported but not auto-rewritten.
+
+**Mandatory:** run this on the artifacts folder (with `--fix` if needed) and ship the full stdout as `encoding-scan.txt` with exit code 0 before creating the evidence ZIP.

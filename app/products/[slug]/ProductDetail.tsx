@@ -7,6 +7,7 @@ import Navbar from "@/components/Navbar";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { formatPrice } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
+import WishlistButton from "@/components/WishlistButton";
 import { cmsFill, cmsText, useSiteContent } from "@/hooks/useSiteContent";
 import { getPublicAvailability } from "@/lib/inventoryAvailability";
 
@@ -217,6 +218,7 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
                       ? (hovering ? cmsText(sc, "pdp_remove", "Remove from cart") : cmsText(sc, "pdp_added", "Added to cart"))
                       : cmsText(sc, "pdp_add", "Add to cart")}
                 </button>
+                <WishlistButton productId={product.id} />
                 <a href="/cart" className="cart-link">{cmsText(sc, "pdp_view_cart", "View Cart & Checkout →")}</a>
               </div>
             </div>
