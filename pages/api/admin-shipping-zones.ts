@@ -3,7 +3,13 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
 import { loadShippingSettings } from '../../lib/shippingSettings';
-import { normaliseCity, resetShippingZonesCache } from '../../lib/shipping';
+import { resetShippingZonesCache } from '../../lib/shipping';
+import { normaliseCity } from '../../lib/shippingNormalise';
+import {
+  findZoneListOverlap,
+  formatOverlapError,
+  type OverlapZoneInput,
+} from '../../lib/shippingZoneOverlap';
 
 /**
  * Shipping zones CRUD (SANDY-BATCH-12). super_admin only (settings:shipping), every method.
@@ -17,6 +23,10 @@ import { normaliseCity, resetShippingZonesCache } from '../../lib/shipping';
  * Rules enforced on every write: name 1-120; rate >= 0; free_min null or >= 0; at most ONE active
  * default zone; while shipping_enabled = 1 the single active default zone can not be removed,
  * deactivated or un-defaulted (the flag would otherwise be left on with no fallback zone).
+ * BATCH-14: an active zone may not share a city/province (case/whitespace-insensitive) with
+ * another active zone; inactive zones do not block; empty default lists are exempt. The check
+ * and write share one transaction (FOR UPDATE on active rows) so concurrent saves cannot both
+ * succeed. Overlaps are write-only — GET/list never rejects pre-existing data.
  * No runtime DDL: a missing table answers 503 { error: "Service unavailable" }.
  */
 
@@ -173,6 +183,17 @@ function serialise(row: ZoneRow) {
 const ZONE_COLUMNS =
   'id, name, cities, provinces, is_default, rate, free_min, estimate_text, active, sort_order';
 
+function asOverlapZones(rows: ZoneRow[]): OverlapZoneInput[] {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
+    id: Number(row.id),
+    name: String(row.name ?? ''),
+    cities: row.cities,
+    provinces: row.provinces,
+    active: Number(row.active) === 1 ? 1 : 0,
+    is_default: Number(row.is_default) === 1 ? 1 : 0,
+  }));
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   noStore(res);
 
@@ -215,15 +236,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const conn = await pool.getConnection();
       try {
         await conn.beginTransaction();
+        // Lock every active zone (and all rows so a concurrent insert cannot sneak past).
+        const [lockedRows] = await conn.query<ZoneRow[]>(
+          `SELECT ${ZONE_COLUMNS} FROM shipping_zones ORDER BY id ASC FOR UPDATE`
+        );
         if (active === 1 && isDefault === 1) {
-          const [defs] = await conn.query<RowDataPacket[]>(
-            'SELECT id FROM shipping_zones WHERE active = 1 AND is_default = 1 FOR UPDATE'
+          const defs = (Array.isArray(lockedRows) ? lockedRows : []).filter(
+            (z) => Number(z.active) === 1 && Number(z.is_default) === 1
           );
-          if (Array.isArray(defs) && defs.length > 0) {
+          if (defs.length > 0) {
             await conn.rollback();
             return res.status(409).json({
               error: 'An active default zone already exists. Unset it before creating another.',
             });
+          }
+        }
+        if (active === 1) {
+          const conflict = findZoneListOverlap({
+            cities,
+            provinces,
+            excludeZoneId: null,
+            otherZones: asOverlapZones(lockedRows),
+          });
+          if (conflict) {
+            await conn.rollback();
+            return res.status(409).json({ error: formatOverlapError(conflict) });
           }
         }
         const [result] = await conn.query<ResultSetHeader>(
@@ -254,11 +291,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const conn = await pool.getConnection();
       try {
         await conn.beginTransaction();
-        const [existingRows] = await conn.query<ZoneRow[]>(
-          `SELECT ${ZONE_COLUMNS} FROM shipping_zones WHERE id = ? LIMIT 1 FOR UPDATE`,
-          [id]
+        const [lockedRows] = await conn.query<ZoneRow[]>(
+          `SELECT ${ZONE_COLUMNS} FROM shipping_zones ORDER BY id ASC FOR UPDATE`
         );
-        const existing = Array.isArray(existingRows) ? existingRows[0] : undefined;
+        const existing = (Array.isArray(lockedRows) ? lockedRows : []).find(
+          (z) => Number(z.id) === id
+        );
         if (!existing) {
           await conn.rollback();
           return res.status(404).json({ error: 'Zone not found' });
@@ -268,18 +306,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const params: unknown[] = [];
         let nextActive = Number(existing.active) === 1 ? 1 : 0;
         let nextDefault = Number(existing.is_default) === 1 ? 1 : 0;
+        let nextCities: string | null = existing.cities;
+        let nextProvinces: string | null = existing.provinces;
 
         if (body.name !== undefined) {
           sets.push('name = ?');
           params.push(parseName(body.name));
         }
         if (body.cities !== undefined) {
+          nextCities = parseList(body.cities, 'Cities');
           sets.push('cities = ?');
-          params.push(parseList(body.cities, 'Cities'));
+          params.push(nextCities);
         }
         if (body.provinces !== undefined) {
+          nextProvinces = parseList(body.provinces, 'Provinces');
           sets.push('provinces = ?');
-          params.push(parseList(body.provinces, 'Provinces'));
+          params.push(nextProvinces);
         }
         if (body.rate !== undefined) {
           sets.push('rate = ?');
@@ -320,11 +362,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const willBeActiveDefault = nextActive === 1 && nextDefault === 1;
 
         if (willBeActiveDefault && !wasActiveDefault) {
-          const [defs] = await conn.query<RowDataPacket[]>(
-            'SELECT id FROM shipping_zones WHERE active = 1 AND is_default = 1 AND id <> ? FOR UPDATE',
-            [id]
+          const defs = (Array.isArray(lockedRows) ? lockedRows : []).filter(
+            (z) =>
+              Number(z.id) !== id && Number(z.active) === 1 && Number(z.is_default) === 1
           );
-          if (Array.isArray(defs) && defs.length > 0) {
+          if (defs.length > 0) {
             await conn.rollback();
             return res.status(409).json({
               error: 'An active default zone already exists. Unset it before choosing another.',
@@ -337,6 +379,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(409).json({
             error: 'Shipping is enabled: turn it off before removing the active default zone.',
           });
+        }
+
+        if (nextActive === 1) {
+          const conflict = findZoneListOverlap({
+            cities: nextCities,
+            provinces: nextProvinces,
+            excludeZoneId: id,
+            otherZones: asOverlapZones(lockedRows),
+          });
+          if (conflict) {
+            await conn.rollback();
+            return res.status(409).json({ error: formatOverlapError(conflict) });
+          }
         }
 
         await conn.query(`UPDATE shipping_zones SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);

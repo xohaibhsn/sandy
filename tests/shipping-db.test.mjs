@@ -609,6 +609,134 @@ await section("8 admin-products requires_shipping", async () => {
   resetShippingSchemaCache();
 });
 
+/* ------------------------------------------------------------------ 8b. cross-zone city/province overlap (BATCH-14) */
+await section("8b cross-zone city/province overlap", async () => {
+  resetCaches();
+  await setFlag("0");
+
+  const zonesBefore = Number(
+    (await one(pool, "SELECT COUNT(*) AS c FROM shipping_zones")).c
+  );
+
+  // create B with " lahore " while A (Lahore zone) is active -> 409, nothing written
+  let r = await admin(zonesHandler, "POST", "/api/admin-shipping-zones", {
+    name: "Overlap B",
+    cities: " lahore ",
+    rate: 50,
+  });
+  eq(r.statusCode, 409, JSON.stringify(r.body));
+  ok(String(r.body.error || "").toLowerCase().includes("lahore"), r.body.error);
+  eq(
+    Number((await one(pool, "SELECT COUNT(*) AS c FROM shipping_zones")).c),
+    zonesBefore,
+    "rejected create must not insert"
+  );
+  eq(await count(pool, "SELECT COUNT(*) AS c FROM shipping_zones WHERE name = ?", ["Overlap B"]), 0);
+
+  // edit A keeps Lahore OK
+  r = await admin(zonesHandler, "PATCH", "/api/admin-shipping-zones", {
+    id: lahoreZoneId,
+    cities: "Lahore\nKasur",
+  });
+  eq(r.statusCode, 200, JSON.stringify(r.body));
+
+  // legacy custom value preserved on update
+  r = await admin(zonesHandler, "POST", "/api/admin-shipping-zones", {
+    name: "Legacy custom zone",
+    cities: "CustomVille X",
+    rate: 15,
+  });
+  eq(r.statusCode, 200, JSON.stringify(r.body));
+  const legacyId = r.body.id;
+  r = await admin(zonesHandler, "PATCH", "/api/admin-shipping-zones", {
+    id: legacyId,
+    cities: "CustomVille X",
+    name: "Legacy custom zone",
+  });
+  eq(r.statusCode, 200, JSON.stringify(r.body));
+  r = await admin(zonesHandler, "GET", "/api/admin-shipping-zones");
+  const legacy = (r.body.zones || []).find((z) => z.id === legacyId);
+  ok(legacy, "legacy zone listed");
+  eq(String(legacy.cities).trim(), "CustomVille X");
+
+  // deactivate A(Multan) -> B with Multan OK -> reactivate A => rejected
+  r = await admin(zonesHandler, "POST", "/api/admin-shipping-zones", {
+    name: "Multan A",
+    cities: "Multan",
+    rate: 20,
+  });
+  eq(r.statusCode, 200, JSON.stringify(r.body));
+  const multanA = r.body.id;
+  r = await admin(zonesHandler, "PATCH", "/api/admin-shipping-zones", { id: multanA, active: 0 });
+  eq(r.statusCode, 200);
+  r = await admin(zonesHandler, "POST", "/api/admin-shipping-zones", {
+    name: "Multan B",
+    cities: "Multan",
+    rate: 21,
+  });
+  eq(r.statusCode, 200, JSON.stringify(r.body));
+  const multanB = r.body.id;
+  r = await admin(zonesHandler, "PATCH", "/api/admin-shipping-zones", { id: multanA, active: 1 });
+  eq(r.statusCode, 409, "reactivate collides with Multan B");
+  ok(String(r.body.error || "").toLowerCase().includes("multan"), r.body.error);
+
+  // cleanup Multan + legacy (hard delete — unused by orders)
+  for (const id of [multanB, multanA, legacyId]) {
+    r = await admin(zonesHandler, "DELETE", "/api/admin-shipping-zones", { id });
+    eq(r.statusCode, 200, `cleanup ${id}`);
+  }
+
+  // concurrent double-create of the same city => exactly one succeeds
+  clear();
+  const [c1, c2] = await Promise.all([
+    admin(zonesHandler, "POST", "/api/admin-shipping-zones", {
+      name: "Sialkot Race 1",
+      cities: "Sialkot",
+      rate: 30,
+    }),
+    admin(zonesHandler, "POST", "/api/admin-shipping-zones", {
+      name: "Sialkot Race 2",
+      cities: "Sialkot",
+      rate: 31,
+    }),
+  ]);
+  const raceOk = [c1, c2].filter((x) => x.statusCode === 200);
+  const raceConflict = [c1, c2].filter((x) => x.statusCode === 409);
+  eq(raceOk.length, 1, `statuses ${c1.statusCode}/${c2.statusCode}`);
+  eq(raceConflict.length, 1, `statuses ${c1.statusCode}/${c2.statusCode}`);
+  eq(
+    await count(pool, "SELECT COUNT(*) AS c FROM shipping_zones WHERE cities LIKE ?", ["%Sialkot%"]),
+    1
+  );
+  r = await admin(zonesHandler, "DELETE", "/api/admin-shipping-zones", { id: raceOk[0].body.id });
+  eq(r.statusCode, 200);
+
+  // RBAC: non-super_admin cannot call shipping zone APIs
+  const editorRaw = crypto.randomBytes(32).toString("hex");
+  const editorHash = crypto.createHash("sha256").update(editorRaw).digest("hex");
+  const expires = new Date(Date.now() + 3600 * 1000).toISOString().slice(0, 19).replace("T", " ");
+  await pool.query(
+    "INSERT INTO admin_sessions (token_hash, staff_id, is_master, role, name, expires_at) VALUES (?,?,?,?,?,?)",
+    [editorHash, null, 0, "manager", "batch14-manager", expires]
+  );
+  clear();
+  r = await invoke(zonesHandler, {
+    method: "GET",
+    url: "/api/admin-shipping-zones",
+    ...adminReq(editorRaw),
+  });
+  ok(r.statusCode === 401 || r.statusCode === 403, `manager GET => ${r.statusCode}`);
+  clear();
+  r = await invoke(zonesHandler, {
+    method: "POST",
+    url: "/api/admin-shipping-zones",
+    body: { name: "Nope", cities: "Faisalabad", rate: 1 },
+    ...adminReq(editorRaw),
+  });
+  ok(r.statusCode === 401 || r.statusCode === 403, `manager POST => ${r.statusCode}`);
+  eq(await count(pool, "SELECT COUNT(*) AS c FROM shipping_zones WHERE name = ?", ["Nope"]), 0);
+});
+
 /* ------------------------------------------------------------------ 9. delete soft-deactivate */
 await section("9 DELETE zone / courier in use => soft deactivate", async () => {
   resetCaches();

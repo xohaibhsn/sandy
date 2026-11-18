@@ -1,8 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminRequest } from "@/lib/adminRequest";
+import { normaliseCity } from "@/lib/shippingNormalise";
+import { PK_CITIES, PK_PROVINCES } from "@/lib/pkLocations";
 import AdminBanner from "./AdminBanner";
+import LocationMultiSelect, {
+  joinLocationList,
+  splitLocationList,
+  type LocationOption,
+} from "./LocationMultiSelect";
 
 /**
  * Shipping settings (SANDY-BATCH-12, super_admin only — the parent gates rendering and every API
@@ -369,6 +376,38 @@ export default function ShippingSettingsPanel({
   const setZ = <K extends keyof ZoneForm>(k: K, v: ZoneForm[K]) => setZoneForm((f) => ({ ...f, [k]: v }));
   const setC = <K extends keyof CourierForm>(k: K, v: CourierForm[K]) => setCourierForm((f) => ({ ...f, [k]: v }));
 
+  const cityOptions: LocationOption[] = useMemo(
+    () => PK_CITIES.map((c) => ({ value: c.name, label: c.name, group: c.province })),
+    []
+  );
+  const provinceOptions: LocationOption[] = useMemo(
+    () => PK_PROVINCES.map((p) => ({ value: p, label: p })),
+    []
+  );
+
+  /** Cities/provinces claimed by OTHER active zones (hidden in this form's controls). */
+  const { blockedCityKeys, blockedProvinceKeys } = useMemo(() => {
+    const cities = new Set<string>();
+    const provinces = new Set<string>();
+    const editingId = zoneForm.id;
+    for (const z of zones) {
+      if (!z.active) continue;
+      if (editingId !== null && z.id === editingId) continue;
+      for (const c of splitLocationList(z.cities)) {
+        const k = normaliseCity(c);
+        if (k) cities.add(k);
+      }
+      for (const p of splitLocationList(z.provinces)) {
+        const k = normaliseCity(p);
+        if (k) provinces.add(k);
+      }
+    }
+    return { blockedCityKeys: cities, blockedProvinceKeys: provinces };
+  }, [zones, zoneForm.id]);
+
+  const selectedCities = useMemo(() => splitLocationList(zoneForm.cities), [zoneForm.cities]);
+  const selectedProvinces = useMemo(() => splitLocationList(zoneForm.provinces), [zoneForm.provinces]);
+
   const toggleDisabled = busy || enabled === null || (enabled === false && !canEnable);
 
   return (
@@ -471,14 +510,28 @@ export default function ShippingSettingsPanel({
             </label>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 12 }}>
-            <label style={{ fontSize: 12 }}>Cities (one per line)<br />
-              <textarea style={{ ...inputStyle, width: 220, resize: "vertical" }} rows={4} value={zoneForm.cities}
-                onChange={(e) => setZ("cities", e.target.value)} />
-            </label>
-            <label style={{ fontSize: 12 }}>Provinces (one per line)<br />
-              <textarea style={{ ...inputStyle, width: 220, resize: "vertical" }} rows={4} value={zoneForm.provinces}
-                onChange={(e) => setZ("provinces", e.target.value)} />
-            </label>
+            <LocationMultiSelect
+              label="Cities"
+              testId="cities"
+              values={selectedCities}
+              options={cityOptions}
+              blockedKeys={blockedCityKeys}
+              disabled={busy}
+              allowCustom
+              customPlaceholder="Search or add a city…"
+              onChange={(next) => setZ("cities", joinLocationList(next))}
+            />
+            <LocationMultiSelect
+              label="Provinces"
+              testId="provinces"
+              values={selectedProvinces}
+              options={provinceOptions}
+              blockedKeys={blockedProvinceKeys}
+              disabled={busy}
+              allowCustom
+              customPlaceholder="Search or add a province…"
+              onChange={(next) => setZ("provinces", joinLocationList(next))}
+            />
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 18, alignItems: "center", marginBottom: 12 }}>
             <label style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}>

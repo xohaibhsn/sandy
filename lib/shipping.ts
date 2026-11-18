@@ -22,6 +22,12 @@ import {
   hasShippingOrderColumns,
   hasShippingTables,
 } from "./shippingSchema";
+export {
+  normaliseCity,
+  normaliseProvince,
+  parseZoneList,
+} from "./shippingNormalise";
+import { normaliseCity, normaliseProvince, parseZoneList } from "./shippingNormalise";
 
 type Queryable = Pick<Pool | PoolConnection, "query">;
 
@@ -71,39 +77,8 @@ export type QuoteLine = {
 };
 
 // ---------------------------------------------------------------------------
-// Pure helpers
+// Pure helpers (normaliseCity / normaliseProvince / parseZoneList → shippingNormalise)
 // ---------------------------------------------------------------------------
-
-/** trim, lowercase, strip punctuation (letters/digits/space only), collapse whitespace. */
-function normaliseText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  return String(value)
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function normaliseCity(value: unknown): string {
-  return normaliseText(value);
-}
-
-export function normaliseProvince(value: unknown): string {
-  return normaliseText(value);
-}
-
-/** Split an admin-entered list (newline / comma / semicolon / pipe separated) into normalised, unique entries. */
-export function parseZoneList(raw: string | string[] | null | undefined): string[] {
-  if (raw === null || raw === undefined) return [];
-  const parts = Array.isArray(raw) ? raw : String(raw).split(/[\r\n,;|]+/);
-  const out: string[] = [];
-  for (const p of parts) {
-    const n = normaliseText(p);
-    if (n && !out.includes(n)) out.push(n);
-  }
-  return out;
-}
 
 function isOn(v: unknown): boolean {
   return v === true || Number(v) === 1;
