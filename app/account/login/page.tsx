@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
+import { otpCodeSentText } from "@/lib/otp/messages";
 import AccountShell from "../AccountShell";
 import { accountFetch } from "../accountClient";
 
@@ -13,6 +14,7 @@ export default function AccountLoginPage() {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [challengeId, setChallengeId] = useState("");
+  const [channel, setChannel] = useState("");
   const [cooldown, setCooldown] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -39,13 +41,14 @@ export default function AccountLoginPage() {
     if (!trimmed || busy) return;
     setBusy(true);
     setError("");
-    const r = await accountFetch<{ challengeId: string }>("/api/account/login-start", {
+    const r = await accountFetch<{ challengeId: string; channel?: string }>("/api/account/login-start", {
       method: "POST",
       body: { phone: trimmed },
     });
     setBusy(false);
     if (r.ok && r.data?.challengeId) {
       setChallengeId(r.data.challengeId);
+      setChannel(r.data.channel === "whatsapp" ? "whatsapp" : "sms");
       setCode("");
       setCooldown(COOLDOWN_SECONDS);
     } else {
@@ -112,6 +115,9 @@ export default function AccountLoginPage() {
               verify();
             }}
           >
+            <p data-otp-sent={channel || "sms"} style={{ marginBottom: 12, fontSize: 14, lineHeight: 1.5, color: "#333" }}>
+              {otpCodeSentText(channel || "sms", phone)}
+            </p>
             <div className="acc-field">
               <label className="acc-label" htmlFor="acc-code">
                 {CUSTOMER_TEXTS.ACCOUNT_OTP_ENTER}

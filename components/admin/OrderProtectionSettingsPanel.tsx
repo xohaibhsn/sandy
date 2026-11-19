@@ -200,9 +200,14 @@ export default function OrderProtectionSettingsPanel({
               <label style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}>
                 <input type="checkbox" checked={form.cod_otp_enabled}
                   onChange={(e) => set("cod_otp_enabled", e.target.checked)} />
-                Require WhatsApp OTP for COD
+                {CUSTOMER_TEXTS.ADMIN_OTP_COD_LABEL}
               </label>
             </div>
+            {providerConfigured === false && (
+              <p data-otp-hostinger-hint="1" style={{ fontSize: 12, color: "#888", margin: "0 0 14px", lineHeight: 1.5 }}>
+                {CUSTOMER_TEXTS.ADMIN_OTP_HOSTINGER_HINT}
+              </p>
+            )}
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
               <label style={{ fontSize: 12 }}>New customer COD cap (Rs.)<br />

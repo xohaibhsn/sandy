@@ -1,3 +1,5 @@
+import { resolveOtpChannel } from "./channel";
+import { classifyTwilioFailure, OtpProviderError, readTwilioErrorCode } from "./twilioFailure";
 import type { OtpProvider, OtpPurpose } from "./types";
 
 type FetchLike = typeof fetch;
@@ -12,8 +14,8 @@ export type TwilioVerifyEnv = {
 const VERIFICATION_SID_RE = /^VE[0-9a-fA-F]{32}$/;
 
 /**
- * Twilio Verify API (WhatsApp channel) via plain fetch. No Twilio SDK.
- * Env values must be supplied by the caller (never logged).
+ * Twilio Verify API via plain fetch. No Twilio SDK.
+ * Channel comes from OTP_CHANNEL (default sms). Env values are never logged.
  */
 export function createTwilioVerifyProvider(
   env: TwilioVerifyEnv,
@@ -32,9 +34,10 @@ export function createTwilioVerifyProvider(
     name: "twilio_verify",
     async start(phoneE164: string, purpose: OtpPurpose) {
       void purpose;
+      const channel = resolveOtpChannel();
       const body = new URLSearchParams({
         To: phoneE164,
-        Channel: "whatsapp",
+        Channel: channel,
       });
       const res = await fetchImpl(`${base}/Verifications`, {
         method: "POST",
@@ -45,7 +48,9 @@ export function createTwilioVerifyProvider(
         body,
       });
       if (!res.ok) {
-        throw new Error("OTP_PROVIDER_START_FAILED");
+        const code = await readTwilioErrorCode(res);
+        const classified = classifyTwilioFailure(res.status, code);
+        throw new OtpProviderError(classified === "failed" ? "start_failed" : classified);
       }
       const data = (await res.json()) as { sid?: string };
       if (!data.sid || typeof data.sid !== "string") {
@@ -74,7 +79,14 @@ export function createTwilioVerifyProvider(
       } catch {
         return false;
       }
-      if (!res.ok) return false;
+      if (!res.ok) {
+        const code = await readTwilioErrorCode(res);
+        const classified = classifyTwilioFailure(res.status, code);
+        if (classified === "number_rejected" || classified === "max_attempts") {
+          throw new OtpProviderError(classified);
+        }
+        return false;
+      }
       try {
         const data = (await res.json()) as { status?: string };
         return data.status === "approved";

@@ -76,6 +76,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!result.ok) {
       // Commit so attempt counters / expiry transitions persist.
       await connection.commit();
+      if (result.code === "NUMBER_REJECTED" || result.code === "MAX_ATTEMPTS") {
+        return res.status(result.code === "MAX_ATTEMPTS" ? 429 : 400).json({
+          error: CUSTOMER_TEXTS.ACCOUNT_OTP_NUMBER_REJECTED,
+        });
+      }
       if (result.code === "LOCKED") {
         return res.status(429).json({ error: CUSTOMER_TEXTS.ACCOUNT_OTP_LOCKED });
       }

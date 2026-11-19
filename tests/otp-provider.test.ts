@@ -63,7 +63,8 @@ describe("mock OTP provider", () => {
 });
 
 describe("twilio_verify provider (mocked fetch)", () => {
-  it("start(): exact URL, method, Authorization shape, To=E.164 + Channel=whatsapp", async () => {
+  it("start(): exact URL, method, Authorization shape, To=E.164 + Channel=sms by default", async () => {
+    delete process.env.OTP_CHANNEL;
     const calls: CapturedCall[] = [];
     const fetchImpl = async (url: string | URL, init?: RequestInit) => {
       const headers = init?.headers as Record<string, string> | undefined;
@@ -90,7 +91,149 @@ describe("twilio_verify provider (mocked fetch)", () => {
     const form = parseForm(calls[0].body);
     assert.deepEqual(Object.keys(form).sort(), ["Channel", "To"]);
     assert.equal(form.To, SAMPLE_PHONE);
-    assert.equal(form.Channel, "whatsapp");
+    assert.equal(form.Channel, "sms");
+  });
+
+  it("start(): Channel=whatsapp only when OTP_CHANNEL=whatsapp", async () => {
+    const prevChannel = process.env.OTP_CHANNEL;
+    process.env.OTP_CHANNEL = "whatsapp";
+    try {
+      const calls: CapturedCall[] = [];
+      const fetchImpl = async (url: string | URL, init?: RequestInit) => {
+        calls.push({
+          url: String(url),
+          method: String(init?.method || "GET"),
+          authHeader: null,
+          contentType: null,
+          body: String(init?.body || ""),
+        });
+        return new Response(JSON.stringify({ sid: SAMPLE_VE_SID }), { status: 201 });
+      };
+      const p = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetchImpl as typeof fetch
+      );
+      await p.start(SAMPLE_PHONE, "login");
+      assert.equal(parseForm(calls[0].body).Channel, "whatsapp");
+    } finally {
+      if (prevChannel === undefined) delete process.env.OTP_CHANNEL;
+      else process.env.OTP_CHANNEL = prevChannel;
+    }
+  });
+
+  it("invalid OTP_CHANNEL defaults to sms and warns once without the value", async () => {
+    const prevChannel = process.env.OTP_CHANNEL;
+    const bad = "not-sms-AC-secret-923009998877";
+    process.env.OTP_CHANNEL = bad;
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(" "));
+    };
+    try {
+      resetOtpProviderCache();
+      const calls: string[] = [];
+      const fetchImpl = async (_url: string | URL, init?: RequestInit) => {
+        calls.push(String(init?.body || ""));
+        return new Response(JSON.stringify({ sid: SAMPLE_VE_SID }), { status: 201 });
+      };
+      const p = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetchImpl as typeof fetch
+      );
+      await p.start(SAMPLE_PHONE, "cod_checkout");
+      await p.start(SAMPLE_PHONE, "cod_checkout");
+      assert.equal(parseForm(calls[0]).Channel, "sms");
+      assert.equal(parseForm(calls[1]).Channel, "sms");
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /OTP_CHANNEL_INVALID/);
+      assert.equal(warnings[0].includes(bad), false);
+      assert.equal(warnings[0].includes(SAMPLE_PHONE), false);
+      assert.equal(warnings[0].includes(AUTH_TOKEN), false);
+    } finally {
+      console.warn = origWarn;
+      if (prevChannel === undefined) delete process.env.OTP_CHANNEL;
+      else process.env.OTP_CHANNEL = prevChannel;
+    }
+  });
+
+  it("maps Twilio failures to generic tokens and does not log phone, code, or provider text", async () => {
+    const logs: string[] = [];
+    const orig = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+    console.log = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+    console.warn = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+    console.error = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+    console.info = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+    delete process.env.OTP_CHANNEL;
+    try {
+      const leakBody = JSON.stringify({
+        code: 60200,
+        message: "Invalid parameter: To",
+        more_info: "https://www.twilio.com/docs/errors/60200",
+        to: SAMPLE_PHONE,
+        code_value: SAMPLE_CODE,
+      });
+      const fetch400 = async () => new Response(leakBody, { status: 400, headers: { "Content-Type": "application/json" } });
+      const p = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetch400 as typeof fetch
+      );
+      await assert.rejects(() => p.start(SAMPLE_PHONE, "cod_checkout"), /OTP_NUMBER_REJECTED/);
+
+      const fetch429 = async () => new Response(JSON.stringify({ code: 60203, message: "Max send attempts reached" }), { status: 429 });
+      const p429 = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetch429 as typeof fetch
+      );
+      await assert.rejects(() => p429.start(SAMPLE_PHONE, "cod_checkout"), /OTP_MAX_ATTEMPTS/);
+
+      const fetchFraud = async () => new Response(JSON.stringify({ code: 60410, message: "blocked " + SAMPLE_PHONE }), { status: 403 });
+      const pFraud = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetchFraud as typeof fetch
+      );
+      await assert.rejects(() => pFraud.start(SAMPLE_PHONE, "login"), /OTP_NUMBER_REJECTED/);
+
+      const fetchGeo = async () => new Response(JSON.stringify({ code: 60605, message: "geo " + AUTH_TOKEN }), { status: 403 });
+      const pGeo = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetchGeo as typeof fetch
+      );
+      await assert.rejects(() => pGeo.start(SAMPLE_PHONE, "login"), /OTP_NUMBER_REJECTED/);
+
+      const fetchCheckMax = async () => new Response(JSON.stringify({ code: 60202, message: "max checks " + SAMPLE_CODE }), { status: 429 });
+      const pCheck = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetchCheckMax as typeof fetch
+      );
+      await assert.rejects(() => pCheck.check(SAMPLE_VE_SID, SAMPLE_CODE), /OTP_MAX_ATTEMPTS/);
+
+      const fetchClass = async () => new Response("upstream unavailable", { status: 503 });
+      const pClass = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetchClass as typeof fetch
+      );
+      await assert.rejects(() => pClass.start(SAMPLE_PHONE, "cod_checkout"), /OTP_PROVIDER_START_FAILED/);
+
+      const fetchUnknown400 = async () => new Response(JSON.stringify({ message: "nope " + SAMPLE_PHONE }), { status: 400 });
+      const pUnknown = createTwilioVerifyProvider(
+        { accountSid: ACCOUNT_SID, authToken: AUTH_TOKEN, serviceSid: SERVICE_SID },
+        fetchUnknown400 as typeof fetch
+      );
+      await assert.rejects(() => pUnknown.start(SAMPLE_PHONE, "cod_checkout"), /OTP_NUMBER_REJECTED/);
+    } finally {
+      console.log = orig.log;
+      console.warn = orig.warn;
+      console.error = orig.error;
+      console.info = orig.info;
+    }
+    const blob = logs.join("\n");
+    assert.equal(blob.includes(SAMPLE_PHONE), false);
+    assert.equal(blob.includes(SAMPLE_CODE), false);
+    assert.equal(blob.includes(AUTH_TOKEN), false);
+    assert.equal(blob.includes(ACCOUNT_SID), false);
+    assert.equal(blob.includes(SERVICE_SID), false);
+    assert.equal(blob.includes("Invalid parameter"), false);
   });
 
   it("check(): VerificationSid + Code when ref is a Verification SID (never To=SID)", async () => {

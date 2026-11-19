@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
+import { otpCodeSentText } from "@/lib/otp/messages";
 
 const RESEND_COOLDOWN_SEC = 60;
 
@@ -27,11 +28,12 @@ async function postJson(url: string, body: Record<string, unknown>) {
 }
 
 /**
- * COD phone confirmation: send a WhatsApp code, enter the 6-digit code, verify.
+ * COD phone confirmation: send a code, enter the 6 digits, verify.
  * The parent should mount this with key={phone} so a changed phone number resets the step.
  */
 export default function CodOtpStep({ phone, onVerified, disabled }: Props) {
   const [challengeId, setChallengeId] = useState("");
+  const [channel, setChannel] = useState("");
   const [code, setCode] = useState("");
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -61,6 +63,7 @@ export default function CodOtpStep({ phone, onVerified, disabled }: Props) {
       return;
     }
     setChallengeId(id);
+    setChannel(r.data.channel === "whatsapp" ? "whatsapp" : "sms");
     setCode("");
     setCooldown(RESEND_COOLDOWN_SEC);
   };
@@ -123,6 +126,9 @@ export default function CodOtpStep({ phone, onVerified, disabled }: Props) {
 
       {challengeId && (
         <div className="form-group" style={{ marginTop: 14 }}>
+          <p data-otp-sent={channel || "sms"} style={{ fontSize: 13, color: "#333", lineHeight: 1.5, marginBottom: 8 }}>
+            {otpCodeSentText(channel || "sms", phone)}
+          </p>
           <label>{CUSTOMER_TEXTS.COD_OTP_ENTER}</label>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <input

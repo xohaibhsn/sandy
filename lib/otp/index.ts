@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { resetOtpChannelWarning } from "./channel";
 import { createMockOtpProvider } from "./mockProvider";
+import { otpFailureKind } from "./twilioFailure";
 import { createTwilioVerifyProvider } from "./twilioVerifyProvider";
 import type { OtpProvider, OtpPurpose } from "./types";
 
@@ -13,6 +15,7 @@ let cachedProvider: OtpProvider | null | undefined;
 export function resetOtpProviderCache(): void {
   cachedProvider = undefined;
   providerWarningLogged = false;
+  resetOtpChannelWarning();
 }
 
 export function isOtpProviderConfigured(): boolean {
@@ -130,7 +133,7 @@ export async function verifyOtpChallenge(
   input: { challengeId: string; code: string }
 ): Promise<
   | { ok: true; verificationToken: string; expiresInSec: number }
-  | { ok: false; code: "INVALID" | "LOCKED" | "EXPIRED" | "NOT_FOUND" }
+  | { ok: false; code: "INVALID" | "LOCKED" | "EXPIRED" | "NOT_FOUND" | "NUMBER_REJECTED" | "MAX_ATTEMPTS" }
 > {
   const provider = getOtpProvider();
   if (!provider) return { ok: false, code: "NOT_FOUND" };
@@ -160,7 +163,15 @@ export async function verifyOtpChallenge(
   }
 
   const checkTarget = String(row.provider_ref || row.phone_norm || "");
-  const good = await provider.check(checkTarget, input.code.trim());
+  let good = false;
+  try {
+    good = await provider.check(checkTarget, input.code.trim());
+  } catch (err) {
+    const kind = otpFailureKind(err);
+    if (kind === "number_rejected") return { ok: false, code: "NUMBER_REJECTED" };
+    if (kind === "max_attempts") return { ok: false, code: "MAX_ATTEMPTS" };
+    throw err;
+  }
   if (!good) {
     const next = attempts + 1;
     if (next >= OTP_MAX_ATTEMPTS) {

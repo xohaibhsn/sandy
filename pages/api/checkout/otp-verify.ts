@@ -48,6 +48,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const result = await verifyOtpChallenge(connection, { challengeId, code });
     if (!result.ok) {
       await connection.commit();
+      if (result.code === "NUMBER_REJECTED" || result.code === "MAX_ATTEMPTS") {
+        return res.status(result.code === "MAX_ATTEMPTS" ? 429 : 400).json({
+          error: CUSTOMER_TEXTS.COD_OTP_NUMBER_REJECTED,
+        });
+      }
       if (result.code === "LOCKED") {
         return res.status(429).json({ error: CUSTOMER_TEXTS.COD_OTP_LOCKED });
       }

@@ -47,6 +47,7 @@ requirePassword();
 installTsResolveHook();
 process.env.OTP_PROVIDER = "mock";
 process.env.NODE_ENV = "test";
+delete process.env.OTP_CHANNEL;
 delete process.env.NEXT_PUBLIC_SITE_URL;
 delete process.env.SITE_URL;
 
@@ -365,7 +366,8 @@ try {
     const ip = freshIp();
     const s = await call(H.loginStart, { method: "POST", body: { phone: p.phoneFormatted }, ip });
     eq(s.statusCode, 200, JSON.stringify(s.body));
-    eq(Object.keys(s.body).sort(), ["challengeId", "expiresInSec"]);
+    eq(Object.keys(s.body).sort(), ["challengeId", "channel", "expiresInSec"]);
+    eq(s.body.channel, "sms");
     ok(/^[0-9a-f-]{36}$/.test(s.body.challengeId));
     eq(s.body.expiresInSec, 600);
     eq(s.headers["cache-control"], "no-store");
@@ -488,12 +490,14 @@ try {
       sid: process.env.TWILIO_ACCOUNT_SID,
       auth: process.env.TWILIO_AUTH_TOKEN,
       svc: process.env.TWILIO_VERIFY_SERVICE_SID,
+      channel: process.env.OTP_CHANNEL,
     };
     const calls = [];
     let checkStatus = "approved";
     let startOk = true;
     try {
       process.env.OTP_PROVIDER = "twilio_verify";
+      delete process.env.OTP_CHANNEL;
       process.env.TWILIO_ACCOUNT_SID = ACCOUNT_SID;
       process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN;
       process.env.TWILIO_VERIFY_SERVICE_SID = SERVICE_SID;
@@ -513,7 +517,7 @@ try {
       eq(calls.length, 1);
       eq(calls[0].url, START_URL);
       eq(calls[0].method, "POST");
-      eq(calls[0].body, { To: "+92" + p.phoneNorm.slice(1), Channel: "whatsapp" }, "To is E.164, WhatsApp channel");
+      eq(calls[0].body, { To: "+92" + p.phoneNorm.slice(1), Channel: "sms" }, "To is E.164, SMS channel by default");
       ok(String(calls[0].auth).startsWith("Basic "), "Basic auth header shape");
       const ch = await one(pool, "SELECT provider, provider_ref, purpose, status FROM otp_challenges WHERE id = ?", [s.body.challengeId]);
       eq(ch, { provider: "twilio_verify", provider_ref: VE_SID, purpose: "login", status: "sent" });
@@ -553,6 +557,7 @@ try {
         ["TWILIO_ACCOUNT_SID", saved.sid],
         ["TWILIO_AUTH_TOKEN", saved.auth],
         ["TWILIO_VERIFY_SERVICE_SID", saved.svc],
+        ["OTP_CHANNEL", saved.channel],
       ]) {
         if (v === undefined) delete process.env[k];
         else process.env[k] = v;
