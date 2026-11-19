@@ -5,7 +5,7 @@ import { adminRequest } from "../../lib/adminRequest";
 import { formatPrice } from "../../lib/site";
 import { paymentLabel } from "./OrdersToolbar";
 
-type OrderStatus = "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled";
+type OrderStatus = "pending" | "confirmed" | "ready_for_pickup" | "dispatched" | "delivered" | "cancelled";
 
 type DetailOrder = {
   order_id?: string;
@@ -45,10 +45,20 @@ type DetailOrder = {
   rto?: boolean | null;
   rto_at?: string | null;
   couriers?: Array<{ id: number; name: string }>;
+  // Delivery ops: only present once migration 0010 is applied and the order / shipping flag warrants it (BATCH-17).
+  fulfilment?: "delivery" | "pickup";
+  shipping_area?: string | null;
+  rider_id?: number | null;
+  rider_name?: string | null;
+  pickup_point_id?: number | null;
+  pickup_point_name?: string | null;
+  pickup_point_address?: string | null;
+  pickup_point_hours?: string | null;
+  riders?: Array<{ id: number; name: string }>;
 };
 
 /** Courier + tracking number sent with a status change to "dispatched" (shipping enabled only). */
-export type DispatchShipping = { courier_id?: number; tracking_number?: string };
+export type DispatchShipping = { courier_id?: number; tracking_number?: string; rider_id?: number };
 
 const TRACKING_NUMBER_RE = /^[A-Za-z0-9-]{3,100}$/;
 
@@ -179,6 +189,7 @@ export default function OrderDetailDrawer({
   const [blockReason, setBlockReason] = useState("");
   const [dispatchCourier, setDispatchCourier] = useState("");
   const [dispatchTracking, setDispatchTracking] = useState("");
+  const [dispatchRider, setDispatchRider] = useState("");
   const [statusSelectNonce, setStatusSelectNonce] = useState(0);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ orderId: string; tone: "ok" | "error"; text: string } | null>(null);
@@ -255,7 +266,11 @@ export default function OrderDetailDrawer({
   const shippingUi = shippingEnabled && Array.isArray(order?.couriers);
   const courierOptions = Array.isArray(order?.couriers) ? order.couriers : [];
   const isRto = order?.rto === true;
-  const canRto = shippingUi && status === "dispatched" && !isRto;
+  // Delivery ops (BATCH-17): pickup orders never dispatch / RTO; own-rider dispatch picks an active rider.
+  const isPickup = order?.fulfilment === "pickup";
+  const opsShown = order?.fulfilment !== undefined;
+  const riderOptions = Array.isArray(order?.riders) ? order.riders : [];
+  const canRto = shippingUi && status === "dispatched" && !isRto && !isPickup;
   const shipZone = order?.shipping_zone && String(order.shipping_zone).trim() ? String(order.shipping_zone).trim() : "";
   const shipAmountNum = Number(order?.shipping_amount || 0);
   const showShipping = !!shipZone || shipAmountNum > 0;
@@ -272,6 +287,7 @@ export default function OrderDetailDrawer({
       setActionMsg(null);
       setDispatchCourier(order?.courier_id != null ? String(order.courier_id) : "");
       setDispatchTracking(trackingNumber);
+      setDispatchRider(order?.rider_id != null ? String(order.rider_id) : "");
       setDialog({ orderId, kind: "dispatch" });
       return;
     }
@@ -292,6 +308,7 @@ export default function OrderDetailDrawer({
     }
     const shipping: DispatchShipping = {};
     if (dispatchCourier) shipping.courier_id = Number(dispatchCourier);
+    if (dispatchRider) shipping.rider_id = Number(dispatchRider);
     if (tracking) shipping.tracking_number = tracking;
     setDialog(null);
     onStatusChange(orderId, "dispatched", shipping);
@@ -487,7 +504,28 @@ export default function OrderDetailDrawer({
             <Row label="Customer" value={text(order.customer_name)} />
             <Row label="Email" value={text(order.customer_email)} />
             <Row label="Phone / WhatsApp" value={text(order.customer_phone)} />
-            <Row label="Delivery address" value={text(address)} />
+            {opsShown ? (
+              <div data-order-fulfilment={isPickup ? "pickup" : "delivery"}>
+                <Row label="Fulfilment" value={isPickup ? "Pickup" : "Delivery"} />
+              </div>
+            ) : null}
+            {isPickup ? (
+              <div data-order-pickup="1">
+                <Row label="Pickup point" value={text(order.pickup_point_name)} />
+                {order.pickup_point_address ? <Row label="Pickup address" value={String(order.pickup_point_address)} /> : null}
+                {order.pickup_point_hours ? <Row label="Pickup hours" value={String(order.pickup_point_hours)} /> : null}
+              </div>
+            ) : (
+              <>
+                <Row label="Delivery address" value={text(address)} />
+                {order.shipping_area && String(order.shipping_area).trim() ? (
+                  <div data-order-area="1"><Row label="Delivery area" value={String(order.shipping_area)} /></div>
+                ) : null}
+                {order.rider_name && String(order.rider_name).trim() ? (
+                  <div data-order-rider="1"><Row label="Rider" value={String(order.rider_name)} /></div>
+                ) : null}
+              </>
+            )}
             <Row label="Payment method" value={paymentLabel(order.payment_method)} />
             {order.payment_reference && String(order.payment_reference).trim() ? (
               <Row label="Payment reference" value={String(order.payment_reference)} mono />
@@ -631,8 +669,12 @@ export default function OrderDetailDrawer({
                 >
                   <option value="pending">Pending</option>
                   <option value="confirmed">Confirmed</option>
-                  <option value="dispatched">Dispatched</option>
-                  <option value="delivered">Delivered</option>
+                  {isPickup ? (
+                    <option value="ready_for_pickup">Ready for pickup</option>
+                  ) : (
+                    <option value="dispatched">Dispatched</option>
+                  )}
+                  <option value="delivered">{isPickup ? "Picked up" : "Delivered"}</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
               )}
@@ -666,6 +708,21 @@ export default function OrderDetailDrawer({
                     ))}
                   </select>
                 </div>
+                {riderOptions.length > 0 ? (
+                  <div className="modal-field" data-dispatch-rider="1">
+                    <label htmlFor="dispatch-rider">Own rider (optional)</label>
+                    <select
+                      id="dispatch-rider"
+                      value={dispatchRider}
+                      onChange={(e) => setDispatchRider(e.target.value)}
+                    >
+                      <option value="">No rider</option>
+                      {riderOptions.map((r) => (
+                        <option key={r.id} value={String(r.id)}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div className="modal-field">
                   <label htmlFor="dispatch-tracking">Tracking number (optional)</label>
                   <input

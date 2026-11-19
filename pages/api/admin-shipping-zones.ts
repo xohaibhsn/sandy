@@ -4,6 +4,7 @@ import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
 import { loadShippingSettings } from '../../lib/shippingSettings';
 import { resetShippingZonesCache } from '../../lib/shipping';
+import { hasDeliveryOpsZoneColumns } from '../../lib/shippingSchema';
 import { normaliseCity } from '../../lib/shippingNormalise';
 import {
   findZoneListOverlap,
@@ -163,10 +164,35 @@ type ZoneRow = RowDataPacket & {
   estimate_text: string | null;
   active: number;
   sort_order: number;
+  delivery_method?: string | null;
+  same_day_cutoff?: string | null;
 };
 
-function serialise(row: ZoneRow) {
-  return {
+const CUTOFF_RE = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?$/;
+
+function parseDeliveryMethod(raw: unknown): 'courier' | 'own_rider' {
+  if (raw === undefined || raw === null || raw === '') return 'courier';
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'courier' || s === 'own_rider') return s;
+  throw new ValidationError("Delivery method must be 'courier' or 'own_rider'");
+}
+
+/** null/'' => NULL. Otherwise HH:MM or HH:MM:SS stored as MySQL TIME. */
+function parseSameDayCutoff(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  if (typeof raw !== 'string' && typeof raw !== 'number') {
+    throw new ValidationError('Same-day cut-off must be HH:MM');
+  }
+  const t = String(raw).trim();
+  const m = CUTOFF_RE.exec(t);
+  if (!m) throw new ValidationError('Same-day cut-off must be HH:MM');
+  const h = Number(m[1]);
+  if (h < 0 || h > 23) throw new ValidationError('Same-day cut-off must be HH:MM');
+  return `${String(h).padStart(2, '0')}:${m[2]}:00`;
+}
+
+function serialise(row: ZoneRow, includeOps: boolean) {
+  const base = {
     id: Number(row.id),
     name: String(row.name ?? ''),
     cities: row.cities ?? '',
@@ -178,10 +204,21 @@ function serialise(row: ZoneRow) {
     active: Number(row.active) === 1,
     sort_order: Number(row.sort_order ?? 0),
   };
+  if (!includeOps) return base;
+  const method = String(row.delivery_method ?? 'courier').trim().toLowerCase();
+  return {
+    ...base,
+    delivery_method: method === 'own_rider' ? 'own_rider' : 'courier',
+    same_day_cutoff:
+      row.same_day_cutoff === null || row.same_day_cutoff === undefined
+        ? null
+        : String(row.same_day_cutoff).slice(0, 8),
+  };
 }
 
 const ZONE_COLUMNS =
   'id, name, cities, provinces, is_default, rate, free_min, estimate_text, active, sort_order';
+const ZONE_COLUMNS_OPS = `${ZONE_COLUMNS}, delivery_method, same_day_cutoff`;
 
 function asOverlapZones(rows: ZoneRow[]): OverlapZoneInput[] {
   return (Array.isArray(rows) ? rows : []).map((row) => ({
@@ -206,13 +243,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    const opsCols = await hasDeliveryOpsZoneColumns(pool);
+    const zoneCols = opsCols ? ZONE_COLUMNS_OPS : ZONE_COLUMNS;
+
     if (method === 'GET') {
       const [rows] = await pool.query<ZoneRow[]>(
-        `SELECT ${ZONE_COLUMNS} FROM shipping_zones ORDER BY sort_order ASC, id ASC`
+        `SELECT ${zoneCols} FROM shipping_zones ORDER BY sort_order ASC, id ASC`
       );
       return res.status(200).json({
         success: true,
-        zones: (Array.isArray(rows) ? rows : []).map(serialise),
+        zones: (Array.isArray(rows) ? rows : []).map((r) => serialise(r, opsCols)),
       });
     }
 
@@ -220,6 +260,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       req.body && typeof req.body === 'object' && !Array.isArray(req.body)
         ? (req.body as Record<string, unknown>)
         : {};
+
+    // Migration 0010 missing: a write that carries the new fields cannot be honoured => 503 (never ignored).
+    if (
+      !opsCols &&
+      (method === 'POST' || method === 'PATCH') &&
+      (body.delivery_method !== undefined || body.same_day_cutoff !== undefined)
+    ) {
+      return res.status(503).json({ error: 'Service unavailable' });
+    }
 
     if (method === 'POST') {
       const name = parseName(body.name);
@@ -232,13 +281,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const isDefault = body.is_default === undefined ? 0 : toFlag(body.is_default);
       if (active === null || isDefault === null) throw new ValidationError('Invalid flag');
       const sort = parseSort(body.sort_order);
+      const deliveryMethod = opsCols ? parseDeliveryMethod(body.delivery_method) : null;
+      const cutoff = opsCols ? parseSameDayCutoff(body.same_day_cutoff) : null;
 
       const conn = await pool.getConnection();
       try {
         await conn.beginTransaction();
         // Lock every active zone (and all rows so a concurrent insert cannot sneak past).
         const [lockedRows] = await conn.query<ZoneRow[]>(
-          `SELECT ${ZONE_COLUMNS} FROM shipping_zones ORDER BY id ASC FOR UPDATE`
+          `SELECT ${zoneCols} FROM shipping_zones ORDER BY id ASC FOR UPDATE`
         );
         if (active === 1 && isDefault === 1) {
           const defs = (Array.isArray(lockedRows) ? lockedRows : []).filter(
@@ -263,12 +314,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(409).json({ error: formatOverlapError(conflict) });
           }
         }
-        const [result] = await conn.query<ResultSetHeader>(
-          `INSERT INTO shipping_zones
-             (name, cities, provinces, is_default, rate, free_min, estimate_text, active, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [name, cities, provinces, isDefault, rate, freeMin, estimate, active, sort]
-        );
+        const [result] = opsCols
+          ? await conn.query<ResultSetHeader>(
+              `INSERT INTO shipping_zones
+                 (name, cities, provinces, is_default, rate, free_min, estimate_text, active, sort_order,
+                  delivery_method, same_day_cutoff)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                name,
+                cities,
+                provinces,
+                isDefault,
+                rate,
+                freeMin,
+                estimate,
+                active,
+                sort,
+                deliveryMethod,
+                cutoff,
+              ]
+            )
+          : await conn.query<ResultSetHeader>(
+              `INSERT INTO shipping_zones
+                 (name, cities, provinces, is_default, rate, free_min, estimate_text, active, sort_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [name, cities, provinces, isDefault, rate, freeMin, estimate, active, sort]
+            );
         await conn.commit();
         resetShippingZonesCache();
         return res.status(200).json({ success: true, id: Number(result.insertId) });
@@ -292,7 +363,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         await conn.beginTransaction();
         const [lockedRows] = await conn.query<ZoneRow[]>(
-          `SELECT ${ZONE_COLUMNS} FROM shipping_zones ORDER BY id ASC FOR UPDATE`
+          `SELECT ${zoneCols} FROM shipping_zones ORDER BY id ASC FOR UPDATE`
         );
         const existing = (Array.isArray(lockedRows) ? lockedRows : []).find(
           (z) => Number(z.id) === id
@@ -352,6 +423,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           nextDefault = f;
           sets.push('is_default = ?');
           params.push(f);
+        }
+        if (opsCols && body.delivery_method !== undefined) {
+          sets.push('delivery_method = ?');
+          params.push(parseDeliveryMethod(body.delivery_method));
+        }
+        if (opsCols && body.same_day_cutoff !== undefined) {
+          sets.push('same_day_cutoff = ?');
+          params.push(parseSameDayCutoff(body.same_day_cutoff));
         }
         if (!sets.length) {
           await conn.rollback();
@@ -448,6 +527,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // orders.shipping_zone missing (migration 0009 partly applied): treat as in use, never hard delete.
         if (!isMissingColumn(err)) throw err;
         inUse = true;
+      }
+
+      // SANDY-BATCH-17: a zone pinned by a delivery area is soft-deactivated, never hard deleted.
+      if (!inUse && opsCols) {
+        try {
+          const [pinned] = await conn.query<RowDataPacket[]>(
+            'SELECT COUNT(*) AS c FROM shipping_areas WHERE zone_id = ?',
+            [id]
+          );
+          inUse = Number((Array.isArray(pinned) ? pinned[0]?.c : 0) || 0) > 0;
+        } catch (err) {
+          if (!isMissingTable(err)) throw err;
+        }
       }
 
       if (inUse) {

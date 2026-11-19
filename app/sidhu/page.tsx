@@ -114,6 +114,7 @@ const styles = `
   .status-pending { background:rgba(234,88,12,0.1); border:1px solid rgba(234,88,12,0.25); color:#EA580C; }
   .status-confirmed { background:rgba(91,33,182,0.1); border:1px solid rgba(91,33,182,0.3); color:#5B21B6; }
   .status-dispatched { background:rgba(37,99,235,0.1); border:1px solid rgba(37,99,235,0.25); color:#2563EB; }
+  .status-ready_for_pickup { background:rgba(8,145,178,0.1); border:1px solid rgba(8,145,178,0.28); color:#0E7490; }
   .status-delivered { background:rgba(22,163,74,0.1); border:1px solid rgba(22,163,74,0.3); color:#16A34A; }
   .status-cancelled { background:rgba(220,38,38,0.1); border:1px solid rgba(220,38,38,0.25); color:#DC2626; }
 
@@ -216,7 +217,7 @@ const demoCustomers = [
 type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff"|"tax";
 type StoreCategory = { id:number; name:string; slug:string; description:string; image:string; parent_id:number|null; active:number; sort_order:number; };
 type AdminRole = "super_admin"|"manager"|"writer";
-type OrderStatus = "pending"|"confirmed"|"dispatched"|"delivered"|"cancelled";
+type OrderStatus = "pending"|"confirmed"|"ready_for_pickup"|"dispatched"|"delivered"|"cancelled";
 type BlogPost = { id:number; title:string; slug:string; excerpt:string; content:string; category:string; emoji:string; badge:string; badgeText:string; featured_image:string; meta_title:string; meta_description:string; focus_keyword:string; status:"published"|"draft"; featured:boolean; canonical_url:string; faqs:Array<{question:string;answer:string}>; };
 
 function CmsField({
@@ -980,6 +981,7 @@ export default function AdminPage() {
     if (status === "dispatched" && shippingFields) {
       if (shippingFields.courier_id !== undefined) body.courier_id = shippingFields.courier_id;
       if (shippingFields.tracking_number) body.tracking_number = shippingFields.tracking_number;
+      if (shippingFields.rider_id !== undefined) body.rider_id = shippingFields.rider_id;
     }
     const res = await adminRequest("/api/admin-orders", {
       method: "PATCH",
@@ -1913,6 +1915,7 @@ export default function AdminPage() {
                 onExport={() => { void exportOrdersCsv(); }}
                 exporting={ordersExporting}
                 disabled={ordersLoading}
+                pickupEnabled={siteContent.pickup_enabled === "1"}
               />
               {ordersError && (
                 <div style={{padding:"12px 20px"}}>

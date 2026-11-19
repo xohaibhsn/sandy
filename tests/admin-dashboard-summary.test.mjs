@@ -366,10 +366,10 @@ async function legacyAssertions() {
       COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) AS pending_orders,
       COALESCE(SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END),0) AS delivered_orders,
       COALESCE(SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END),0) AS cancelled_orders,
-      COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN 1 ELSE 0 END),0) AS confirmed_sales_count,
+      COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN 1 ELSE 0 END),0) AS confirmed_sales_count,
       COALESCE(SUM(CASE WHEN status='pending' THEN total ELSE 0 END),0) AS pending_incl,
       COALESCE(SUM(CASE WHEN status='pending' THEN total - COALESCE(vat_amount,0) ELSE 0 END),0) AS pending_excl,
-      COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN total ELSE 0 END),0) AS confirmed_incl,
+      COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN total ELSE 0 END),0) AS confirmed_incl,
       COALESCE(SUM(CASE WHEN status='delivered' THEN total ELSE 0 END),0) AS revenue_incl,
       COALESCE(SUM(CASE WHEN status='cancelled' THEN total ELSE 0 END),0) AS cancelled_incl,
       COALESCE(SUM(CASE WHEN vat_amount IS NULL THEN 1 ELSE 0 END),0) AS vat_null_orders
@@ -418,6 +418,28 @@ async function legacyAssertions() {
     ) t`
   );
   eq(Number(cust[0].c), 7);
+
+  // BATCH-17: ready_for_pickup is an OPEN confirmed sale (counted in confirmed_*), never revenue (delivered only).
+  await pool.query(
+    `INSERT INTO orders (order_id, customer_name, customer_email, customer_phone, total, vat_amount, status, created_at)
+     VALUES ('DASH-RFP', 'R', 'r@ex.com', '0300', 321, 21, 'ready_for_pickup', '2026-11-10 22:00:00')`
+  );
+  const [rfp] = await pool.query(
+    `SELECT
+      COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN 1 ELSE 0 END),0) AS confirmed_sales_count,
+      COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN total ELSE 0 END),0) AS confirmed_incl,
+      COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN COALESCE(vat_amount,0) ELSE 0 END),0) AS tax_on_confirmed,
+      COALESCE(SUM(CASE WHEN status='delivered' THEN total ELSE 0 END),0) AS revenue_incl,
+      COALESCE(SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END),0) AS delivered_orders
+     FROM orders WHERE order_id LIKE 'DASH-%'`
+  );
+  eq(Number(rfp[0].confirmed_sales_count), 6, "ready_for_pickup counts as a confirmed sale");
+  eq(Number(rfp[0].confirmed_incl), 500 + 200 + 800 + 999 + 400 + 321);
+  eq(Number(rfp[0].tax_on_confirmed), 50 + 20 + 80 + 99 + 40 + 21);
+  eq(Number(rfp[0].revenue_incl), 2199, "revenue stays delivered-only");
+  eq(Number(rfp[0].delivered_orders), 3);
+  await pool.query("DELETE FROM orders WHERE order_id = 'DASH-RFP'");
+
   return { dayRev: Number(dayRows[0].rev), products: Number(prods[0].c), customers: Number(cust[0].c) };
 }
 
@@ -432,7 +454,7 @@ const PRESET_LABELS = [
   "Duplicate order",
   "Out of stock",
 ];
-const CONFIRMED = new Set(["confirmed", "dispatched", "delivered"]);
+const CONFIRMED = new Set(["confirmed", "ready_for_pickup", "dispatched", "delivered"]);
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const utcStr = (ms) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
@@ -731,12 +753,12 @@ function makeMirror(lib) {
         COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_orders,
         COALESCE(SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END), 0) AS delivered_orders,
         COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled_orders,
-        COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN 1 ELSE 0 END), 0) AS confirmed_sales_count,
+        COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN 1 ELSE 0 END), 0) AS confirmed_sales_count,
         COALESCE(SUM(CASE WHEN status = 'pending' THEN total ELSE 0 END), 0) AS pending_incl,
         COALESCE(SUM(CASE WHEN status = 'pending' THEN total - COALESCE(vat_amount, 0) ELSE 0 END), 0) AS pending_excl,
-        COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN total ELSE 0 END), 0) AS confirmed_incl,
-        COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN total - COALESCE(vat_amount, 0) ELSE 0 END), 0) AS confirmed_excl,
-        COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN COALESCE(vat_amount, 0) ELSE 0 END), 0) AS tax_on_confirmed,
+        COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN total ELSE 0 END), 0) AS confirmed_incl,
+        COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN total - COALESCE(vat_amount, 0) ELSE 0 END), 0) AS confirmed_excl,
+        COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN COALESCE(vat_amount, 0) ELSE 0 END), 0) AS tax_on_confirmed,
         COALESCE(SUM(CASE WHEN status = 'delivered' THEN total ELSE 0 END), 0) AS revenue_incl,
         COALESCE(SUM(CASE WHEN status = 'delivered' THEN total - COALESCE(vat_amount, 0) ELSE 0 END), 0) AS revenue_excl,
         COALESCE(SUM(CASE WHEN status = 'delivered' THEN COALESCE(vat_amount, 0) ELSE 0 END), 0) AS tax_on_revenue,

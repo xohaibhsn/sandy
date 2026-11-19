@@ -18,13 +18,18 @@ import {
 } from "../../../lib/orderPricing";
 import type { TaxDestination } from "../../../lib/taxEngine";
 import { loadShippingSettings } from "../../../lib/shippingSettings";
-import { hasShippingSchema } from "../../../lib/shippingSchema";
+import { hasDeliveryOpsSchema, hasShippingSchema } from "../../../lib/shippingSchema";
 import {
+  enrichZonesWithDeliveryOps,
   isShippableItem,
   loadShippingZones,
+  loadZoneDeliveryMethods,
   quoteShippingFromLines,
   type QuoteLine,
+  type ShippingArea,
 } from "../../../lib/shipping";
+import { loadShippingAreas } from "../../../lib/shippingAreas";
+import { parseDeliveryOpsInput } from "../../../lib/deliveryOpsInput";
 
 const ELIG_LIMIT = 30;
 const ELIG_WINDOW_MS = 15 * 60 * 1000;
@@ -84,13 +89,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // Shipping (BATCH-12): flag off => shipping stays 0, no new reads. Flag on => same server-side
     // quote as /api/orders and /api/tax-quote so the COD risk total includes shipping.
-    const shippingOn = (await loadShippingSettings()).shipping_enabled;
+    const shippingSettings = await loadShippingSettings();
+    const shippingOn = shippingSettings.shipping_enabled;
+    // Delivery ops (BATCH-17): same inputs as /api/orders and /api/tax-quote; all off => untouched.
+    const areasOn = shippingOn && shippingSettings.shipping_areas_enabled;
+    const restrictOn = shippingOn && shippingSettings.shipping_restrict_to_zones;
+    const pickupOn = shippingOn && shippingSettings.pickup_enabled;
+    const ops = parseDeliveryOpsInput(body as Record<string, unknown>, { areasOn, pickupOn });
+    if (!ops) return res.status(400).json({ error: "Invalid request" });
     let shippingCity = "";
     let shippingProvince = "";
     if (shippingOn) {
       shippingCity = typeof body.city === "string" ? body.city.trim().slice(0, 100) : "";
       shippingProvince = typeof body.province === "string" ? body.province.trim().slice(0, 100) : "";
       if (!(await hasShippingSchema(pool))) {
+        return res.status(503).json({ error: "Service unavailable" });
+      }
+      if ((areasOn || restrictOn || pickupOn) && !(await hasDeliveryOpsSchema(pool))) {
         return res.status(503).json({ error: "Service unavailable" });
       }
     }
@@ -172,7 +187,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }),
         };
       });
-      const zones = await loadShippingZones(pool);
+      const baseZones = await loadShippingZones(pool);
+      const zones =
+        areasOn || restrictOn || pickupOn
+          ? enrichZonesWithDeliveryOps(baseZones, await loadZoneDeliveryMethods(pool))
+          : baseZones;
+      const isPickup = pickupOn && ops.fulfilment === "pickup";
+      let areas: ShippingArea[] | undefined;
+      if (!isPickup) {
+        if (areasOn) areas = await loadShippingAreas(pool);
+        else if (restrictOn) areas = [];
+      }
       const quote = quoteShippingFromLines({
         zones,
         lines,
@@ -180,11 +205,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         province: shippingProvince,
         discountAmount: discount,
         goodsSubtotal,
+        ...(areas !== undefined ? { areas, restrictToZones: restrictOn } : {}),
+        ...(areasOn ? { areaId: ops.areaId } : {}),
+        ...(pickupOn ? { fulfilment: ops.fulfilment, pickupEnabled: true } : {}),
       });
       if (quote.unavailable) {
         return res.status(503).json({ error: "Service unavailable" });
       }
-      shipping = quote.amount;
+      // A restrict-to-zones refusal is not an eligibility matter: /api/orders answers 409 for it.
+      shipping = quote.deliverable === false ? 0 : quote.amount;
     }
 
     const result = computeOrderTaxTotals({

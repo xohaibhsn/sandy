@@ -30,13 +30,20 @@ import { loadOrderProtectionSettings } from '../../lib/orderProtectionSettings';
 import { loadAccountSettings } from '../../lib/accountSettings';
 import { getCustomerSession } from '../../lib/customerAuth';
 import { loadShippingSettings } from '../../lib/shippingSettings';
-import { hasShippingSchema } from '../../lib/shippingSchema';
+import { hasDeliveryOpsSchema, hasShippingSchema } from '../../lib/shippingSchema';
 import {
+  AREA_NOT_SERVED_MESSAGE,
+  AREA_REQUIRED_MESSAGE,
+  enrichZonesWithDeliveryOps,
   isShippableItem,
   loadShippingZones,
+  loadZoneDeliveryMethods,
   quoteShippingFromLines,
   type QuoteLine,
+  type ShippingArea,
 } from '../../lib/shipping';
+import { loadShippingAreas } from '../../lib/shippingAreas';
+import { loadActivePickupPoint, parseDeliveryOpsInput } from '../../lib/deliveryOpsInput';
 
 const ALLOWED_PAYMENT_METHODS = new Set(['cod', 'jazzcash', 'easypaisa', 'bank']);
 
@@ -192,6 +199,15 @@ function buildCheckoutFingerprint(input: {
   shippingExtras?: {
     province: string;
   };
+  /**
+   * BATCH-17: each field is present ONLY when its flag is on (areas => area_id, pickup => fulfilment +
+   * pickup_point_id). Appended last so a flags-off fingerprint is byte-identical to ab26978.
+   */
+  opsExtras?: {
+    area_id?: number | null;
+    fulfilment?: string;
+    pickup_point_id?: number | null;
+  };
 }): string {
   const items = [...input.items]
     .sort((a, b) => a.id - b.id)
@@ -221,6 +237,14 @@ function buildCheckoutFingerprint(input: {
 
   if (input.shippingExtras) {
     canonical.province = input.shippingExtras.province;
+  }
+
+  if (input.opsExtras) {
+    if (input.opsExtras.area_id !== undefined) canonical.area_id = input.opsExtras.area_id;
+    if (input.opsExtras.fulfilment !== undefined) canonical.fulfilment = input.opsExtras.fulfilment;
+    if (input.opsExtras.pickup_point_id !== undefined) {
+      canonical.pickup_point_id = input.opsExtras.pickup_point_id;
+    }
   }
 
   return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
@@ -265,6 +289,10 @@ type OrderRow = RowDataPacket & {
   /** Present only when shipping_enabled = 1 (selected conditionally). */
   shipping_amount?: unknown;
   shipping_zone?: unknown;
+  /** Present only when shipping_areas_enabled / pickup_enabled (BATCH-17). */
+  shipping_area?: unknown;
+  fulfilment?: unknown;
+  pickup_point_name?: unknown;
 };
 
 type SnapshotLabelRow = RowDataPacket & { tax_label: unknown };
@@ -313,11 +341,14 @@ type ContactConfig = Awaited<ReturnType<typeof getContactConfig>>;
 async function buildAuthoritativeReplayResponse(
   orderId: string,
   contact: ContactConfig,
-  shippingOn = false
+  shippingOn = false,
+  opsFlags: { areasOn: boolean; pickupOn: boolean } = { areasOn: false, pickupOn: false }
 ): Promise<Record<string, unknown> | null> {
   const [orderRows] = await pool.query<OrderRow[]>(
     `SELECT order_id, total, coupon_code, discount_amount, vat_amount${
       shippingOn ? ', shipping_amount, shipping_zone' : ''
+    }${opsFlags.areasOn ? ', shipping_area' : ''}${
+      opsFlags.pickupOn ? ', fulfilment, pickup_point_name' : ''
     }
      FROM orders WHERE order_id = ? LIMIT 1`,
     [orderId]
@@ -403,6 +434,23 @@ async function buildAuthoritativeReplayResponse(
       quantity: item.quantity,
     })),
     ...(shippingOn ? { shipping_zone: shippingZone } : {}),
+    ...(opsFlags.areasOn
+      ? {
+          shipping_area:
+            typeof order.shipping_area === 'string' && order.shipping_area.trim()
+              ? order.shipping_area.trim()
+              : null,
+        }
+      : {}),
+    ...(opsFlags.pickupOn
+      ? {
+          fulfilment: String(order.fulfilment ?? '') === 'pickup' ? 'pickup' : 'delivery',
+          pickup_point_name:
+            typeof order.pickup_point_name === 'string' && order.pickup_point_name.trim()
+              ? order.pickup_point_name.trim()
+              : null,
+        }
+      : {}),
   };
 }
 
@@ -448,13 +496,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Committed checkout UI requires these contact/address fields (postal code + notes optional).
     // readStringField already trims, so empty / whitespace-only values are rejected here.
+    // Shipping flags are read here (cached) because a pickup order does not need an address.
+    const shippingSettings = await loadShippingSettings();
+    const shippingOn = shippingSettings.shipping_enabled;
+    // Delivery ops (BATCH-17). Every flag needs shipping_enabled; with all of them off the parser
+    // returns the delivery defaults without reading the body (ab26978 behaviour).
+    const areasOn = shippingOn && shippingSettings.shipping_areas_enabled;
+    const restrictOn = shippingOn && shippingSettings.shipping_restrict_to_zones;
+    const pickupOn = shippingOn && shippingSettings.pickup_enabled;
+    const ops = parseDeliveryOpsInput(body, { areasOn, pickupOn });
+    if (!ops) return res.status(400).json({ error: 'Invalid request' });
+    const isPickup = pickupOn && ops.fulfilment === 'pickup';
     if (
       !customer_name.value ||
       !customer_email.value ||
       !customer_phone.value ||
-      !delivery_address.value ||
-      !city.value ||
-      !postcode.value
+      (!isPickup && (!delivery_address.value || !city.value || !postcode.value))
     ) {
       return res.status(400).json({ error: 'Invalid request' });
     }
@@ -505,7 +562,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const protectionOn = protectionSettings.cod_protection_enabled;
 
     // Shipping (BATCH-12). Flag off => shipping stays 0 with NO new reads, columns or response keys.
-    const shippingOn = (await loadShippingSettings()).shipping_enabled;
     let shippingProvince = '';
     if (shippingOn) {
       const provinceRaw = readStringField(body.province, FIELD_MAX.city);
@@ -566,6 +622,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         : {}),
       ...(shippingOn ? { shippingExtras: { province: shippingProvince } } : {}),
+      ...(areasOn || pickupOn
+        ? {
+            opsExtras: {
+              ...(areasOn ? { area_id: ops.areaId } : {}),
+              ...(pickupOn
+                ? { fulfilment: ops.fulfilment, pickup_point_id: ops.pickupPointId }
+                : {}),
+            },
+          }
+        : {}),
     });
 
     // Tax config is loaded server-side BEFORE any order state is created.
@@ -600,10 +666,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (shippingOn && !(await hasShippingSchema(pool))) {
       return res.status(503).json({ error: 'Service unavailable' });
     }
+    // Migration 0010 must be applied before any delivery-ops flag can affect an order.
+    if ((areasOn || restrictOn || pickupOn) && !(await hasDeliveryOpsSchema(pool))) {
+      return res.status(503).json({ error: 'Service unavailable' });
+    }
 
     // Flag off: always 0. Flag on: computed server-side below, after the coupon discount is known.
     let shipping = 0;
     let shippingZoneName: string | null = null;
+    let shippingAreaSnapshot: string | null = null;
+    let pickupPointId: number | null = null;
+    let pickupPointName: string | null = null;
     let order_id = '';
     let createdNewOrder = false;
 
@@ -667,7 +740,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(409).json({ error: 'Checkout attempt conflict. Please try again.' });
         }
 
-        const replay = await buildAuthoritativeReplayResponse(existingOrderId, contact, shippingOn);
+        const replay = await buildAuthoritativeReplayResponse(existingOrderId, contact, shippingOn, {
+          areasOn,
+          pickupOn,
+        });
         if (!replay) {
           return res.status(500).json({ error: 'Unable to place order' });
         }
@@ -844,7 +920,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               }),
             };
           });
-          const zones = await loadShippingZones(connection);
+          const baseZones = await loadShippingZones(connection);
+          const zones =
+            areasOn || restrictOn || pickupOn
+              ? enrichZonesWithDeliveryOps(baseZones, await loadZoneDeliveryMethods(connection))
+              : baseZones;
+          if (isPickup) {
+            // Pickup: the point must exist and be active; its name is snapshotted on the order.
+            if (ops.pickupPointId === null) throw new OrderHttpError(400, 'Invalid request');
+            const point = await loadActivePickupPoint(connection, ops.pickupPointId);
+            if (!point) throw new OrderHttpError(400, 'Invalid request');
+            pickupPointId = point.id;
+            pickupPointName = point.name;
+          }
+          let areas: ShippingArea[] | undefined;
+          if (!isPickup) {
+            if (areasOn) areas = await loadShippingAreas(connection);
+            else if (restrictOn) areas = [];
+          }
           const quote = quoteShippingFromLines({
             zones,
             lines,
@@ -852,13 +945,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             province: shippingProvince,
             discountAmount: discount_amount,
             goodsSubtotal: subtotal,
+            ...(areas !== undefined ? { areas, restrictToZones: restrictOn } : {}),
+            ...(areasOn ? { areaId: ops.areaId, otherArea: ops.otherArea, requireAreaSelection: true } : {}),
+            ...(pickupOn ? { fulfilment: ops.fulfilment, pickupEnabled: true } : {}),
           });
           if (quote.unavailable) {
             // Items need shipping but no zone (not even a default) applies: fail closed.
             throw new OrderHttpError(503, 'Service unavailable');
           }
+          if (quote.deliverable === false) {
+            // restrict-to-zones: nothing is written (the attempt claim rolls back with the transaction).
+            if (quote.areaRequired) {
+              throw new OrderHttpError(409, AREA_REQUIRED_MESSAGE, 'SHIPPING_AREA_REQUIRED');
+            }
+            throw new OrderHttpError(409, AREA_NOT_SERVED_MESSAGE, 'SHIPPING_AREA_NOT_SERVED');
+          }
           shipping = quote.amount;
           shippingZoneName = quote.zoneName;
+          shippingAreaSnapshot = quote.shippingAreaSnapshot ?? null;
         } catch (shipErr) {
           if (shipErr instanceof OrderHttpError) throw shipErr;
           console.error('[orders] Shipping computation failed');
@@ -972,6 +1076,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
 
+      // BATCH-17 snapshot columns: only written when their flag is on (flags off => the ab26978 INSERT).
+      const opsInsertCols: string[] = [];
+      const opsInsertValues: unknown[] = [];
+      if (areasOn) {
+        opsInsertCols.push('shipping_area');
+        opsInsertValues.push(shippingAreaSnapshot);
+      }
+      if (pickupOn) {
+        opsInsertCols.push('fulfilment', 'pickup_point_id', 'pickup_point_name');
+        opsInsertValues.push(isPickup ? 'pickup' : 'delivery', pickupPointId, pickupPointName);
+      }
+      const opsColsSql = opsInsertCols.length ? ',' + opsInsertCols.join(',') : '';
+      const opsPlaceholdersSql = opsInsertCols.length ? ',' + opsInsertCols.map(() => '?').join(',') : '';
+
       if (protectionOn) {
         try {
           await connection.query(
@@ -979,8 +1097,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,
               payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status,
               customer_phone_norm,customer_email_norm,risk_score,risk_reasons,otp_verified,
-              advance_amount,advance_reference,advance_receipt_path${shippingOn ? ',shipping_amount,shipping_zone' : ''}
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${shippingOn ? ',?,?' : ''})`,
+              advance_amount,advance_reference,advance_receipt_path${shippingOn ? ',shipping_amount,shipping_zone' : ''}${opsColsSql}
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${shippingOn ? ',?,?' : ''}${opsPlaceholdersSql})`,
             [
               order_id,
               customer_name.value,
@@ -1007,6 +1125,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               advanceReference,
               advanceReceiptPath,
               ...(shippingOn ? [shipping, shippingZoneName] : []),
+              ...opsInsertValues,
             ]
           );
         } catch (insErr) {
@@ -1019,8 +1138,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await connection.query(
           'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status' +
             (shippingOn ? ',shipping_amount,shipping_zone' : '') +
+            opsColsSql +
             ') VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?' +
             (shippingOn ? ',?,?' : '') +
+            opsPlaceholdersSql +
             ')',
           [
             order_id,
@@ -1040,6 +1161,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             payment_reference.value || null,
             'pending',
             ...(shippingOn ? [shipping, shippingZoneName] : []),
+            ...opsInsertValues,
           ]
         );
       }
@@ -1204,6 +1326,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       <tr><td style="padding:5px 0;color:#888;font-size:13px">Email</td><td style="color:#111;font-size:13px">${escapeHtml(customer_email.value)}</td></tr>
       <tr><td style="padding:5px 0;color:#888;font-size:13px">Phone</td><td style="color:#111;font-size:13px">${escapeHtml(customer_phone.value)}</td></tr>
       <tr><td style="padding:5px 0;color:#888;font-size:13px">Address</td><td style="color:#111;font-size:13px">${[delivery_address.value, city.value, postcode.value].filter(Boolean).map((part) => escapeHtml(part)).join(', ')}</td></tr>
+      ${isPickup && pickupPointName ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Pickup at</td><td style="color:#111;font-size:13px;font-weight:600">${escapeHtml(pickupPointName)}</td></tr>` : ''}
+      ${areasOn && shippingAreaSnapshot ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Area</td><td style="color:#111;font-size:13px">${escapeHtml(shippingAreaSnapshot)}</td></tr>` : ''}
       <tr><td style="padding:5px 0;color:#888;font-size:13px">Payment</td><td style="color:#111;font-size:13px;font-weight:600">${escapeHtml(paymentLabel)}</td></tr>
       ${payment_reference.value ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Reference</td><td style="color:#111;font-size:13px">${escapeHtml(payment_reference.value)}</td></tr>` : ''}
       ${notes.value ? `<tr><td style="padding:5px 0;color:#888;font-size:13px">Notes</td><td style="color:#111;font-size:13px">${escapeHtmlMultiline(notes.value)}</td></tr>` : ''}
@@ -1262,10 +1386,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         quantity: item.quantity,
       })),
       ...(shippingOn ? { shipping_zone: shippingZoneName } : {}),
+      ...(areasOn ? { shipping_area: shippingAreaSnapshot } : {}),
+      ...(pickupOn
+        ? { fulfilment: isPickup ? 'pickup' : 'delivery', pickup_point_name: pickupPointName }
+        : {}),
     });
   } catch (error: unknown) {
     if (error instanceof OrderHttpError) {
-      return res.status(error.status).json({ error: error.clientError });
+      return res.status(error.status).json({
+        error: error.clientError,
+        ...(error.code ? { code: error.code } : {}),
+      });
     }
     if (isTaxConfigUnavailableError(error)) {
       return res.status(503).json({ error: TAX_CONFIG_UNAVAILABLE_MESSAGE });

@@ -16,6 +16,8 @@ import CodOtpStep from "@/components/checkout/CodOtpStep";
 import AdvanceDeliveryFields from "@/components/checkout/AdvanceDeliveryFields";
 import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
 import { normaliseEmail, normalisePhone } from "@/lib/customerIdentity";
+import { normaliseText } from "@/lib/shippingNormalise";
+import { PK_CITIES } from "@/lib/pkLocations";
 
 type PaymentMethod = "cod" | "jazzcash" | "easypaisa" | "bank";
 
@@ -101,7 +103,45 @@ type TaxQuote = {
   /** Present only when shipping_enabled = 1 on the server (tax-quote adds the keys). */
   shipping_flag_on: boolean;
   shipping_estimate: string;
+  /** Delivery ops (BATCH-17): false only when restrict-to-zones refused the destination. */
+  deliverable: boolean;
+  deliverable_reason: string;
 };
+
+/** Public /api/shipping-locations rows (only returned while the matching flag is on). */
+type LocationArea = { id: number; city: string; name: string; parent_id: number | null };
+type LocationPoint = {
+  id: number;
+  name: string;
+  city: string;
+  address: string;
+  hours_text: string | null;
+  map_url: string | null;
+};
+
+/** Areas of one city flattened depth-first (parents before children) with their depth. */
+function flattenAreaTree(areas: LocationArea[]): Array<{ area: LocationArea; depth: number }> {
+  const ids = new Set(areas.map((a) => a.id));
+  const byParent = new Map<number | null, LocationArea[]>();
+  for (const a of areas) {
+    const key = a.parent_id !== null && ids.has(a.parent_id) ? a.parent_id : null;
+    const list = byParent.get(key) ?? [];
+    list.push(a);
+    byParent.set(key, list);
+  }
+  const out: Array<{ area: LocationArea; depth: number }> = [];
+  const seen = new Set<number>();
+  const walk = (parent: number | null, depth: number) => {
+    for (const a of byParent.get(parent) ?? []) {
+      if (seen.has(a.id)) continue;
+      seen.add(a.id);
+      out.push({ area: a, depth });
+      walk(a.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return out;
+}
 
 function parseNonNegMoney(value: unknown): number | null {
   const n = Number(value);
@@ -474,10 +514,79 @@ export default function CartPage() {
   // shipping_enabled = 1 (tax-quote adds shipping_zone / shipping_estimate). With the flag off the key,
   // and therefore the fetch / re-quote behaviour, is exactly what it was before.
   const [shippingFlagOn, setShippingFlagOn] = useState(false);
+
+  // Delivery ops (BATCH-17). Discovered from tax-quote echo keys (shipping_areas_enabled / pickup_enabled)
+  // exactly like the shipping flag; while both stay false nothing below renders or joins the quote key.
+  const [areasFlagOn, setAreasFlagOn] = useState(false);
+  const [pickupFlagOn, setPickupFlagOn] = useState(false);
+  const opsOn = areasFlagOn || pickupFlagOn;
+  const [locations, setLocations] = useState<{ areas: LocationArea[]; points: LocationPoint[] } | null>(null);
+  const [fulfilment, setFulfilment] = useState<"delivery" | "pickup">("delivery");
+  const [pickupPointId, setPickupPointId] = useState<number | null>(null);
+  const [areaId, setAreaId] = useState<number | null>(null);
+  const [otherArea, setOtherArea] = useState(false);
+
+  const pickupPoints = locations?.points ?? [];
+  const isPickupSel = pickupFlagOn && fulfilment === "pickup";
+  const cityAreas =
+    areasFlagOn && locations && !isPickupSel
+      ? locations.areas.filter((a) => normaliseText(a.city) === normaliseText(form.city))
+      : [];
+  const showAreaSelect = cityAreas.length > 0;
+  const areaIdEff = showAreaSelect && !otherArea && cityAreas.some((a) => a.id === areaId) ? areaId : null;
+  const otherAreaEff = showAreaSelect && otherArea;
+  const pickupPointIdEff = isPickupSel && pickupPoints.some((p) => p.id === pickupPointId) ? pickupPointId : null;
+  const areaMissing = showAreaSelect && areaIdEff === null && !otherAreaEff;
+  const pickupMissing = isPickupSel && pickupPointIdEff === null;
+  const selectedPoint = pickupPoints.find((p) => p.id === pickupPointIdEff) ?? null;
+  const cityOptions = areasFlagOn && locations
+    ? Array.from(new Set([...locations.areas.map((a) => a.city), ...PK_CITIES.map((c) => c.name)]))
+    : [];
+
+  useEffect(() => {
+    if (!opsOn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/shipping-locations", { cache: "no-store" });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (cancelled || !res.ok) return;
+        const areas = (Array.isArray(data.areas) ? data.areas : []).filter(
+          (a): a is LocationArea =>
+            !!a && typeof a === "object" && typeof (a as LocationArea).id === "number" &&
+            typeof (a as LocationArea).name === "string" && typeof (a as LocationArea).city === "string"
+        );
+        const points = (Array.isArray(data.pickup_points) ? data.pickup_points : []).filter(
+          (p): p is LocationPoint =>
+            !!p && typeof p === "object" && typeof (p as LocationPoint).id === "number" &&
+            typeof (p as LocationPoint).name === "string"
+        );
+        setLocations({ areas, points });
+      } catch {
+        /* the cart keeps working with plain city entry */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [opsOn]);
+
   const quoteKey = JSON.stringify({
     items: cart.map((item) => [item.id, item.qty]),
     coupon: couponApplied?.code ?? null,
     ...(shippingFlagOn ? { dest: [form.city.trim().slice(0, 100), form.province.trim().slice(0, 100)] } : {}),
+    ...(opsOn
+      ? {
+          ops: [
+            pickupFlagOn ? fulfilment : "delivery",
+            areaIdEff,
+            otherAreaEff,
+            pickupPointIdEff,
+            areasFlagOn,
+            pickupFlagOn,
+          ],
+        }
+      : {}),
   });
 
   useEffect(() => {
@@ -485,6 +594,7 @@ export default function CartPage() {
       items: Array<[number, number]>;
       coupon: string | null;
       dest?: [string, string];
+      ops?: [string, number | null, boolean, number | null, boolean, boolean];
     };
     if (parsed.items.length === 0) return;
     // Before the server has said shipping is on there is no destination in the key (blank city/province).
@@ -500,6 +610,12 @@ export default function CartPage() {
             coupon: parsed.coupon,
             city: requestDest[0],
             province: requestDest[1],
+            ...(parsed.ops
+              ? {
+                  ...(parsed.ops[5] ? { fulfilment: parsed.ops[0], pickup_point_id: parsed.ops[3] } : {}),
+                  ...(parsed.ops[4] ? { area_id: parsed.ops[1], other_area: parsed.ops[2] } : {}),
+                }
+              : {}),
           }),
         });
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -511,7 +627,11 @@ export default function CartPage() {
           items: parsed.items,
           coupon: parsed.coupon,
           ...(flagOn ? { dest: requestDest } : {}),
+          ...(parsed.ops ? { ops: parsed.ops } : {}),
         });
+        // tax-quote echoes these only while the matching delivery-ops flag is on.
+        const areasQ = data.shipping_areas_enabled === true;
+        const pickupQ = data.pickup_enabled === true;
         const subtotalQ = parseNonNegMoney(data.subtotal);
         const shippingQ = parseNonNegMoney(data.shipping);
         const discountQ = parseNonNegMoney(data.discount);
@@ -533,8 +653,13 @@ export default function CartPage() {
             prices_include_tax: data.prices_include_tax === true,
             shipping_flag_on: flagOn,
             shipping_estimate: estimateQ,
+            deliverable: data.deliverable !== false,
+            deliverable_reason:
+              typeof data.shipping_unavailable_reason === "string" ? data.shipping_unavailable_reason.trim() : "",
           });
           setShippingFlagOn(flagOn);
+          setAreasFlagOn(areasQ);
+          setPickupFlagOn(pickupQ);
           setQuoteError(null);
         } else {
           setQuoteError({
@@ -609,6 +734,9 @@ export default function CartPage() {
   const shipping = quoteReady ? quote.shipping : 0;
   // Only ever non-empty when the server returned a zone estimate (flag on); otherwise no extra line.
   const shippingEstimate = quoteReady ? quote.shipping_estimate : "";
+  // restrict-to-zones refusal (BATCH-17): only ever true when the server says deliverable:false.
+  const notDeliverable = quoteReady && !quote.deliverable;
+  const opsBlocked = notDeliverable || areaMissing || pickupMissing;
   const subtotal = quoteReady ? quote.subtotal : total;
   const discountAmount = quoteReady ? quote.discount : couponApplied ? couponApplied.discount_amount : 0;
   const taxLabelDisplay = quoteReady
@@ -628,7 +756,7 @@ export default function CartPage() {
   };
 
   const handleOrder = async () => {
-    if (cart.length === 0 || !quoteReady) return;
+    if (cart.length === 0 || !quoteReady || opsBlocked) return;
     if (!codGateOk) {
       setOrderError(codOtpActive && !otpToken ? CUSTOMER_TEXTS.COD_OTP_REQUIRED : CUSTOMER_TEXTS.ADVANCE_DELIVERY_HINT);
       return;
@@ -711,6 +839,12 @@ export default function CartPage() {
           items: cart.map((item) => ({ id: item.id, qty: item.qty })),
           coupon_code: couponApplied?.code || null,
           ...(shippingFlagOn ? { province: form.province } : {}),
+          ...(opsOn
+            ? {
+                ...(pickupFlagOn ? { fulfilment, pickup_point_id: pickupPointIdEff } : {}),
+                ...(areasFlagOn ? { area_id: areaIdEff, other_area: otherAreaEff } : {}),
+              }
+            : {}),
           ...(codOtpActive && otpToken ? { verification_token: otpToken } : {}),
           ...(advanceCharge > 0
             ? { advance_reference: advanceReference.trim(), advance_receipt_path: advanceReceiptPath }
@@ -779,7 +913,9 @@ export default function CartPage() {
         const itemsList = serverItems
           .map((i) => `• ${i.name} x${i.qty} — ${formatPrice(i.price * i.qty)}`)
           .join("\n");
-        const fullAddress = [form.address, form.area, form.city, form.province, form.postcode].filter(Boolean).join(', ');
+        const fullAddress = isPickupSel
+          ? `Pickup: ${selectedPoint ? `${selectedPoint.name}, ${selectedPoint.address}` : ""}`
+          : [form.address, form.area, form.city, form.province, form.postcode].filter(Boolean).join(', ');
         const waMessage = [
           `🛍️ *NEW ORDER — ${host}*`,
           '',
@@ -923,13 +1059,30 @@ export default function CartPage() {
               <div>
                 <div className="form-section">
                   <h3>{cmsText(sc, "cart_details_heading", "Your Details")}</h3>
+                  {pickupFlagOn && pickupPoints.length > 0 && (
+                    <div className="form-group" data-fulfilment-choice="1" role="radiogroup" aria-label="How would you like to receive your order?">
+                      <label>How would you like to receive your order?</label>
+                      <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                        <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                          <input type="radio" name="fulfilment" data-fulfilment="delivery" checked={fulfilment === "delivery"} onChange={() => setFulfilment("delivery")} />
+                          Delivery
+                        </label>
+                        <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                          <input type="radio" name="fulfilment" data-fulfilment="pickup" checked={fulfilment === "pickup"} onChange={() => setFulfilment("pickup")} />
+                          Pickup from store
+                        </label>
+                      </div>
+                    </div>
+                  )}
                   {[
+
                     {label:"Full Name", key:"name", type:"text", placeholder:"Ahmed Khan"},
                     {label:"Email Address", key:"email", type:"email", placeholder:"ahmed@email.com"},
                     {label:"WhatsApp / Phone", key:"phone", type:"tel", placeholder:contact.phone},
                     {label:"House / Street Address", key:"address", type:"text", placeholder:"House 12, Street 5"},
                     {label:"Area / Locality", key:"area", type:"text", placeholder:"DHA Phase 5"},
-                  ].map(f => (
+                  ].filter(f => !(isPickupSel && (f.key === "address" || f.key === "area"))).map(f => (
+
                     <div className="form-group" key={f.key}>
                       <label>{f.label}</label>
                       <input type={f.type} placeholder={f.placeholder}
@@ -937,6 +1090,31 @@ export default function CartPage() {
                         onChange={e => setForm({...form, [f.key]: e.target.value})} />
                     </div>
                   ))}
+                  {isPickupSel ? (
+                    <div className="form-group" data-pickup-select="1">
+                      <label htmlFor="cart-pickup-point">Pickup point</label>
+                      <select
+                        id="cart-pickup-point"
+                        value={pickupPointIdEff ?? ""}
+                        onChange={e => setPickupPointId(e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">Select a pickup point</option>
+                        {pickupPoints.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name} — {p.city}</option>
+                        ))}
+                      </select>
+                      {selectedPoint && (
+                        <div data-pickup-details="1" style={{fontSize:12,opacity:0.8,marginTop:6,lineHeight:1.5}}>
+                          {selectedPoint.address}
+                          {selectedPoint.hours_text ? ` · ${selectedPoint.hours_text}` : ""}
+                          {selectedPoint.map_url && /^https:\/\//i.test(selectedPoint.map_url) ? (
+                            <> · <a href={selectedPoint.map_url} target="_blank" rel="noopener noreferrer">Map</a></>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
                   <div className="form-group">
                     <label>Province</label>
                     <select value={form.province} onChange={e => setForm({...form, province: e.target.value})}>
@@ -949,13 +1127,55 @@ export default function CartPage() {
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px"}}>
                     <div className="form-group">
                       <label>City</label>
-                      <input type="text" placeholder="Lahore" value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
+                      <input
+                        type="text"
+                        placeholder="Lahore"
+                        value={form.city}
+                        {...(areasFlagOn ? { list: "cart-city-options", autoComplete: "off", "data-city-input": "1" } : {})}
+                        onChange={e => {
+                          setForm({...form, city: e.target.value});
+                          if (areasFlagOn) { setAreaId(null); setOtherArea(false); }
+                        }}
+                      />
+                      {areasFlagOn && (
+                        <datalist id="cart-city-options">
+                          {cityOptions.map((name) => (<option key={name} value={name} />))}
+                        </datalist>
+                      )}
                     </div>
                     <div className="form-group">
                       <label>Postal Code (optional)</label>
                       <input type="text" placeholder="54000" value={form.postcode} onChange={e => setForm({...form, postcode: e.target.value})} />
                     </div>
                   </div>
+                  {showAreaSelect && (
+                    <div className="form-group" data-area-select="1">
+                      <label htmlFor="cart-delivery-area">Delivery area</label>
+                      <select
+                        id="cart-delivery-area"
+                        required
+                        value={otherAreaEff ? "other" : areaIdEff ?? ""}
+                        onChange={e => {
+                          const v = e.target.value;
+                          if (v === "other") { setOtherArea(true); setAreaId(null); }
+                          else { setOtherArea(false); setAreaId(v ? Number(v) : null); }
+                        }}
+                      >
+                        <option value="">Select your area</option>
+                        {flattenAreaTree(cityAreas).map(({ area, depth }) => (
+                          <option key={area.id} value={area.id}>{`${"\u00A0\u00A0".repeat(depth)}${depth > 0 ? "– " : ""}${area.name}`}</option>
+                        ))}
+                        <option value="other">Other area</option>
+                      </select>
+                    </div>
+                  )}
+                    </>
+                  )}
+                  {notDeliverable && (
+                    <div data-not-deliverable="1" role="alert" style={{fontSize:13,color:"#B45309",marginBottom:14}}>
+                      {quote?.deliverable_reason || "We don't deliver to this area yet."}
+                    </div>
+                  )}
                   <div className="form-group">
                     <label>Order Notes (Optional)</label>
                     <textarea placeholder="Any special instructions..." value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
@@ -1053,7 +1273,7 @@ export default function CartPage() {
                   </div>
 
                   <button className="place-order-btn"
-                    disabled={placing || cart.length === 0 || !quoteReady || !codGateOk}
+                    disabled={placing || cart.length === 0 || !quoteReady || !codGateOk || opsBlocked}
                     onClick={handleOrder}>
                     {placing ? cmsText(sc, "cart_placing", "Placing Order...") : cmsText(sc, "cart_place_btn", "Place Order →")}
                   </button>

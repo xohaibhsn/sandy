@@ -115,12 +115,41 @@ export async function rebuildFromMigrations() {
     await c.query(readFileSync(path.join(root, "migrations/0007-orders-protection-columns.sql"), "utf8"));
     await c.query(readFileSync(path.join(root, "migrations/0008-customer-accounts.sql"), "utf8"));
     await c.query(readFileSync(path.join(root, "migrations/0009-shipping-courier.sql"), "utf8"));
+    // Migration 0010 is OPTIONAL: call applyDeliveryOpsMigration() from delivery-ops DB tests.
+    // shipping-db parity / missing-0009 cases must stay on 0001–0009 only.
 
     // --- fixtures outside the migrations
     await c.query(
       `INSERT INTO tax_rates (tax_class_id, rate_percent, effective_from, created_by)
        SELECT id, 18.0000, '2021-01-01 00:00:00', 'phase2-test' FROM tax_classes`
     );
+  } finally {
+    await c.end();
+  }
+}
+
+/** Apply migrations/0010-delivery-ops.sql on the dedicated test DB (idempotent). */
+export async function applyDeliveryOpsMigration() {
+  const c = await connect(true);
+  try {
+    const [[{ d }]] = await c.query("SELECT DATABASE() AS d");
+    if (d !== DB_NAME) throw new Error("refusing to run against any database other than the dedicated test DB");
+    await c.query(readFileSync(path.join(root, "migrations/0010-delivery-ops.sql"), "utf8"));
+  } finally {
+    await c.end();
+  }
+}
+
+/**
+ * Runs arbitrary SQL text (multi-statement) on the dedicated test DB only. Used by the delivery-ops
+ * test for the owner phpMyAdmin variant of 0010 and the owner seed (never touches any other database).
+ */
+export async function runSqlOnTestDb(sql) {
+  const c = await connect(true);
+  try {
+    const [[{ d }]] = await c.query("SELECT DATABASE() AS d");
+    if (d !== DB_NAME) throw new Error("refusing to run against any database other than the dedicated test DB");
+    await c.query(sql);
   } finally {
     await c.end();
   }

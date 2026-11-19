@@ -15,7 +15,7 @@ const { ORDER_PROTECTION_DEFAULTS } = await import("../lib/orderProtectionSettin
 const PRIMARY_SQL = `SELECT
          SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered_count,
          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count,
-         SUM(CASE WHEN status IN ('pending','confirmed') AND payment_method = 'cod' THEN 1 ELSE 0 END) AS open_cod
+         SUM(CASE WHEN status IN ('pending','confirmed','ready_for_pickup') AND payment_method = 'cod' THEN 1 ELSE 0 END) AS open_cod
        FROM orders
        WHERE customer_phone_norm = ?`;
 

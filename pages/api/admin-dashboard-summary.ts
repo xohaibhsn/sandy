@@ -410,14 +410,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_orders,
         COALESCE(SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END), 0) AS delivered_orders,
         COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled_orders,
-        COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN 1 ELSE 0 END), 0) AS confirmed_sales_count,
+        COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN 1 ELSE 0 END), 0) AS confirmed_sales_count,
 
         COALESCE(SUM(CASE WHEN status = 'pending' THEN total ELSE 0 END), 0) AS pending_incl,
         COALESCE(SUM(CASE WHEN status = 'pending' THEN total - COALESCE(vat_amount, 0) ELSE 0 END), 0) AS pending_excl,
 
-        COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN total ELSE 0 END), 0) AS confirmed_incl,
-        COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN total - COALESCE(vat_amount, 0) ELSE 0 END), 0) AS confirmed_excl,
-        COALESCE(SUM(CASE WHEN status IN ('confirmed','dispatched','delivered') THEN COALESCE(vat_amount, 0) ELSE 0 END), 0) AS tax_on_confirmed,
+        COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN total ELSE 0 END), 0) AS confirmed_incl,
+        COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN total - COALESCE(vat_amount, 0) ELSE 0 END), 0) AS confirmed_excl,
+        COALESCE(SUM(CASE WHEN status IN ('confirmed','ready_for_pickup','dispatched','delivered') THEN COALESCE(vat_amount, 0) ELSE 0 END), 0) AS tax_on_confirmed,
 
         COALESCE(SUM(CASE WHEN status = 'delivered' THEN total ELSE 0 END), 0) AS revenue_incl,
         COALESCE(SUM(CASE WHEN status = 'delivered' THEN total - COALESCE(vat_amount, 0) ELSE 0 END), 0) AS revenue_excl,

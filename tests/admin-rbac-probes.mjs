@@ -93,6 +93,21 @@ export const PROBES = {
   "DELETE /api/admin-couriers": { url: "/api/admin-couriers", body: {}, ok: [400] },
   "GET /api/admin-shipping-settings": { url: "/api/admin-shipping-settings", ok: [200] },
 
+  // BATCH-17 delivery ops (settings:shipping). Write probes fail validation (400) before any write;
+  // 503 = migration 0010 not applied on the test database.
+  "GET /api/admin-shipping-areas": { url: "/api/admin-shipping-areas", ok: [200, 503] },
+  "POST /api/admin-shipping-areas": { url: "/api/admin-shipping-areas", body: {}, ok: [400, 503] },
+  "PATCH /api/admin-shipping-areas": { url: "/api/admin-shipping-areas", body: {}, ok: [400, 503] },
+  "DELETE /api/admin-shipping-areas": { url: "/api/admin-shipping-areas", body: {}, ok: [400, 503] },
+  "GET /api/admin-riders": { url: "/api/admin-riders", ok: [200, 503] },
+  "POST /api/admin-riders": { url: "/api/admin-riders", body: {}, ok: [400, 503] },
+  "PATCH /api/admin-riders": { url: "/api/admin-riders", body: {}, ok: [400, 503] },
+  "DELETE /api/admin-riders": { url: "/api/admin-riders", body: {}, ok: [400, 503] },
+  "GET /api/admin-pickup-points": { url: "/api/admin-pickup-points", ok: [200, 503] },
+  "POST /api/admin-pickup-points": { url: "/api/admin-pickup-points", body: {}, ok: [400, 503] },
+  "PATCH /api/admin-pickup-points": { url: "/api/admin-pickup-points", body: {}, ok: [400, 503] },
+  "DELETE /api/admin-pickup-points": { url: "/api/admin-pickup-points", body: {}, ok: [400, 503] },
+
   "POST /api/upload": { url: "/api/upload", body: {}, ok: [400] },
   "POST /api/upload-favicon": { url: "/api/upload-favicon", body: {}, ok: [400] },
 };

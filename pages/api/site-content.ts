@@ -39,9 +39,22 @@ import {
   validateShippingSetting,
   resetShippingSettingsCache,
   SHIPPING_NEEDS_DEFAULT_ZONE_MESSAGE,
+  SHIPPING_NEEDS_ACTIVE_ZONE_MESSAGE,
+  SHIPPING_RESTRICT_NEEDS_COVERAGE_MESSAGE,
+  DELIVERY_OPS_SCHEMA_MISSING_MESSAGE,
+  PICKUP_NEEDS_POINT_MESSAGE,
+  loadShippingSettings,
 } from '../../lib/shippingSettings';
-import { countActiveDefaultZones } from '../../lib/shipping';
-import { hasShippingSchema } from '../../lib/shippingSchema';
+import {
+  canEnableRestrict,
+  canEnableShipping,
+  countActiveDefaultZones,
+  countActiveZones,
+  hasListedCitiesOrProvinces,
+  loadShippingZones,
+} from '../../lib/shipping';
+import { hasDeliveryOpsSchema, hasShippingSchema } from '../../lib/shippingSchema';
+import type { RowDataPacket } from 'mysql2/promise';
 
 export class ContentValidationError extends Error {
   constructor(message: string) {
@@ -152,22 +165,97 @@ function persistSiteContentValue(
 }
 
 /**
- * shipping_enabled = 1 is only allowed while exactly one ACTIVE default shipping zone exists
- * (checked on every write path that can set the key: POST single / batch and PUT). Turning the
- * flag off ("0") is always allowed. A missing shipping_zones table counts as "no default zone".
+ * Shipping flag write gates (POST single / batch and PUT). Turning any flag off ("0") is always
+ * allowed. shipping_enabled = 1 needs exactly one active default zone, OR restrict-to-zones on
+ * with >= 1 active zone. shipping_areas_enabled / pickup_enabled = 1 need migration 0010.
+ * shipping_restrict_to_zones = 1 needs areas enabled or a zone with listed cities/provinces.
+ * pickup_enabled = 1 also needs >= 1 active pickup point.
  */
 async function assertShippingEnableAllowed(contentKey: string, safeValue: string): Promise<void> {
   if (!isShippingSettingsContentKey(contentKey) || safeValue !== '1') return;
-  let activeDefaults = 0;
-  let schemaOk = false;
-  try {
-    schemaOk = await hasShippingSchema(pool);
-    activeDefaults = schemaOk ? await countActiveDefaultZones(pool) : 0;
-  } catch {
-    activeDefaults = 0;
+
+  if (contentKey === 'shipping_enabled') {
+    let schemaOk = false;
+    let activeDefaults = 0;
+    let activeZones = 0;
+    let restrictOn = false;
+    try {
+      schemaOk = await hasShippingSchema(pool);
+      if (schemaOk) {
+        activeDefaults = await countActiveDefaultZones(pool);
+        activeZones = await countActiveZones(pool);
+        resetShippingSettingsCache();
+        const settings = await loadShippingSettings();
+        restrictOn = settings.shipping_restrict_to_zones;
+      }
+    } catch {
+      schemaOk = false;
+    }
+    if (
+      !schemaOk ||
+      !canEnableShipping({
+        activeDefaultZones: activeDefaults,
+        restrictOn,
+        activeZones,
+      })
+    ) {
+      throw new ContentValidationError(
+        restrictOn ? SHIPPING_NEEDS_ACTIVE_ZONE_MESSAGE : SHIPPING_NEEDS_DEFAULT_ZONE_MESSAGE
+      );
+    }
+    return;
   }
-  if (!schemaOk || activeDefaults !== 1) {
-    throw new ContentValidationError(SHIPPING_NEEDS_DEFAULT_ZONE_MESSAGE);
+
+  if (contentKey === 'shipping_areas_enabled' || contentKey === 'pickup_enabled') {
+    let opsOk = false;
+    try {
+      opsOk = await hasDeliveryOpsSchema(pool);
+    } catch {
+      opsOk = false;
+    }
+    if (!opsOk) {
+      throw new ContentValidationError(DELIVERY_OPS_SCHEMA_MISSING_MESSAGE);
+    }
+    if (contentKey === 'pickup_enabled') {
+      let activePoints = 0;
+      try {
+        const [rows] = await pool.query<RowDataPacket[]>(
+          'SELECT COUNT(*) AS c FROM pickup_points WHERE active = 1'
+        );
+        activePoints = Number((Array.isArray(rows) ? rows[0]?.c : 0) || 0);
+      } catch {
+        activePoints = 0;
+      }
+      if (activePoints < 1) {
+        throw new ContentValidationError(PICKUP_NEEDS_POINT_MESSAGE);
+      }
+    }
+    return;
+  }
+
+  if (contentKey === 'shipping_restrict_to_zones') {
+    let areasOn = false;
+    let listed = false;
+    try {
+      resetShippingSettingsCache();
+      const settings = await loadShippingSettings();
+      areasOn = settings.shipping_areas_enabled;
+      if (await hasShippingSchema(pool)) {
+        const zones = await loadShippingZones(pool);
+        listed = hasListedCitiesOrProvinces(zones);
+      }
+    } catch {
+      areasOn = false;
+      listed = false;
+    }
+    if (
+      !canEnableRestrict({
+        areasEnabled: areasOn,
+        hasListedCitiesOrProvinces: listed,
+      })
+    ) {
+      throw new ContentValidationError(SHIPPING_RESTRICT_NEEDS_COVERAGE_MESSAGE);
+    }
   }
 }
 

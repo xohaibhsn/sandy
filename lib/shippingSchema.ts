@@ -28,6 +28,23 @@ export const SHIPPING_ORDER_COLUMNS = [
 
 export const SHIPPING_TABLES = ["shipping_zones", "couriers"] as const;
 
+/**
+ * Migration 0010 (SANDY-BATCH-17 delivery ops). Deliberately SEPARATE from SHIPPING_ORDER_COLUMNS /
+ * hasShippingSchema: adding these to the 0009 probes would break shipping_enabled until 0010 is applied.
+ * Callers consult these only when shipping_areas_enabled / pickup_enabled / own-rider paths are in use.
+ */
+export const DELIVERY_OPS_TABLES = ["shipping_areas", "riders", "pickup_points"] as const;
+
+export const DELIVERY_OPS_ORDER_COLUMNS = [
+  "fulfilment",
+  "shipping_area",
+  "rider_id",
+  "pickup_point_id",
+  "pickup_point_name",
+] as const;
+
+export const DELIVERY_OPS_ZONE_COLUMNS = ["delivery_method", "same_day_cutoff"] as const;
+
 type ProbeState = { present: boolean | null; lastNegativeAt: number };
 
 function newState(): ProbeState {
@@ -38,6 +55,9 @@ const orderColumnsState = newState();
 const requiresShippingState = newState();
 const rtoState = newState();
 const tablesState = newState();
+const deliveryOpsTablesState = newState();
+const deliveryOpsOrderColumnsState = newState();
+const deliveryOpsZoneColumnsState = newState();
 
 function reset(state: ProbeState): void {
   state.present = null;
@@ -50,6 +70,9 @@ export function resetShippingSchemaCache(): void {
   reset(requiresShippingState);
   reset(rtoState);
   reset(tablesState);
+  reset(deliveryOpsTablesState);
+  reset(deliveryOpsOrderColumnsState);
+  reset(deliveryOpsZoneColumnsState);
 }
 
 /** Test-only: forget the cached orders.rto probe (used by lib/codRisk.ts). */
@@ -117,19 +140,51 @@ export function hasRtoColumn(db: Queryable): Promise<boolean> {
   return cachedProbe(rtoState, () => columnsExist(db, "orders", ["rto"]));
 }
 
+async function tablesExist(db: Queryable, tables: readonly string[]): Promise<boolean> {
+  const [rows] = await db.query<RowDataPacket[]>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME IN (${tables.map(() => "?").join(",")})`,
+    [...tables]
+  );
+  if (!Array.isArray(rows)) return false;
+  const found = new Set(rows.map((r) => String(r.TABLE_NAME ?? r.table_name ?? "")));
+  return tables.every((t) => found.has(t));
+}
+
 /** shipping_zones and couriers tables exist. */
 export function hasShippingTables(db: Queryable): Promise<boolean> {
-  return cachedProbe(tablesState, async () => {
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME IN (${SHIPPING_TABLES.map(() => "?").join(",")})`,
-      [...SHIPPING_TABLES]
-    );
-    if (!Array.isArray(rows)) return false;
-    const found = new Set(rows.map((r) => String(r.TABLE_NAME ?? r.table_name ?? "")));
-    return SHIPPING_TABLES.every((t) => found.has(t));
-  });
+  return cachedProbe(tablesState, () => tablesExist(db, SHIPPING_TABLES));
+}
+
+/** shipping_areas, riders and pickup_points tables exist (migration 0010). */
+export function hasDeliveryOpsTables(db: Queryable): Promise<boolean> {
+  return cachedProbe(deliveryOpsTablesState, () => tablesExist(db, DELIVERY_OPS_TABLES));
+}
+
+/** All five 0010 orders.* columns exist (fulfilment, shipping_area, rider_id, pickup_point_id, pickup_point_name). */
+export function hasDeliveryOpsOrderColumns(db: Queryable): Promise<boolean> {
+  return cachedProbe(deliveryOpsOrderColumnsState, () =>
+    columnsExist(db, "orders", DELIVERY_OPS_ORDER_COLUMNS)
+  );
+}
+
+/** shipping_zones.delivery_method and shipping_zones.same_day_cutoff exist (migration 0010). */
+export function hasDeliveryOpsZoneColumns(db: Queryable): Promise<boolean> {
+  return cachedProbe(deliveryOpsZoneColumnsState, () =>
+    columnsExist(db, "shipping_zones", DELIVERY_OPS_ZONE_COLUMNS)
+  );
+}
+
+/**
+ * Everything the delivery-ops paths need: 0010 tables, orders columns and zone columns.
+ * False => callers with a delivery-ops flag ON must answer 503 { error: "Service unavailable" }.
+ * Independent of hasShippingSchema (0009).
+ */
+export async function hasDeliveryOpsSchema(db: Queryable): Promise<boolean> {
+  if (!(await hasDeliveryOpsTables(db))) return false;
+  if (!(await hasDeliveryOpsOrderColumns(db))) return false;
+  return hasDeliveryOpsZoneColumns(db);
 }
 
 /**

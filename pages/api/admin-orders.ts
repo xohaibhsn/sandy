@@ -26,8 +26,9 @@ import { RISK_REASON_LABELS, type RiskReasonCode } from "../../lib/codRisk";
 import { loadOrderProtectionSettings } from "../../lib/orderProtectionSettings";
 import { normaliseEmail, normalisePhone } from "../../lib/customerIdentity";
 import { loadShippingSettings } from "../../lib/shippingSettings";
-import { hasShippingOrderColumns } from "../../lib/shippingSchema";
+import { hasDeliveryOpsOrderColumns, hasShippingOrderColumns } from "../../lib/shippingSchema";
 import { TRACKING_NUMBER_RE, buildTrackingUrl } from "../../lib/shipping";
+import { assertStatusTransition, isPickupOrder } from "../../lib/shippingStatus";
 
 const ALLOWED_STATUSES = ORDER_STATUSES;
 
@@ -400,6 +401,10 @@ async function handleDetail(res: NextApiResponse, orderId: string) {
   // Shipping / courier / RTO (migration 0009). `SELECT *` already carries the columns when they
   // exist, so their presence on the row is the probe; nothing is added to the response otherwise.
   let shippingFields: Record<string, unknown> = {};
+  // Delivery ops (migration 0010, BATCH-17): same probe. Keys are added only when the order actually
+  // carries delivery-ops data or shipping is enabled, so a flags-off store keeps the ab26978 key set.
+  const opsOnRow =
+    "fulfilment" in order && "shipping_area" in order && "rider_id" in order && "pickup_point_id" in order;
   if ("shipping_amount" in order && "courier_id" in order) {
     let courierName: string | null = null;
     let trackingUrl: string | null = null;
@@ -443,6 +448,75 @@ async function handleDetail(res: NextApiResponse, orderId: string) {
       rto_at: order.rto_at ?? null,
       couriers,
     };
+
+    const hasOpsData =
+      opsOnRow &&
+      (order.fulfilment != null ||
+        order.shipping_area != null ||
+        order.rider_id != null ||
+        order.pickup_point_id != null);
+    const opsShippingOn = opsOnRow ? (await loadShippingSettings()).shipping_enabled : false;
+    if (opsOnRow && (hasOpsData || opsShippingOn)) {
+      let riderName: string | null = null;
+      let pickupInfo: { address: string | null; hours_text: string | null; map_url: string | null } | null = null;
+      if (order.rider_id != null) {
+        try {
+          const [riderRows] = await pool.query<RowDataPacket[]>(
+            `SELECT name FROM riders WHERE id = ? LIMIT 1`,
+            [order.rider_id]
+          );
+          const r = Array.isArray(riderRows) ? riderRows[0] : undefined;
+          riderName = r && r.name != null ? String(r.name) : null;
+        } catch {
+          riderName = null;
+        }
+      }
+      if (order.pickup_point_id != null) {
+        try {
+          const [pointRows] = await pool.query<RowDataPacket[]>(
+            `SELECT address, hours_text, map_url FROM pickup_points WHERE id = ? LIMIT 1`,
+            [order.pickup_point_id]
+          );
+          const p = Array.isArray(pointRows) ? pointRows[0] : undefined;
+          if (p) {
+            pickupInfo = {
+              address: p.address != null ? String(p.address) : null,
+              hours_text: p.hours_text != null ? String(p.hours_text) : null,
+              map_url: p.map_url != null ? String(p.map_url) : null,
+            };
+          }
+        } catch {
+          pickupInfo = null;
+        }
+      }
+      let riders: Array<{ id: number; name: string }> = [];
+      if (opsShippingOn) {
+        try {
+          const [riderRows] = await pool.query<RowDataPacket[]>(
+            `SELECT id, name FROM riders WHERE active = 1 ORDER BY sort_order ASC, id ASC`
+          );
+          riders = (Array.isArray(riderRows) ? riderRows : []).map((r) => ({
+            id: Number(r.id),
+            name: String(r.name ?? ""),
+          }));
+        } catch {
+          riders = [];
+        }
+      }
+      shippingFields = {
+        ...shippingFields,
+        fulfilment: isPickupOrder(order.fulfilment) ? "pickup" : "delivery",
+        shipping_area: order.shipping_area ?? null,
+        rider_id: order.rider_id ?? null,
+        rider_name: riderName,
+        pickup_point_id: order.pickup_point_id ?? null,
+        pickup_point_name: order.pickup_point_name ?? null,
+        pickup_point_address: pickupInfo?.address ?? null,
+        pickup_point_hours: pickupInfo?.hours_text ?? null,
+        pickup_point_map_url: pickupInfo?.map_url ?? null,
+        riders,
+      };
+    }
   }
 
   return res.status(200).json({
@@ -516,6 +590,12 @@ async function handleList(req: NextApiRequest, res: NextApiResponse) {
   for (const row of Array.isArray(statusRows) ? statusRows : []) {
     const s = String(row.status || "");
     if (s in status_counts) status_counts[s] = Number(row.c || 0);
+    else if (s === "ready_for_pickup") status_counts.ready_for_pickup = Number(row.c || 0);
+  }
+  // BATCH-17: the ready_for_pickup bucket appears only when pickup is on or such orders exist
+  // (a flags-off store keeps the ab26978 status_counts key set).
+  if (!("ready_for_pickup" in status_counts) && (await loadShippingSettings()).pickup_enabled) {
+    status_counts.ready_for_pickup = 0;
   }
 
   const [idRows] = await pool.query<RowDataPacket[]>(
@@ -630,6 +710,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             code: "RTO_COLUMN_MISSING",
           });
         }
+        if (await hasDeliveryOpsOrderColumns(pool)) {
+          // BATCH-17: pickup orders never ship, so they can never be returned to origin.
+          const [fulfilmentRows] = await pool.query<RowDataPacket[]>(
+            `SELECT fulfilment FROM orders WHERE order_id = ? LIMIT 1`,
+            [rtoOrderId]
+          );
+          const rtoCheck = assertStatusTransition({
+            fulfilment: Array.isArray(fulfilmentRows) ? fulfilmentRows[0]?.fulfilment : null,
+            from: "dispatched",
+            to: "cancelled",
+            action: "rto",
+          });
+          if (!rtoCheck.ok) {
+            return res.status(rtoCheck.status).json({ error: rtoCheck.error, code: rtoCheck.code });
+          }
+        }
         const rtoOutcome = await cancelOrderWithRollback(rtoOrderId, RTO_CANCEL_REASON, { rto: true });
         if (!rtoOutcome.ok) {
           return res.status(rtoOutcome.status).json({ error: rtoOutcome.error });
@@ -652,22 +748,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const trimmedId = order_id.trim();
       const protection = await loadOrderProtectionSettings();
 
+      // BATCH-17: ready_for_pickup is only a valid target once migration 0010 exists; before that the
+      // value stays "Invalid order status" exactly as at ab26978.
+      const opsOrderCols = await hasDeliveryOpsOrderColumns(pool);
+      if (status === "ready_for_pickup" && !opsOrderCols) {
+        return res.status(400).json({ error: "Invalid order status" });
+      }
+      const fulfilmentSelect = opsOrderCols ? ", fulfilment" : "";
+
       type CurrentOrderRow = OrderLockRow & {
         payment_method?: string | null;
         confirmed_at?: Date | string | null;
+        fulfilment?: string | null;
       };
       let currentRows: CurrentOrderRow[];
       try {
         if (protection.cod_protection_enabled) {
           const [rows] = await pool.query<CurrentOrderRow[]>(
-            `SELECT order_id, status, coupon_code, payment_method, confirmed_at
+            `SELECT order_id, status, coupon_code, payment_method, confirmed_at${fulfilmentSelect}
              FROM orders WHERE order_id = ? LIMIT 1`,
             [trimmedId]
           );
           currentRows = Array.isArray(rows) ? rows : [];
         } else {
           const [rows] = await pool.query<CurrentOrderRow[]>(
-            `SELECT order_id, status, coupon_code FROM orders WHERE order_id = ? LIMIT 1`,
+            `SELECT order_id, status, coupon_code${fulfilmentSelect} FROM orders WHERE order_id = ? LIMIT 1`,
             [trimmedId]
           );
           currentRows = Array.isArray(rows) ? rows : [];
@@ -690,6 +795,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       if (status !== "cancelled") {
+        // BATCH-17: pickup orders cannot be dispatched; delivery orders cannot be ready_for_pickup.
+        const transition = assertStatusTransition({
+          fulfilment: current.fulfilment,
+          from: currentStatus,
+          to: status,
+        });
+        if (!transition.ok) {
+          return res.status(transition.status).json({ error: transition.error, code: transition.code });
+        }
+
+        // COD pickup: pending -> ready_for_pickup also needs the COD confirmation first.
+        if (
+          protection.cod_protection_enabled &&
+          paymentMethod === "cod" &&
+          status === "ready_for_pickup" &&
+          !current.confirmed_at &&
+          currentStatus !== "confirmed" &&
+          currentStatus !== "ready_for_pickup" &&
+          currentStatus !== "delivered"
+        ) {
+          return res.status(409).json({
+            error: "Confirm this COD order before it is ready for pickup",
+            code: "COD_CONFIRMATION_REQUIRED",
+          });
+        }
+
         // COD confirmation gate when protection enabled.
         if (
           protection.cod_protection_enabled &&
@@ -833,6 +964,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
                 sets.push("tracking_number = ?");
                 setParams.push(rawTracking.trim());
+              }
+
+              // Own-rider dispatch (BATCH-17): optional active rider; tracking stays optional.
+              const rawRider = body.rider_id;
+              if (rawRider !== undefined && rawRider !== null && rawRider !== "") {
+                const riderId = typeof rawRider === "number" ? rawRider : Number(String(rawRider).trim());
+                if (!Number.isInteger(riderId) || riderId <= 0) {
+                  return res.status(400).json({ error: "Invalid rider" });
+                }
+                if (!opsOrderCols) {
+                  return res.status(503).json({ error: "Service unavailable" });
+                }
+                let riderOk = false;
+                try {
+                  const [riderRows] = await pool.query<RowDataPacket[]>(
+                    "SELECT id FROM riders WHERE id = ? AND active = 1 LIMIT 1",
+                    [riderId]
+                  );
+                  riderOk = Array.isArray(riderRows) && riderRows.length > 0;
+                } catch {
+                  return res.status(503).json({ error: "Service unavailable" });
+                }
+                if (!riderOk) return res.status(400).json({ error: "Invalid rider" });
+                sets.push("rider_id = ?");
+                setParams.push(riderId);
               }
             } else {
               sets.push("delivered_at = COALESCE(delivered_at, NOW())");

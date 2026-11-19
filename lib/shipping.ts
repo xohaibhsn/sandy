@@ -18,10 +18,13 @@
  */
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import {
+  hasDeliveryOpsSchema,
+  hasDeliveryOpsZoneColumns,
   hasRequiresShippingColumn,
   hasShippingOrderColumns,
   hasShippingTables,
 } from "./shippingSchema";
+import { cityHasActiveAreas, findSelectableArea, resolveAreaPath, resolveZoneIdFromArea } from "./shippingAreas";
 export {
   normaliseCity,
   normaliseProvince,
@@ -47,7 +50,34 @@ export type ShippingZone = {
   estimate_text: string | null;
   active: boolean | number;
   sort_order?: number;
+  /**
+   * SANDY-BATCH-17 (migration 0010). Absent unless enriched via loadZoneDeliveryMethods; absent is
+   * treated as 'courier' so the plain loadShippingZones query keeps ab26978 parity.
+   */
+  delivery_method?: ZoneDeliveryMethod;
+  /** PKT wall-clock TIME ("HH:MM[:SS]") for own-rider same-day delivery; owner data, no tz conversion. */
+  same_day_cutoff?: string | null;
 };
+
+export type ZoneDeliveryMethod = "courier" | "own_rider";
+
+export type ShippingFulfilment = "delivery" | "pickup";
+
+/** Row of shipping_areas (migration 0010). Tree via parent_id; zone_id optionally pins a zone. */
+export type ShippingArea = {
+  id: number;
+  city: string;
+  name: string;
+  parent_id: number | null;
+  zone_id: number | null;
+  active: boolean | number;
+  sort_order: number;
+};
+
+/** Shown when restrict-to-zones is on and no active zone covers the destination. */
+export const AREA_NOT_SERVED_MESSAGE = "We don't deliver to this area yet.";
+/** Server-side area requirement (orders only): the city has active areas but none / "other" was chosen. */
+export const AREA_REQUIRED_MESSAGE = "Please select your delivery area.";
 
 export type ShippableItemFlags = {
   requires_shipping?: unknown;
@@ -68,6 +98,19 @@ export type ShippingQuote = {
    * zone. Callers must fail closed (503) instead of guessing a price.
    */
   unavailable: boolean;
+  /**
+   * SANDY-BATCH-17. The keys below are set ONLY on delivery-ops paths (areas array supplied, pickup
+   * enabled, or an own-rider zone). With every flag off they are absent (byte parity with ab26978).
+   * deliverable: false only when restrict-to-zones refused the destination (default true).
+   */
+  deliverable?: boolean;
+  refuseReason?: string | null;
+  /** True when deliverable is false only because the city has active areas and no area / "other" was chosen. */
+  areaRequired?: boolean;
+  /** "Parent > Child" snapshot for orders.shipping_area. */
+  shippingAreaSnapshot?: string | null;
+  deliveryMethod?: string | null;
+  fulfilment?: ShippingFulfilment;
 };
 
 export type QuoteLine = {
@@ -118,6 +161,102 @@ export function matchZone(
     if (isOn(z.is_default)) return z;
   }
   return null;
+}
+
+export type MatchZoneWithAreasInput = {
+  city: unknown;
+  province: unknown;
+  areaId?: unknown;
+  /** shipping_restrict_to_zones: skip the default zone and refuse when nothing else matches. */
+  restrictToZones?: boolean;
+};
+
+export type MatchZoneWithAreasResult = {
+  zone: ShippingZone | null;
+  /** "Parent > Child" of the validated selected area, else null. */
+  areaSnapshot: string | null;
+  /** True only when restrict-to-zones is on and no active zone covers the destination. */
+  refused: boolean;
+};
+
+/**
+ * Area-aware zone match (shipping_areas_enabled and/or restrict-to-zones). Server-side only: a client
+ * area id is used only when the area is active AND belongs to the selected city.
+ *
+ * Precedence (first hit wins; inactive zones/areas never match):
+ *   1. selected area's own zone_id (active zone)
+ *   2. ancestors' zone_id, nearest first
+ *   3. active zone listing the city
+ *   4. active zone listing the province
+ *   5. active default zone (SKIPPED when restrictToZones)
+ *   6. restrictToZones and nothing matched => refused
+ * Ties between zones use (sort_order, id). matchZone() is untouched; this is a separate function.
+ */
+export function matchZoneWithAreas(
+  zones: readonly ShippingZone[],
+  areas: readonly ShippingArea[],
+  input: MatchZoneWithAreasInput
+): MatchZoneWithAreasResult {
+  const restrict = input.restrictToZones === true;
+  const active = zones.filter((z) => isOn(z.active)).sort(compareZones);
+
+  const area = findSelectableArea(areas, input.areaId, input.city);
+  const areaSnapshot = area ? resolveAreaPath(areas, area.id) : null;
+
+  if (area) {
+    const activeIds = new Set(active.map((z) => Number(z.id)));
+    const zoneId = resolveZoneIdFromArea(areas, area.id, activeIds);
+    if (zoneId !== null) {
+      const z = active.find((x) => Number(x.id) === zoneId);
+      if (z) return { zone: z, areaSnapshot, refused: false };
+    }
+  }
+
+  const c = normaliseCity(input.city);
+  if (c) {
+    for (const z of active) {
+      if (parseZoneList(z.cities).includes(c)) return { zone: z, areaSnapshot, refused: false };
+    }
+  }
+
+  const p = normaliseProvince(input.province);
+  if (p) {
+    for (const z of active) {
+      if (parseZoneList(z.provinces).includes(p)) return { zone: z, areaSnapshot, refused: false };
+    }
+  }
+
+  if (!restrict) {
+    for (const z of active) {
+      if (isOn(z.is_default)) return { zone: z, areaSnapshot, refused: false };
+    }
+  }
+
+  return { zone: null, areaSnapshot, refused: restrict };
+}
+
+const CUTOFF_RE = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/;
+
+/**
+ * Own-rider estimate text. With a valid cutoff (MySQL TIME "HH:MM" / "HH:MM:SS", stored as PKT
+ * wall-clock owner data, so it is only re-formatted, never timezone-converted) returns
+ * "Same-day delivery for orders before HH:MM". Otherwise the zone's estimate text (trimmed) or null.
+ */
+export function formatSameDayEstimate(
+  cutoff: string | null | undefined,
+  estimateText: string | null | undefined
+): string | null {
+  if (typeof cutoff === "string") {
+    const m = CUTOFF_RE.exec(cutoff.trim());
+    if (m) {
+      const h = Number(m[1]);
+      if (h >= 0 && h <= 23) {
+        return `Same-day delivery for orders before ${String(h).padStart(2, "0")}:${m[2]}`;
+      }
+    }
+  }
+  const text = estimateText === null || estimateText === undefined ? "" : String(estimateText).trim();
+  return text || null;
 }
 
 /**
@@ -196,8 +335,45 @@ export function quoteShippingFromLines(input: {
   province: unknown;
   discountAmount: number;
   goodsSubtotal?: number;
+  /** SANDY-BATCH-17 (all optional; omitted => identical to the ab26978 behaviour). */
+  areaId?: unknown;
+  /** Providing the array (even empty) selects the area-aware matcher (shipping_areas_enabled). */
+  areas?: readonly ShippingArea[];
+  restrictToZones?: boolean;
+  /**
+   * Orders only: when true (with `areas`), a delivery to a city that has at least one ACTIVE area needs a
+   * valid selectable areaId OR otherArea = true (explicit "Other area in city" = city-level match).
+   * Omitted => no requirement (tax-quote / eligibility stay advisory; pure-function callers unchanged).
+   */
+  requireAreaSelection?: boolean;
+  otherArea?: boolean;
+  fulfilment?: ShippingFulfilment;
+  pickupEnabled?: boolean;
 }): ShippingQuote {
   const hasShippableItems = input.lines.some((l) => l.shippable);
+  const pickupOn = input.pickupEnabled === true;
+
+  // Pickup: no zone, no shipping charge, even with shippable items.
+  if (input.fulfilment === "pickup" && pickupOn) {
+    return {
+      amount: 0,
+      zoneId: null,
+      zoneName: null,
+      estimateText: null,
+      hasShippableItems,
+      unavailable: false,
+      deliverable: true,
+      refuseReason: null,
+      shippingAreaSnapshot: null,
+      deliveryMethod: null,
+      fulfilment: "pickup",
+    };
+  }
+
+  const restrict = input.restrictToZones === true;
+  const areaPath = input.areas !== undefined || restrict;
+  const opsPath = areaPath || pickupOn;
+
   if (!hasShippableItems) {
     return {
       amount: 0,
@@ -206,10 +382,64 @@ export function quoteShippingFromLines(input: {
       estimateText: null,
       hasShippableItems: false,
       unavailable: false,
+      ...(opsPath ? { deliverable: true, fulfilment: "delivery" as const } : {}),
     };
   }
 
-  const zone = matchZone(input.zones, input.city, input.province);
+  let zone: ShippingZone | null;
+  let areaSnapshot: string | null = null;
+  if (
+    areaPath &&
+    input.requireAreaSelection === true &&
+    input.areas !== undefined &&
+    input.otherArea !== true &&
+    cityHasActiveAreas(input.areas, input.city) &&
+    findSelectableArea(input.areas, input.areaId, input.city) === null
+  ) {
+    return {
+      amount: 0,
+      zoneId: null,
+      zoneName: null,
+      estimateText: null,
+      hasShippableItems: true,
+      unavailable: false,
+      deliverable: false,
+      areaRequired: true,
+      refuseReason: AREA_REQUIRED_MESSAGE,
+      shippingAreaSnapshot: null,
+      deliveryMethod: null,
+      fulfilment: "delivery",
+    };
+  }
+
+  if (areaPath) {
+    const m = matchZoneWithAreas(input.zones, input.areas ?? [], {
+      city: input.city,
+      province: input.province,
+      areaId: input.areaId,
+      restrictToZones: restrict,
+    });
+    if (m.refused) {
+      return {
+        amount: 0,
+        zoneId: null,
+        zoneName: null,
+        estimateText: null,
+        hasShippableItems: true,
+        unavailable: false,
+        deliverable: false,
+        refuseReason: AREA_NOT_SERVED_MESSAGE,
+        shippingAreaSnapshot: m.areaSnapshot,
+        deliveryMethod: null,
+        fulfilment: "delivery",
+      };
+    }
+    zone = m.zone;
+    areaSnapshot = m.areaSnapshot;
+  } else {
+    zone = matchZone(input.zones, input.city, input.province);
+  }
+
   if (!zone) {
     return {
       amount: 0,
@@ -218,6 +448,7 @@ export function quoteShippingFromLines(input: {
       estimateText: null,
       hasShippableItems: true,
       unavailable: true,
+      ...(opsPath ? { deliverable: true, fulfilment: "delivery" as const } : {}),
     };
   }
 
@@ -227,8 +458,13 @@ export function quoteShippingFromLines(input: {
     goodsSubtotal: input.goodsSubtotal,
   });
   const amount = computeShippingAmount({ zone, shippableGoodsSubtotalAfterDiscount: base });
-  const estimate = zone.estimate_text ? String(zone.estimate_text).trim() : "";
-  return {
+  const ownRider = zone.delivery_method === "own_rider";
+  const estimate = ownRider
+    ? formatSameDayEstimate(zone.same_day_cutoff, zone.estimate_text)
+    : zone.estimate_text
+      ? String(zone.estimate_text).trim()
+      : "";
+  const quote: ShippingQuote = {
     amount,
     zoneId: zone.id,
     zoneName: zone.name,
@@ -236,6 +472,13 @@ export function quoteShippingFromLines(input: {
     hasShippableItems: true,
     unavailable: false,
   };
+  if (opsPath || ownRider) {
+    quote.deliverable = true;
+    quote.deliveryMethod = zone.delivery_method ?? "courier";
+    quote.fulfilment = "delivery";
+    if (areaPath) quote.shippingAreaSnapshot = areaSnapshot;
+  }
+  return quote;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +491,15 @@ let zonesCache: { at: number; zones: ShippingZone[] } | null = null;
 /** Test-only, and called by every admin zone write so edits apply immediately. */
 export function resetShippingZonesCache(): void {
   zonesCache = null;
+  zoneOpsCache = null;
 }
+
+let zoneOpsCache: { at: number; byId: Map<number, ZoneDeliveryOps> } | null = null;
+
+export type ZoneDeliveryOps = {
+  delivery_method: ZoneDeliveryMethod;
+  same_day_cutoff: string | null;
+};
 
 function parseMoney(raw: unknown): number {
   const n = typeof raw === "number" ? raw : Number(String(raw ?? "").trim());
@@ -283,6 +534,52 @@ export async function loadShippingZones(db: Queryable): Promise<ShippingZone[]> 
   const zones = (Array.isArray(rows) ? rows : []).map(mapZoneRow);
   zonesCache = { at: now, zones };
   return zones;
+}
+
+/**
+ * SANDY-BATCH-17: per-zone delivery_method / same_day_cutoff (migration 0010). loadShippingZones keeps
+ * its original column list for parity; paths that need own-rider data call this (or
+ * enrichZonesWithDeliveryOps). Returns an empty map when the 0010 zone columns are absent, so an
+ * un-migrated database simply behaves as "every zone is courier". Cached for a few seconds.
+ */
+export async function loadZoneDeliveryMethods(
+  db: Queryable
+): Promise<Map<number, ZoneDeliveryOps>> {
+  const now = Date.now();
+  if (zoneOpsCache && now - zoneOpsCache.at < ZONES_CACHE_TTL_MS) return zoneOpsCache.byId;
+  const byId = new Map<number, ZoneDeliveryOps>();
+  if (await hasDeliveryOpsZoneColumns(db)) {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT id, delivery_method, same_day_cutoff FROM shipping_zones`
+    );
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const cutoff =
+        r.same_day_cutoff === null || r.same_day_cutoff === undefined
+          ? null
+          : String(r.same_day_cutoff).trim() || null;
+      byId.set(Number(r.id), {
+        delivery_method: String(r.delivery_method ?? "") === "own_rider" ? "own_rider" : "courier",
+        same_day_cutoff: cutoff,
+      });
+    }
+  }
+  zoneOpsCache = { at: now, byId };
+  return byId;
+}
+
+/** Pure: copy zones with delivery_method / same_day_cutoff filled from the map (default courier / null). */
+export function enrichZonesWithDeliveryOps(
+  zones: readonly ShippingZone[],
+  byId: ReadonlyMap<number, ZoneDeliveryOps>
+): ShippingZone[] {
+  return zones.map((z) => {
+    const ops = byId.get(Number(z.id));
+    return {
+      ...z,
+      delivery_method: ops?.delivery_method ?? "courier",
+      same_day_cutoff: ops?.same_day_cutoff ?? null,
+    };
+  });
 }
 
 export type QuoteShippingInput = {
@@ -343,6 +640,73 @@ export async function countActiveDefaultZones(db: Queryable): Promise<number> {
     `SELECT COUNT(*) AS c FROM shipping_zones WHERE active = 1 AND is_default = 1`
   );
   return Number((Array.isArray(rows) ? rows[0]?.c : 0) || 0);
+}
+
+/** Count of ACTIVE zones of any kind (uncached; used for the restrict-to-zones enable gate). */
+export async function countActiveZones(db: Queryable): Promise<number> {
+  const [rows] = await db.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS c FROM shipping_zones WHERE active = 1`
+  );
+  return Number((Array.isArray(rows) ? rows[0]?.c : 0) || 0);
+}
+
+/**
+ * Enable gate for shipping_enabled (pure): exactly ONE active default zone, OR restrict-to-zones is on
+ * with at least one active zone (no default needed because unmatched destinations are refused).
+ */
+export function canEnableShipping(input: {
+  activeDefaultZones: number;
+  restrictOn: boolean;
+  activeZones: number;
+}): boolean {
+  if (input.activeDefaultZones === 1) return true;
+  return input.restrictOn === true && input.activeZones >= 1;
+}
+
+/**
+ * Enable gate for shipping_restrict_to_zones (pure): area matching is on, or at least one active zone
+ * lists cities / provinces (otherwise restrict would refuse every destination).
+ */
+export function canEnableRestrict(input: {
+  areasEnabled: boolean;
+  hasListedCitiesOrProvinces: boolean;
+}): boolean {
+  return input.areasEnabled === true || input.hasListedCitiesOrProvinces === true;
+}
+
+/** Pure: does any ACTIVE zone list at least one city or province? */
+export function hasListedCitiesOrProvinces(zones: readonly ShippingZone[]): boolean {
+  return zones.some(
+    (z) =>
+      isOn(z.active) &&
+      (parseZoneList(z.cities).length > 0 || parseZoneList(z.provinces).length > 0)
+  );
+}
+
+export type DeliveryOpsReadiness = {
+  schema: boolean;
+  activeZones: number;
+  activeDefaultZones: number;
+};
+
+/**
+ * SANDY-BATCH-17 readiness for the delivery-ops flags. Separate from getShippingReadiness so the
+ * existing admin shipping-settings response shape is unchanged.
+ */
+export async function getDeliveryOpsReadiness(db: Queryable): Promise<DeliveryOpsReadiness> {
+  const schema = await hasDeliveryOpsSchema(db);
+  let activeZones = 0;
+  let activeDefaultZones = 0;
+  if (await hasShippingTables(db)) {
+    try {
+      activeZones = await countActiveZones(db);
+      activeDefaultZones = await countActiveDefaultZones(db);
+    } catch {
+      activeZones = 0;
+      activeDefaultZones = 0;
+    }
+  }
+  return { schema, activeZones, activeDefaultZones };
 }
 
 export type ShippingReadiness = {

@@ -5,6 +5,7 @@ import { adminRequest } from "@/lib/adminRequest";
 import { normaliseCity } from "@/lib/shippingNormalise";
 import { PK_CITIES, PK_PROVINCES } from "@/lib/pkLocations";
 import AdminBanner from "./AdminBanner";
+import DeliveryOpsPanel, { type DeliveryOpsInfo } from "./DeliveryOpsPanel";
 import LocationMultiSelect, {
   joinLocationList,
   splitLocationList,
@@ -28,8 +29,18 @@ type Readiness = {
 
 type SettingsResponse = {
   shipping_enabled?: boolean;
-  settings?: { shipping_enabled?: boolean };
+  shipping_areas_enabled?: boolean;
+  shipping_restrict_to_zones?: boolean;
+  pickup_enabled?: boolean;
+  settings?: {
+    shipping_enabled?: boolean;
+    shipping_areas_enabled?: boolean;
+    shipping_restrict_to_zones?: boolean;
+    pickup_enabled?: boolean;
+  };
   readiness?: Readiness;
+  /** SANDY-BATCH-17 readiness for the delivery-ops flags. */
+  delivery_ops?: DeliveryOpsInfo;
 };
 
 type Zone = {
@@ -43,6 +54,9 @@ type Zone = {
   estimate_text: string;
   active: boolean;
   sort_order: number;
+  /** Present only once migration 0010 is applied. */
+  delivery_method?: "courier" | "own_rider";
+  same_day_cutoff?: string | null;
 };
 
 type Courier = {
@@ -64,6 +78,9 @@ type ZoneForm = {
   estimate_text: string;
   active: boolean;
   sort_order: string;
+  delivery_method: "courier" | "own_rider";
+  /** HH:MM (empty = none). */
+  same_day_cutoff: string;
 };
 
 type CourierForm = {
@@ -85,6 +102,8 @@ const EMPTY_ZONE: ZoneForm = {
   estimate_text: "",
   active: true,
   sort_order: "0",
+  delivery_method: "courier",
+  same_day_cutoff: "",
 };
 
 const EMPTY_COURIER: CourierForm = {
@@ -132,6 +151,8 @@ export default function ShippingSettingsPanel({
   const [busy, setBusy] = useState(false);
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE);
   const [courierForm, setCourierForm] = useState<CourierForm>(EMPTY_COURIER);
+  const [opsFlags, setOpsFlags] = useState({ areas: false, restrict: false, pickup: false });
+  const [opsInfo, setOpsInfo] = useState<DeliveryOpsInfo | null>(null);
 
   const loadAll = useCallback(async (): Promise<string> => {
     const [s, z, c] = await Promise.all([
@@ -142,6 +163,13 @@ export default function ShippingSettingsPanel({
     if (s.ok) {
       setEnabled(s.data.shipping_enabled === true || s.data.settings?.shipping_enabled === true);
       setReadiness(s.data.readiness ?? null);
+      setOpsFlags({
+        areas: s.data.shipping_areas_enabled === true || s.data.settings?.shipping_areas_enabled === true,
+        restrict:
+          s.data.shipping_restrict_to_zones === true || s.data.settings?.shipping_restrict_to_zones === true,
+        pickup: s.data.pickup_enabled === true || s.data.settings?.pickup_enabled === true,
+      });
+      setOpsInfo(s.data.delivery_ops ?? null);
     }
     if (z.ok) {
       setZones(Array.isArray(z.data.zones) ? z.data.zones : []);
@@ -172,11 +200,15 @@ export default function ShippingSettingsPanel({
     };
   }, [loadAll]);
 
-  const defaultZoneReady = (readiness?.activeDefaultZones ?? 0) === 1;
+  // One active default zone, OR restrict-to-zones is on with at least one active zone (BATCH-17).
+  const defaultZoneReady =
+    (readiness?.activeDefaultZones ?? 0) === 1 || (opsFlags.restrict && (opsInfo?.activeZones ?? 0) >= 1);
   const schemaReady = readiness
     ? readiness.tables !== false && readiness.orderColumns !== false && readiness.requiresShippingColumn !== false
     : true;
   const canEnable = defaultZoneReady && schemaReady;
+  // Delivery-method / cut-off fields exist only once migration 0010 is applied.
+  const zoneOpsFields = opsInfo?.schema === true;
 
   const reportError = (message: string) => {
     setNotice("");
@@ -234,6 +266,13 @@ export default function ShippingSettingsPanel({
       active: f.active,
       sort_order: f.sort_order.trim() || "0",
     };
+    if (zoneOpsFields) {
+      if (f.same_day_cutoff.trim() && !/^([01]\d|2[0-3]):[0-5]\d$/.test(f.same_day_cutoff.trim())) {
+        return reportError("Same-day cut-off must be a time like 14:00.");
+      }
+      body.delivery_method = f.delivery_method;
+      body.same_day_cutoff = f.same_day_cutoff.trim();
+    }
     if (f.id !== null) body.id = f.id;
 
     setBusy(true);
@@ -295,10 +334,12 @@ export default function ShippingSettingsPanel({
       estimate_text: z.estimate_text,
       active: z.active,
       sort_order: String(z.sort_order),
+      delivery_method: z.delivery_method === "own_rider" ? "own_rider" : "courier",
+      same_day_cutoff: z.same_day_cutoff ? String(z.same_day_cutoff).slice(0, 5) : "",
     });
   };
 
-  // ---- Couriers ----------------------------------------------------------------------------
+  // ---- Couriers  ----------------------------------------------------------------------------
   const saveCourier = async () => {
     setBanner("");
     setNotice("");
@@ -450,12 +491,12 @@ export default function ShippingSettingsPanel({
             <thead>
               <tr>
                 <th>Zone</th><th>Cities</th><th>Provinces</th><th>Default</th><th>Rate</th>
-                <th>Free over</th><th>Estimate</th><th>Active</th><th>Sort</th><th />
+                <th>Free over</th><th>Estimate</th>{zoneOpsFields && <th>Delivery</th>}<th>Active</th><th>Sort</th><th />
               </tr>
             </thead>
             <tbody>
               {zonesLoaded && zones.length === 0 && (
-                <tr><td colSpan={10} style={{ textAlign: "center", color: "#888", padding: 20 }}>
+                <tr><td colSpan={zoneOpsFields ? 11 : 10} style={{ textAlign: "center", color: "#888", padding: 20 }}>
                   No zones yet. Add a default zone first.
                 </td></tr>
               )}
@@ -468,6 +509,13 @@ export default function ShippingSettingsPanel({
                   <td>{z.rate}</td>
                   <td>{z.free_min === null ? "—" : z.free_min}</td>
                   <td style={{ fontSize: 12 }}>{z.estimate_text || "—"}</td>
+                  {zoneOpsFields && (
+                    <td style={{ fontSize: 12 }} data-zone-delivery-method={z.delivery_method ?? "courier"}>
+                      {z.delivery_method === "own_rider"
+                        ? `Own rider${z.same_day_cutoff ? ` (before ${String(z.same_day_cutoff).slice(0, 5)})` : ""}`
+                        : "Courier"}
+                    </td>
+                  )}
                   <td>
                     <input type="checkbox" checked={z.active} disabled={busy}
                       onChange={(e) => { void patchZoneActive(z, e.target.checked); }} />
@@ -509,6 +557,27 @@ export default function ShippingSettingsPanel({
                 onChange={(e) => setZ("sort_order", e.target.value)} />
             </label>
           </div>
+          {zoneOpsFields && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 12 }} data-zone-delivery-fields="1">
+              <label style={{ fontSize: 12 }}>Delivery method<br />
+                <select style={{ ...inputStyle, width: 180 }} data-zone-delivery-method-select="1"
+                  value={zoneForm.delivery_method}
+                  onChange={(e) => setZ("delivery_method", e.target.value === "own_rider" ? "own_rider" : "courier")}>
+                  <option value="courier">Courier (tracking number)</option>
+                  <option value="own_rider">Own rider</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 12 }}>Same-day cut-off (optional)<br />
+                <input style={{ ...inputStyle, width: 130 }} type="time" data-zone-cutoff="1"
+                  value={zoneForm.same_day_cutoff}
+                  disabled={zoneForm.delivery_method !== "own_rider"}
+                  onChange={(e) => setZ("same_day_cutoff", e.target.value)} />
+              </label>
+              <div style={{ fontSize: 11, color: "#888", alignSelf: "flex-end", maxWidth: 320 }}>
+                Cut-off is a Pakistan wall-clock time. Customers see &ldquo;Same-day delivery for orders before HH:MM&rdquo; for own-rider zones.
+              </div>
+            </div>
+          )}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 12 }}>
             <LocationMultiSelect
               label="Cities"
@@ -622,6 +691,14 @@ export default function ShippingSettingsPanel({
             )}
           </div>
         </div>
+
+        <DeliveryOpsPanel
+          flags={opsFlags}
+          info={opsInfo}
+          zones={zones.map((z) => ({ id: z.id, name: z.name, active: z.active }))}
+          shippingEnabled={enabled === true}
+          onSettingsChanged={reload}
+        />
       </div>
     </div>
   );

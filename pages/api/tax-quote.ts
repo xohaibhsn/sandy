@@ -15,13 +15,19 @@ import {
 } from '../../lib/taxStore';
 import type { TaxDestination } from '../../lib/taxEngine';
 import { loadShippingSettings } from '../../lib/shippingSettings';
-import { hasShippingSchema } from '../../lib/shippingSchema';
+import { hasDeliveryOpsSchema, hasShippingSchema } from '../../lib/shippingSchema';
 import {
+  AREA_NOT_SERVED_MESSAGE,
+  enrichZonesWithDeliveryOps,
   isShippableItem,
   loadShippingZones,
+  loadZoneDeliveryMethods,
   quoteShippingFromLines,
   type QuoteLine,
+  type ShippingArea,
 } from '../../lib/shipping';
+import { loadShippingAreas } from '../../lib/shippingAreas';
+import { loadActivePickupPoint, parseDeliveryOpsInput } from '../../lib/deliveryOpsInput';
 
 /**
  * Public, read-only checkout quote. The browser never computes tax: it sends
@@ -117,7 +123,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Shipping (BATCH-12): flag off => shipping stays 0 with no new reads or response keys.
-    const shippingOn = (await loadShippingSettings()).shipping_enabled;
+    const shippingSettings = await loadShippingSettings();
+    const shippingOn = shippingSettings.shipping_enabled;
+    // Delivery ops (BATCH-17). Areas / restrict only modify the shipping quote, so they need shipping on.
+    const areasOn = shippingOn && shippingSettings.shipping_areas_enabled;
+    const restrictOn = shippingOn && shippingSettings.shipping_restrict_to_zones;
+    const pickupOn = shippingOn && shippingSettings.pickup_enabled;
+    const ops = parseDeliveryOpsInput(body, { areasOn, pickupOn });
+    if (!ops) return res.status(400).json({ error: 'Invalid request' });
+    if ((areasOn || restrictOn || pickupOn) && !(await hasDeliveryOpsSchema(pool))) {
+      return res.status(503).json({ error: 'Service unavailable' });
+    }
+    const isPickup = pickupOn && ops.fulfilment === 'pickup';
+    let pickupPointName: string | null = null;
+    if (isPickup && ops.pickupPointId !== null) {
+      const point = await loadActivePickupPoint(pool, ops.pickupPointId);
+      if (!point) return res.status(400).json({ error: 'Invalid pickup point' });
+      pickupPointName = point.name;
+    }
+
     let shippingCity = '';
     let shippingProvince = '';
     if (shippingOn) {
@@ -188,6 +212,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let shipping = 0;
     let shippingZone: string | null = null;
     let shippingEstimate: string | null = null;
+    let shippingArea: string | null = null;
+    let deliverable = true;
     const goodsSubtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
     let discount = 0;
     let persistedCoupon: string | null = null;
@@ -236,7 +262,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }),
         };
       });
-      const zones = await loadShippingZones(pool);
+      const zones = enrichZonesWithDeliveryOps(
+        await loadShippingZones(pool),
+        await loadZoneDeliveryMethods(pool)
+      );
+      let areas: ShippingArea[] | undefined;
+      if (areasOn) areas = await loadShippingAreas(pool);
+      else if (restrictOn) areas = [];
       const quote = quoteShippingFromLines({
         zones,
         lines,
@@ -244,6 +276,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         province: shippingProvince,
         discountAmount: discount,
         goodsSubtotal,
+        ...(areas !== undefined ? { areas, restrictToZones: restrictOn } : {}),
+        ...(areasOn ? { areaId: ops.areaId } : {}),
+        ...(pickupOn ? { fulfilment: ops.fulfilment, pickupEnabled: true } : {}),
       });
       if (quote.unavailable) {
         return res.status(503).json({ error: 'Service unavailable' });
@@ -251,6 +286,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       shipping = quote.amount;
       shippingZone = quote.zoneName;
       shippingEstimate = quote.estimateText;
+      shippingArea = quote.shippingAreaSnapshot ?? null;
+      // Restrict-to-zones refusal is a soft answer (shipping 0) so the cart can show the message.
+      deliverable = quote.deliverable !== false;
     }
 
     const result = computeOrderTaxTotals({
@@ -290,6 +328,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       total: t.total,
       ...(shippingOn
         ? { shipping_zone: shippingZone, shipping_estimate: shippingEstimate }
+        : {}),
+      ...(areasOn ? { shipping_areas_enabled: true, shipping_area: shippingArea } : {}),
+      ...(pickupOn ? { pickup_enabled: true } : {}),
+      ...(isPickup ? { fulfilment: 'pickup', pickup_point_name: pickupPointName } : {}),
+      ...(!deliverable
+        ? { deliverable: false, shipping_unavailable_reason: AREA_NOT_SERVED_MESSAGE }
         : {}),
     });
   } catch (error: unknown) {

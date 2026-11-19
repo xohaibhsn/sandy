@@ -111,7 +111,7 @@ const styles = `
 
 type OrderResult = {
   id: string;
-  status: "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled";
+  status: "pending" | "confirmed" | "ready_for_pickup" | "dispatched" | "delivered" | "cancelled";
   items: { name: string; price: number; qty: number }[];
   total: number;
   date: string;
@@ -123,6 +123,10 @@ type OrderResult = {
   courierName?: string;
   trackingNumber?: string;
   trackingUrl?: string;
+  /** Delivery ops (migration 0010): present only for pickup orders / own-rider dispatch. */
+  fulfilment?: "pickup";
+  statusNote?: string;
+  pickupPoint?: { name: string; address?: string; hours?: string; mapUrl?: string };
 };
 
 /** https-only: never render a link the API (or a tampered response) gave us over any other scheme. */
@@ -144,6 +148,16 @@ const statusSteps = [
 ];
 
 const statusOrder = ["pending", "confirmed", "dispatched", "delivered"];
+
+/** Pickup orders never dispatch: pending -> confirmed -> ready for pickup -> picked up. */
+const pickupStatusSteps = [
+  statusSteps[0],
+  statusSteps[1],
+  { key: "ready_for_pickup", icon: "📍", title: "Ready for pickup", desc: "Your order is ready to collect from the pickup point." },
+  { key: "delivered", icon: "📦", title: "Picked up", desc: "You have collected your order. Enjoy!" },
+];
+
+const pickupStatusOrder = ["pending", "confirmed", "ready_for_pickup", "delivered"];
 
 export default function OrderTrackingPage() {
   const [query, setQuery] = useState("");
@@ -202,6 +216,18 @@ export default function OrderTrackingPage() {
           trackingNumber:
             typeof o.tracking_number === "string" && o.tracking_number.trim() ? o.tracking_number.trim() : undefined,
           trackingUrl: safeHttpsUrl(o.tracking_url),
+          fulfilment: o.fulfilment === "pickup" ? "pickup" : undefined,
+          statusNote:
+            typeof o.status_label === "string" && o.status_label.trim() ? o.status_label.trim() : undefined,
+          pickupPoint:
+            o.pickup_point && typeof o.pickup_point === "object" && typeof o.pickup_point.name === "string"
+              ? {
+                  name: o.pickup_point.name,
+                  address: typeof o.pickup_point.address === "string" ? o.pickup_point.address : undefined,
+                  hours: typeof o.pickup_point.hours_text === "string" ? o.pickup_point.hours_text : undefined,
+                  mapUrl: safeHttpsUrl(o.pickup_point.map_url),
+                }
+              : undefined,
         });
       } else {
         setNotFound(true);
@@ -212,17 +238,23 @@ export default function OrderTrackingPage() {
     setSearching(false);
   };
 
-  const currentStatusIndex = result ? statusOrder.indexOf(result.status) : -1;
+  const isPickupResult = result?.fulfilment === "pickup";
+  const activeSteps = isPickupResult ? pickupStatusSteps : statusSteps;
+  const currentStatusIndex = result
+    ? (isPickupResult ? pickupStatusOrder : statusOrder).indexOf(result.status)
+    : -1;
 
   const statusBadgeClass = (status: string) => {
     if (status === "pending") return "order-status-badge status-pending";
     if (status === "confirmed") return "order-status-badge status-confirmed";
-    if (status === "dispatched") return "order-status-badge status-dispatched";
+    if (status === "dispatched" || status === "ready_for_pickup") return "order-status-badge status-dispatched";
     if (status === "cancelled") return "order-status-badge status-cancelled";
     return "order-status-badge status-delivered";
   };
 
   const statusLabel = (status: string) => {
+    if (status === "ready_for_pickup") return "📍 Ready for pickup";
+    if (status === "delivered" && isPickupResult) return "📦 Picked up";
     if (status === "pending") return "⏳ Pending Verification";
     if (status === "confirmed") return "✅ Confirmed";
     if (status === "dispatched") return "🚚 Dispatched";
@@ -304,6 +336,15 @@ export default function OrderTrackingPage() {
                 </p>
               ) : null}
 
+              {result.statusNote && result.status !== "cancelled" ? (
+                <p
+                  data-status-note="1"
+                  style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600, lineHeight: 1.45, wordBreak: "break-word" }}
+                >
+                  {result.statusNote}
+                </p>
+              ) : null}
+
               <div className="order-card-body">
                 {/* Items */}
                 <div className="order-items">
@@ -355,15 +396,39 @@ export default function OrderTrackingPage() {
                   </div>
                 ) : null}
 
+                {/* Pickup point: rendered only for pickup orders (flag-gated API fields). */}
+                {result.fulfilment === "pickup" && result.pickupPoint ? (
+                  <div className="customer-info" data-pickup-info="1" style={{ marginTop: 0, marginBottom: 24 }}>
+                    <h4>Pickup point</h4>
+                    <div className="info-row"><span>Location</span><span data-pickup-name="1">{result.pickupPoint.name}</span></div>
+                    {result.pickupPoint.address ? (
+                      <div className="info-row"><span>Address</span><span>{result.pickupPoint.address}</span></div>
+                    ) : null}
+                    {result.pickupPoint.hours ? (
+                      <div className="info-row"><span>Hours</span><span>{result.pickupPoint.hours}</span></div>
+                    ) : null}
+                    {result.pickupPoint.mapUrl ? (
+                      <div className="info-row">
+                        <span>Map</span>
+                        <span>
+                          <a href={result.pickupPoint.mapUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#5B21B6", fontWeight: 600 }}>
+                            Open map
+                          </a>
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {/* Progress */}
                 <div className="progress-section">
                   <h4>Order Progress</h4>
                   <div className="steps">
-                    {statusSteps.map((step, i) => {
+                    {activeSteps.map((step, i) => {
                       const isDone = i < currentStatusIndex;
                       const isActive = i === currentStatusIndex;
                       const isInactive = i > currentStatusIndex;
-                      const isLast = i === statusSteps.length - 1;
+                      const isLast = i === activeSteps.length - 1;
                       return (
                         <div className="step" key={step.key}>
                           <div className="step-left">

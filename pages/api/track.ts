@@ -3,8 +3,15 @@ import pool from '../../lib/db';
 import { getClientIp, rateLimit } from '../../lib/rateLimit';
 import { hasCancelReasonColumn } from '../../lib/orderCancel';
 import { canonicalPkMobile } from '../../lib/customerIdentity';
-import { hasShippingOrderColumns } from '../../lib/shippingSchema';
+import { hasDeliveryOpsOrderColumns, hasShippingOrderColumns } from '../../lib/shippingSchema';
 import { buildTrackingUrl } from '../../lib/shipping';
+import { loadShippingSettings } from '../../lib/shippingSettings';
+import {
+  deliveredLabel,
+  isPickupOrder,
+  ownRiderTrackingLabel,
+  readyForPickupLabel,
+} from '../../lib/shippingStatus';
 
 const TRACK_LIMIT = 15;
 const TRACK_WINDOW_MS = 15 * 60 * 1000;
@@ -103,7 +110,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Courier / tracking number only exist after migration 0009; without it the query is unchanged.
     const includeShipping = await hasShippingOrderColumns(pool);
-    const selectColsFinal = includeShipping ? `${selectCols}, courier_id, tracking_number` : selectCols;
+    let selectColsFinal = includeShipping ? `${selectCols}, courier_id, tracking_number` : selectCols;
+
+    // Delivery ops (BATCH-17, migration 0010): own rider / pickup details. Selected only when shipping
+    // (or pickup) is enabled AND the columns exist; otherwise the query and response are unchanged.
+    let includeOps = false;
+    {
+      const s = await loadShippingSettings();
+      if ((s.shipping_enabled || s.pickup_enabled) && (await hasDeliveryOpsOrderColumns(pool))) {
+        includeOps = true;
+        selectColsFinal = `${selectColsFinal}, fulfilment, rider_id, pickup_point_id, pickup_point_name`;
+      }
+    }
 
     const [orderResult] = await pool.query(
       `SELECT ${selectColsFinal}
@@ -123,6 +141,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       customer_phone: string | null;
       courier_id?: number | string | null;
       tracking_number?: string | null;
+      fulfilment?: string | null;
+      rider_id?: number | string | null;
+      pickup_point_id?: number | string | null;
+      pickup_point_name?: string | null;
     }>;
 
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -160,6 +182,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       courier_name?: string;
       tracking_number?: string;
       tracking_url?: string;
+      fulfilment?: 'pickup';
+      status_label?: string;
+      pickup_point?: {
+        name: string;
+        address: string | null;
+        hours_text: string | null;
+        map_url: string | null;
+      };
     } = {
       order_id: row.order_id,
       status: row.status,
@@ -216,6 +246,66 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } catch {
           /* couriers table absent: tracking still works without courier details */
         }
+      }
+    }
+
+    // Own rider / pickup (BATCH-17). Keys appear only for orders that actually use those paths.
+    if (includeOps) {
+      const status = String(row.status);
+      if (isPickupOrder(row.fulfilment)) {
+        orderPayload.fulfilment = 'pickup';
+        let address: string | null = null;
+        let hours: string | null = null;
+        let mapUrl: string | null = null;
+        let pointName =
+          typeof row.pickup_point_name === 'string' && row.pickup_point_name.trim()
+            ? row.pickup_point_name.trim()
+            : '';
+        if (row.pickup_point_id !== null && row.pickup_point_id !== undefined) {
+          try {
+            const [pointResult] = await pool.query(
+              `SELECT name, address, hours_text, map_url FROM pickup_points WHERE id = ? LIMIT 1`,
+              [row.pickup_point_id]
+            );
+            const p = (pointResult as Array<{
+              name: string | null;
+              address: string | null;
+              hours_text: string | null;
+              map_url: string | null;
+            }>)[0];
+            if (p) {
+              address = typeof p.address === 'string' && p.address.trim() ? p.address.trim() : null;
+              hours = typeof p.hours_text === 'string' && p.hours_text.trim() ? p.hours_text.trim() : null;
+              mapUrl = typeof p.map_url === 'string' && p.map_url.trim() ? p.map_url.trim() : null;
+              if (!pointName && typeof p.name === 'string') pointName = p.name.trim();
+            }
+          } catch {
+            /* pickup_points absent: fall back to the stored name snapshot */
+          }
+        }
+        if (pointName) {
+          orderPayload.pickup_point = { name: pointName, address, hours_text: hours, map_url: mapUrl };
+        }
+        if (status === 'ready_for_pickup') {
+          orderPayload.status_label = [readyForPickupLabel(pointName), address, hours]
+            .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
+            .join(', ');
+        } else if (status === 'delivered') {
+          orderPayload.status_label = deliveredLabel('pickup');
+        }
+      } else if (status === 'dispatched' && row.rider_id !== null && row.rider_id !== undefined) {
+        let riderName: string | null = null;
+        try {
+          const [riderResult] = await pool.query(`SELECT name FROM riders WHERE id = ? LIMIT 1`, [
+            row.rider_id,
+          ]);
+          const r = (riderResult as Array<{ name: string | null }>)[0];
+          riderName = r && typeof r.name === 'string' ? r.name : null;
+        } catch {
+          riderName = null;
+        }
+        // First name only; the rider phone number is never selected here.
+        orderPayload.status_label = ownRiderTrackingLabel(riderName);
       }
     }
 

@@ -6,6 +6,7 @@ import { parseIsoDate, resolvePktRange } from "./pktDateRange";
 export const ORDER_STATUSES = [
   "pending",
   "confirmed",
+  "ready_for_pickup",
   "dispatched",
   "delivered",
   "cancelled",

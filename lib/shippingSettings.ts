@@ -9,16 +9,30 @@
 import type { RowDataPacket } from "mysql2";
 import pool from "./db";
 
-export const SHIPPING_SETTINGS_KEYS = ["shipping_enabled"] as const;
+export const SHIPPING_SETTINGS_KEYS = [
+  "shipping_enabled",
+  "shipping_areas_enabled",
+  "shipping_restrict_to_zones",
+  "pickup_enabled",
+] as const;
 
 export type ShippingSettingsKey = (typeof SHIPPING_SETTINGS_KEYS)[number];
 
 export type ShippingSettings = {
   shipping_enabled: boolean;
+  /** SANDY-BATCH-17: area tree matching (needs migration 0010). */
+  shipping_areas_enabled: boolean;
+  /** SANDY-BATCH-17: refuse destinations no active zone covers (default zone is skipped). */
+  shipping_restrict_to_zones: boolean;
+  /** SANDY-BATCH-17: store pickup at checkout (needs migration 0010). */
+  pickup_enabled: boolean;
 };
 
 export const SHIPPING_SETTINGS_DEFAULTS: ShippingSettings = {
   shipping_enabled: false,
+  shipping_areas_enabled: false,
+  shipping_restrict_to_zones: false,
+  pickup_enabled: false,
 };
 
 const CACHE_TTL_MS = 10_000;
@@ -45,6 +59,9 @@ export function parseShippingSettingsMap(
   const d = SHIPPING_SETTINGS_DEFAULTS;
   return {
     shipping_enabled: parseBool01(map.shipping_enabled, d.shipping_enabled),
+    shipping_areas_enabled: parseBool01(map.shipping_areas_enabled, d.shipping_areas_enabled),
+    shipping_restrict_to_zones: parseBool01(map.shipping_restrict_to_zones, d.shipping_restrict_to_zones),
+    pickup_enabled: parseBool01(map.pickup_enabled, d.pickup_enabled),
   };
 }
 
@@ -70,6 +87,9 @@ export function validateShippingSetting(
 ): { ok: true; value: string } | { ok: false; error: string } {
   switch (key) {
     case "shipping_enabled":
+    case "shipping_areas_enabled":
+    case "shipping_restrict_to_zones":
+    case "pickup_enabled":
       return validateShippingEnabledValue(value);
     default:
       return { ok: false, error: "Unknown setting" };
@@ -79,6 +99,21 @@ export function validateShippingSetting(
 /** User-facing error when enabling shipping without exactly one active default zone. */
 export const SHIPPING_NEEDS_DEFAULT_ZONE_MESSAGE =
   "Shipping can only be enabled when exactly one active default zone exists";
+
+/** Enable gate for shipping_enabled when shipping_restrict_to_zones is on (no default zone required). */
+export const SHIPPING_NEEDS_ACTIVE_ZONE_MESSAGE =
+  "Shipping can only be enabled when exactly one active default zone exists, or restrict-to-zones is on with at least one active zone";
+
+/** Enable gate for shipping_restrict_to_zones. */
+export const SHIPPING_RESTRICT_NEEDS_COVERAGE_MESSAGE =
+  "Restrict to zones needs area matching on, or at least one active zone with listed cities or provinces";
+
+/** Enable gate for shipping_areas_enabled / pickup_enabled / own-rider paths when migration 0010 is missing. */
+export const DELIVERY_OPS_SCHEMA_MISSING_MESSAGE = "Service unavailable";
+
+/** Enable gate for pickup_enabled: at least one active pickup point is required. */
+export const PICKUP_NEEDS_POINT_MESSAGE =
+  "Pickup can only be enabled when at least one active pickup point exists";
 
 export async function loadShippingSettings(): Promise<ShippingSettings> {
   const now = Date.now();

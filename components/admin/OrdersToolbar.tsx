@@ -66,6 +66,8 @@ export type OrdersToolbarProps = {
   onExport: () => void;
   exporting?: boolean;
   disabled?: boolean;
+  /** pickup_enabled as known by the parent: adds the "Ready for pickup" status filter (BATCH-17). */
+  pickupEnabled?: boolean;
 };
 
 const labelStyle = { fontSize: 11, color: "#666", fontWeight: 600 } as const;
@@ -83,6 +85,7 @@ export default function OrdersToolbar({
   onExport,
   exporting = false,
   disabled = false,
+  pickupEnabled = false,
 }: OrdersToolbarProps) {
   const validationError = validateOrderFilters(draft);
   const set = (patch: Partial<OrderFilterDraft>) => onDraftChange({ ...draft, ...patch });
@@ -134,6 +137,9 @@ export default function OrdersToolbar({
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
+            {pickupEnabled || draft.status === "ready_for_pickup" ? (
+              <option value="ready_for_pickup">Ready for pickup</option>
+            ) : null}
             <option value="dispatched">Dispatched</option>
             <option value="delivered">Delivered</option>
             <option value="cancelled">Cancelled</option>
