@@ -212,6 +212,7 @@ check("admin routes call requirePermission; public-only routes never do", () => 
     .map(([r]) => r)
     .sort();
   eq(sessionUsers, [
+    "/api/admin-change-password",
     "/api/admin-logout",
     "/api/admin-session",
     "/api/blog",

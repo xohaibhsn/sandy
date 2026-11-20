@@ -103,8 +103,9 @@ upload-favicon. Blog / FAQs / admin-search intentionally allow all three roles (
 | Route | Method | Behaviour | Change |
 |---|---|---|---|
 | `/api/admin-login` | POST | Public credential exchange; creates session; rate limited | untouched |
-| `/api/admin-session` | GET | `getAdminSession`; 200 `{authenticated:false}` without session, role echoed to the caller's OWN session only | untouched |
+| `/api/admin-session` | GET | `getAdminSession`; 200 `{authenticated:false}` without session, role/name/`isMaster` echoed to the caller's OWN session only | BATCH-29 adds `isMaster` |
 | `/api/admin-logout` | POST | same-origin gate + destroy session cookie | untouched |
+| `/api/admin-change-password` | POST | same-origin + staff session; self-service password change; master → 403 | BATCH-29 |
 
 ## 3. Public routes — must stay public (verified untouched)
 
@@ -143,7 +144,7 @@ upload-favicon. Blog / FAQs / admin-search intentionally allow all three roles (
 Files not modified for these routes except the mixed ones above where ONLY the admin guard line changed
 (`blog`, `faqs`, `sections`, `site-content`, `coupons`); the public branches are byte-identical.
 Unmodified entirely: `products`, `public-categories`, `orders`, `track`, `contact`, `search`, `tax-quote`,
-`favicon`, `upload-receipt`, `admin-login`, `admin-session`, `admin-logout` (confirm with `git diff --stat`).
+`favicon`, `upload-receipt`, `admin-login`, `admin-session`, `admin-logout`, `admin-change-password` (confirm with `git diff --stat`).
 
 ## 4. site-content key policy
 

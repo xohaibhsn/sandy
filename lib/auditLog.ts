@@ -244,7 +244,11 @@ export function sanitizeAuditValue(key: string, value: unknown, depth = 0): unkn
   if (depth > 6) return "[max-depth]";
   const kn = keyNorm(key);
 
-  if (REDACT_KEYS.has(kn) || kn.includes("password") || kn.endsWith("_sid") || kn.includes("secret")) {
+  // Boolean flags (e.g. selfPasswordChange) are not secret material — keep them.
+  if (
+    (REDACT_KEYS.has(kn) || kn.includes("password") || kn.endsWith("_sid") || kn.includes("secret")) &&
+    typeof value !== "boolean"
+  ) {
     return "[redacted]";
   }
   if (MASK_PHONE_KEYS.has(kn) || kn.endsWith("_phone")) return maskPhone(value);

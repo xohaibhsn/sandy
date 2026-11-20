@@ -23,6 +23,7 @@ import {
 import RedirectManager from "../../components/admin/RedirectManager";
 import TaxSettingsPanel from "../../components/admin/TaxSettingsPanel";
 import ActivityLogPanel from "../../components/admin/ActivityLogPanel";
+import AccountSecurityPanel from "../../components/admin/AccountSecurityPanel";
 import OrderProtectionSettingsPanel from "../../components/admin/OrderProtectionSettingsPanel";
 import ShippingSettingsPanel from "../../components/admin/ShippingSettingsPanel";
 import BlacklistPanel, { CustomerBlockButton } from "../../components/admin/BlacklistPanel";
@@ -215,7 +216,7 @@ const demoCustomers = [
   { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026", blocked:false },
 ];
 
-type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff"|"tax"|"activity";
+type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff"|"tax"|"activity"|"security";
 type StoreCategory = { id:number; name:string; slug:string; description:string; image:string; parent_id:number|null; active:number; sort_order:number; };
 type AdminRole = "super_admin"|"manager"|"writer";
 type OrderStatus = "pending"|"confirmed"|"ready_for_pickup"|"dispatched"|"delivered"|"cancelled";
@@ -1814,6 +1815,7 @@ export default function AdminPage() {
                 {tab==="staff" && <>Staff <span>Users</span></>}
                 {tab==="tax" && <>Tax <span>Settings</span></>}
                 {tab==="activity" && <>Activity <span>Log</span></>}
+                {tab==="security" && <>My Account <span>Security</span></>}
               </h1>
             </div>
             <div className="top-right">
@@ -2547,6 +2549,16 @@ export default function AdminPage() {
 
           {/* 📋 ACTIVITY LOG (super_admin / audit:view; API enforces too) */}
           {tab==="activity" && adminRole==="super_admin" && <ActivityLogPanel />}
+
+          {/* 🔒 MY ACCOUNT SECURITY (all signed-in roles; APIs enforce) */}
+          {tab==="security" && (
+            <AccountSecurityPanel
+              onLoggedOut={() => {
+                setLoggedIn(false);
+                setAdminRole("super_admin");
+              }}
+            />
+          )}
 
           {/* 👤 STAFF USERS */}
           {tab==="staff" && adminRole==="super_admin" && (

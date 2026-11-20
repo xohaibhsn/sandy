@@ -15,5 +15,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     authenticated: true,
     role: session.role,
     name: session.name,
+    isMaster: Boolean(session.isMaster),
   });
 }

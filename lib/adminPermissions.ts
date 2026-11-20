@@ -349,6 +349,7 @@ export const ADMIN_SESSION_ROUTES: readonly string[] = [
   "/api/admin-login",
   "/api/admin-session",
   "/api/admin-logout",
+  "/api/admin-change-password",
 ];
 
 /**

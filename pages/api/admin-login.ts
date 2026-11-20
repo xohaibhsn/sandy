@@ -248,8 +248,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (!hashEnv && !sha256Env && !plainEnv) {
-    await auditLoginFailed(req, username, 'server_not_configured');
-    return res.status(500).json({ success: false, error: 'Server not configured' });
+    // Clean switch-off: no master env → same as wrong password (401), not 500.
+    recordAdminLoginFailure({ username, clientIp });
+    await auditLoginFailed(req, username, 'master_disabled');
+    return res.status(401).json({ success: false });
   }
 
   recordAdminLoginFailure({ username, clientIp });
