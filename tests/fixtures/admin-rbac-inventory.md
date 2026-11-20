@@ -68,6 +68,7 @@ Method rows below are machine-checked by `tests/admin-rbac-policy.test.mjs` and
 | `/api/admin-blacklist` | PATCH | — | n/a (BATCH-07) | `customers:block` | SA,M | NEW (BATCH-07) |
 | `/api/admin-blacklist` | DELETE | — | n/a (BATCH-07) | `customers:block` | SA,M | NEW (BATCH-07) |
 | `/api/admin-order-protection` | GET | — | n/a (BATCH-07) | `settings:order_protection` | SA | NEW (BATCH-07) |
+| `/api/admin-otp-health` | POST | — | n/a (BATCH-34) | `settings:order_protection` | SA | NEW (BATCH-34) |
 | `/api/admin-accounts-settings` | GET | — | n/a (BATCH-09) | `settings:accounts` | SA | NEW (BATCH-09) |
 | `/api/admin-shipping-zones` | GET | — | n/a (BATCH-12) | `settings:shipping` | SA | NEW (BATCH-12) |
 | `/api/admin-shipping-zones` | POST | — | n/a (BATCH-12) | `settings:shipping` | SA | NEW (BATCH-12) |

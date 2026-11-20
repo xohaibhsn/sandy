@@ -313,6 +313,7 @@ export const ADMIN_ENDPOINT_POLICY: readonly AdminEndpointPolicy[] = [
   { route: "/api/admin-blacklist", method: "DELETE", permission: "customers:block" },
 
   { route: "/api/admin-order-protection", method: "GET", permission: "settings:order_protection" },
+  { route: "/api/admin-otp-health", method: "POST", permission: "settings:order_protection" },
   { route: "/api/admin-accounts-settings", method: "GET", permission: "settings:accounts" },
 
   { route: "/api/admin-shipping-zones", method: "GET", permission: "settings:shipping" },

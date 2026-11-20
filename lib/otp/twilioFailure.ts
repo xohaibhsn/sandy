@@ -13,8 +13,16 @@ export type OtpFailureKind = "number_rejected" | "max_attempts" | "start_failed"
 
 export class OtpProviderError extends Error {
   readonly kind: OtpFailureKind;
+  /** HTTP status from the provider response, or null when unknown. */
+  readonly httpStatus: number | null;
+  /** Numeric Twilio error code only (message body discarded). */
+  readonly twilioCode: number | null;
 
-  constructor(kind: OtpFailureKind) {
+  constructor(
+    kind: OtpFailureKind,
+    httpStatus: number | null = null,
+    twilioCode: number | null = null
+  ) {
     const message =
       kind === "number_rejected"
         ? "OTP_NUMBER_REJECTED"
@@ -24,7 +32,35 @@ export class OtpProviderError extends Error {
     super(message);
     this.name = "OtpProviderError";
     this.kind = kind;
+    this.httpStatus = httpStatus;
+    this.twilioCode = twilioCode;
   }
+}
+
+/** Safe log fragments — numbers only, never phone/body/env. */
+export function otpFailureLogParts(err: unknown): {
+  kind: string;
+  http: string;
+  code: string;
+  httpStatus: number | null;
+  twilioCode: number | null;
+} {
+  if (err instanceof OtpProviderError) {
+    return {
+      kind: err.kind,
+      http: err.httpStatus == null ? "-" : String(err.httpStatus),
+      code: err.twilioCode == null ? "-" : String(err.twilioCode),
+      httpStatus: err.httpStatus,
+      twilioCode: err.twilioCode,
+    };
+  }
+  return {
+    kind: "unknown",
+    http: "-",
+    code: "-",
+    httpStatus: null,
+    twilioCode: null,
+  };
 }
 
 export function otpFailureKind(err: unknown): OtpFailureKind | null {

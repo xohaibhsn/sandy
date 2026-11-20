@@ -79,6 +79,7 @@ export const PROBES = {
   "DELETE /api/admin-blacklist": { url: "/api/admin-blacklist", body: {}, ok: [400] },
 
   "GET /api/admin-order-protection": { url: "/api/admin-order-protection", ok: [200] },
+  "POST /api/admin-otp-health": { url: "/api/admin-otp-health", body: {}, ok: [200] },
 
   "GET /api/admin-accounts-settings": { url: "/api/admin-accounts-settings", ok: [200] },
 

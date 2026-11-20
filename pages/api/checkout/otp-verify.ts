@@ -4,10 +4,37 @@ import { getClientIp, rateLimit } from "../../../lib/rateLimit";
 import { CUSTOMER_TEXTS } from "../../../lib/customerTexts";
 import { loadOrderProtectionSettings } from "../../../lib/orderProtectionSettings";
 import { otpIsEffective, verifyOtpChallenge } from "../../../lib/otp";
+import { otpFailureKind, otpFailureLogParts } from "../../../lib/otp/twilioFailure";
+import { auditThrottle, recordAudit } from "../../../lib/auditLog";
 
 const PHONE_LIMIT = 3;
 const IP_LIMIT = 10;
 const WINDOW_MS = 15 * 60 * 1000;
+const AUDIT_WINDOW_MS = 15 * 60 * 1000;
+
+async function auditOtpCheckFailed(
+  kind: string,
+  httpStatus: number | null,
+  twilioCode: number | null,
+  req: NextApiRequest
+): Promise<void> {
+  try {
+    const codeKey = twilioCode == null ? "-" : String(twilioCode);
+    const { record } = auditThrottle(`otp_check_failed:${kind}:${codeKey}`, AUDIT_WINDOW_MS);
+    if (!record) return;
+    await recordAudit(pool, {
+      actor: { actorType: "system" },
+      action: "otp_check_failed",
+      entityType: "otp",
+      entityId: null,
+      summary: "OTP check failed",
+      detail: { kind, http: httpStatus, code: twilioCode },
+      req,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -76,7 +103,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } catch {
       /* ignore */
     }
-    console.error("[api/checkout/otp-verify] failed", (err as { code?: string })?.code || "unknown");
+    const parts = otpFailureLogParts(err);
+    const kind = otpFailureKind(err) || parts.kind;
+    console.error(`[otp] verify failed kind=${kind} http=${parts.http} code=${parts.code}`);
+    void auditOtpCheckFailed(kind, parts.httpStatus, parts.twilioCode, req);
+    if (kind === "max_attempts") {
+      return res.status(429).json({ error: CUSTOMER_TEXTS.COD_OTP_MAX_ATTEMPTS });
+    }
+    if (kind === "number_rejected") {
+      return res.status(400).json({ error: CUSTOMER_TEXTS.COD_OTP_NUMBER_REJECTED });
+    }
     return res.status(500).json({ error: "Server error" });
   } finally {
     connection.release();

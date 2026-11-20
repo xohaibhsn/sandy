@@ -1,12 +1,14 @@
 import crypto from "crypto";
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { resetOtpChannelWarning } from "./channel";
+import { readOtpEnv } from "./env";
 import { createMockOtpProvider } from "./mockProvider";
-import { otpFailureKind } from "./twilioFailure";
 import { createTwilioVerifyProvider } from "./twilioVerifyProvider";
 import type { OtpProvider, OtpPurpose } from "./types";
 
 export type { OtpProvider, OtpPurpose } from "./types";
+export { readOtpEnv, sanitiseEnvRaw } from "./env";
+export type { OtpEnvSanitised, OtpEnvVarCheck } from "./env";
 
 let providerWarningLogged = false;
 let cachedProvider: OtpProvider | null | undefined;
@@ -19,16 +21,12 @@ export function resetOtpProviderCache(): void {
 }
 
 export function isOtpProviderConfigured(): boolean {
-  const name = String(process.env.OTP_PROVIDER || "").trim();
-  if (name === "mock") {
+  const env = readOtpEnv();
+  if (env.provider === "mock") {
     return process.env.NODE_ENV !== "production";
   }
-  if (name === "twilio_verify") {
-    return Boolean(
-      process.env.TWILIO_ACCOUNT_SID &&
-        process.env.TWILIO_AUTH_TOKEN &&
-        process.env.TWILIO_VERIFY_SERVICE_SID
-    );
+  if (env.provider === "twilio_verify") {
+    return Boolean(env.accountSid && env.authToken && env.serviceSid);
   }
   return false;
 }
@@ -40,17 +38,17 @@ export function isOtpProviderConfigured(): boolean {
 export function getOtpProvider(): OtpProvider | null {
   if (cachedProvider !== undefined) return cachedProvider;
 
-  const name = String(process.env.OTP_PROVIDER || "").trim();
+  const env = readOtpEnv();
   try {
-    if (name === "mock") {
+    if (env.provider === "mock") {
       cachedProvider = createMockOtpProvider();
       return cachedProvider;
     }
-    if (name === "twilio_verify") {
+    if (env.provider === "twilio_verify") {
       cachedProvider = createTwilioVerifyProvider({
-        accountSid: String(process.env.TWILIO_ACCOUNT_SID || ""),
-        authToken: String(process.env.TWILIO_AUTH_TOKEN || ""),
-        serviceSid: String(process.env.TWILIO_VERIFY_SERVICE_SID || ""),
+        accountSid: env.accountSid,
+        authToken: env.authToken,
+        serviceSid: env.serviceSid,
       });
       return cachedProvider;
     }
@@ -163,15 +161,9 @@ export async function verifyOtpChallenge(
   }
 
   const checkTarget = String(row.provider_ref || row.phone_norm || "");
-  let good = false;
-  try {
-    good = await provider.check(checkTarget, input.code.trim());
-  } catch (err) {
-    const kind = otpFailureKind(err);
-    if (kind === "number_rejected") return { ok: false, code: "NUMBER_REJECTED" };
-    if (kind === "max_attempts") return { ok: false, code: "MAX_ATTEMPTS" };
-    throw err;
-  }
+  // OtpProviderError (number_rejected / max_attempts) propagates to the API handler
+  // so kind/http/code can be logged and audited without changing customer texts.
+  const good = await provider.check(checkTarget, input.code.trim());
   if (!good) {
     const next = attempts + 1;
     if (next >= OTP_MAX_ATTEMPTS) {

@@ -50,7 +50,11 @@ export function createTwilioVerifyProvider(
       if (!res.ok) {
         const code = await readTwilioErrorCode(res);
         const classified = classifyTwilioFailure(res.status, code);
-        throw new OtpProviderError(classified === "failed" ? "start_failed" : classified);
+        throw new OtpProviderError(
+          classified === "failed" ? "start_failed" : classified,
+          res.status,
+          code
+        );
       }
       const data = (await res.json()) as { sid?: string };
       if (!data.sid || typeof data.sid !== "string") {
@@ -83,7 +87,7 @@ export function createTwilioVerifyProvider(
         const code = await readTwilioErrorCode(res);
         const classified = classifyTwilioFailure(res.status, code);
         if (classified === "number_rejected" || classified === "max_attempts") {
-          throw new OtpProviderError(classified);
+          throw new OtpProviderError(classified, res.status, code);
         }
         return false;
       }

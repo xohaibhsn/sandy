@@ -84,6 +84,17 @@ export default function OrderProtectionSettingsPanel({
   const [banner, setBanner] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [otpHealthBusy, setOtpHealthBusy] = useState(false);
+  const [otpHealthHint, setOtpHealthHint] = useState("");
+  const [otpHealthChecks, setOtpHealthChecks] = useState<
+    Array<{
+      name: string;
+      missing: boolean;
+      hadWhitespace: boolean;
+      hadQuotes: boolean;
+      format: string;
+    }>
+  >([]);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -114,6 +125,41 @@ export default function OrderProtectionSettingsPanel({
   }, []);
 
   const providerConfigured = otpProviderConfiguredProp ?? otpConfigured;
+
+  const testOtpConnection = async () => {
+    setOtpHealthBusy(true);
+    setOtpHealthHint("");
+    setOtpHealthChecks([]);
+    setBanner("");
+    const res = await adminRequest<{
+      ok?: boolean;
+      hint?: string;
+      stage?: string;
+      checks?: Array<{
+        name: string;
+        missing: boolean;
+        hadWhitespace: boolean;
+        hadQuotes: boolean;
+        format: string;
+      }>;
+    }>("/api/admin-otp-health", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    setOtpHealthBusy(false);
+    if (!res.ok) {
+      setBanner(res.errorMessage || "OTP connection test failed.");
+      return;
+    }
+    const data = res.data || {};
+    setOtpHealthHint(
+      typeof data.hint === "string" && data.hint
+        ? data.hint
+        : data.stage === "env"
+          ? "OTP provider env incomplete — fix the checks below (no Twilio call made)."
+          : data.ok
+            ? "Connected."
+            : "OTP connection check returned not ok."
+    );
+    setOtpHealthChecks(Array.isArray(data.checks) ? data.checks : []);
+  };
 
   const save = async () => {
     if (!form) return;
@@ -180,11 +226,49 @@ export default function OrderProtectionSettingsPanel({
 
         {providerConfigured !== null && providerConfigured !== undefined && (
           <div style={{ fontSize: 12, marginBottom: 14 }} data-otp-provider-configured={providerConfigured ? "true" : "false"}>
-            OTP provider:{" "}
-            {providerConfigured ? (
-              <span className="status-badge status-delivered">Configured</span>
-            ) : (
-              <span className="status-badge status-cancelled">{CUSTOMER_TEXTS.ADMIN_OTP_PROVIDER_MISSING}</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+              <span>
+                OTP provider:{" "}
+                {providerConfigured ? (
+                  <span className="status-badge status-delivered">Configured</span>
+                ) : (
+                  <span className="status-badge status-cancelled">{CUSTOMER_TEXTS.ADMIN_OTP_PROVIDER_MISSING}</span>
+                )}
+              </span>
+              <button
+                type="button"
+                className="add-btn"
+                disabled={otpHealthBusy}
+                data-otp-health-test="1"
+                onClick={() => {
+                  void testOtpConnection();
+                }}
+                style={{ padding: "6px 12px", fontSize: 12 }}
+              >
+                {otpHealthBusy ? "Testing…" : "Test OTP connection"}
+              </button>
+            </div>
+            {otpHealthHint && (
+              <p data-otp-health-hint="1" style={{ margin: "8px 0 0", lineHeight: 1.5, color: "#444" }}>
+                {otpHealthHint}
+              </p>
+            )}
+            {otpHealthChecks.length > 0 && (
+              <ul data-otp-health-checks="1" style={{ margin: "8px 0 0", paddingLeft: 18, lineHeight: 1.6, color: "#666" }}>
+                {otpHealthChecks.map((c) => {
+                  const flags = [
+                    c.missing ? "missing" : "present",
+                    c.hadWhitespace ? "whitespace" : null,
+                    c.hadQuotes ? "quotes" : null,
+                    c.format === "bad" ? "bad-format" : c.format === "ok" ? "ok" : null,
+                  ].filter(Boolean);
+                  return (
+                    <li key={c.name}>
+                      {c.name}: {flags.join(", ")}
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </div>
         )}

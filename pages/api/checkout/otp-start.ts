@@ -10,11 +10,37 @@ import {
   hashIp,
   otpIsEffective,
 } from "../../../lib/otp";
-import { otpFailureKind } from "../../../lib/otp/twilioFailure";
+import { otpFailureKind, otpFailureLogParts } from "../../../lib/otp/twilioFailure";
+import { auditThrottle, recordAudit } from "../../../lib/auditLog";
 
 const PHONE_LIMIT = 3;
 const IP_LIMIT = 10;
 const WINDOW_MS = 15 * 60 * 1000;
+const AUDIT_WINDOW_MS = 15 * 60 * 1000;
+
+async function auditOtpSendFailed(
+  kind: string,
+  httpStatus: number | null,
+  twilioCode: number | null,
+  req: NextApiRequest
+): Promise<void> {
+  try {
+    const codeKey = twilioCode == null ? "-" : String(twilioCode);
+    const { record } = auditThrottle(`otp_send_failed:${kind}:${codeKey}`, AUDIT_WINDOW_MS);
+    if (!record) return;
+    await recordAudit(pool, {
+      actor: { actorType: "system" },
+      action: "otp_send_failed",
+      entityType: "otp",
+      entityId: null,
+      summary: "OTP send failed",
+      detail: { kind, http: httpStatus, code: twilioCode },
+      req,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -69,9 +95,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } catch {
       /* ignore */
     }
-    const kind = otpFailureKind(err);
-    const safe = kind || (err as { code?: string })?.code || "unknown";
-    console.error("[api/checkout/otp-start] failed", safe);
+    const parts = otpFailureLogParts(err);
+    const kind = otpFailureKind(err) || parts.kind;
+    console.error(`[otp] start failed kind=${kind} http=${parts.http} code=${parts.code}`);
+    void auditOtpSendFailed(kind, parts.httpStatus, parts.twilioCode, req);
     if (kind === "max_attempts") {
       return res.status(429).json({ error: CUSTOMER_TEXTS.COD_OTP_MAX_ATTEMPTS });
     }
