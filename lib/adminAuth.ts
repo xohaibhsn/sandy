@@ -342,3 +342,52 @@ export async function destroyAdminSession(
     /* still cleared cookie; idempotent */
   }
 }
+
+/**
+ * Delete admin_sessions for a staff member.
+ * When exceptSessionId is set, keep that row (e.g. caller changed their own password).
+ * Returns the number of rows deleted.
+ */
+export async function revokeStaffSessions(
+  staffId: number,
+  exceptSessionId?: number | null
+): Promise<number> {
+  try {
+    if (exceptSessionId != null && Number.isFinite(Number(exceptSessionId))) {
+      const [result] = await pool.query(
+        "DELETE FROM admin_sessions WHERE staff_id = ? AND id <> ?",
+        [staffId, exceptSessionId]
+      );
+      return Number((result as { affectedRows?: number } | undefined)?.affectedRows || 0);
+    }
+    const [result] = await pool.query("DELETE FROM admin_sessions WHERE staff_id = ?", [staffId]);
+    return Number((result as { affectedRows?: number } | undefined)?.affectedRows || 0);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Delete all sessions for the current caller (logout-all).
+ * Staff → WHERE staff_id = caller; master → WHERE is_master = 1.
+ * Also clears the cookie. Returns sessions deleted count.
+ */
+export async function revokeAllCallerSessions(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  session: AdminSession
+): Promise<number> {
+  clearSessionCookie(res);
+  try {
+    if (session.isMaster || session.staffId == null) {
+      const [result] = await pool.query("DELETE FROM admin_sessions WHERE is_master = 1");
+      return Number((result as { affectedRows?: number } | undefined)?.affectedRows || 0);
+    }
+    const [result] = await pool.query("DELETE FROM admin_sessions WHERE staff_id = ?", [
+      session.staffId,
+    ]);
+    return Number((result as { affectedRows?: number } | undefined)?.affectedRows || 0);
+  } catch {
+    return 0;
+  }
+}

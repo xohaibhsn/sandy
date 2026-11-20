@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { RL_AUTH, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import {
@@ -10,6 +11,15 @@ import {
 } from '../../lib/adminAuth';
 import { verifyAdminStaffPassword } from '../../lib/adminStaffPassword';
 import { auditThrottle, hashAuditIp, maskEmail, recordAudit } from '../../lib/auditLog';
+import {
+  ADMIN_LOGIN_LOCK_BODY,
+  ADMIN_LOGIN_GUARD_WINDOW_MS,
+  checkAdminLoginGuard,
+  clearAdminLoginGuard,
+  recordAdminLoginFailure,
+  timingSafeEqualDigest,
+  timingSafeEqualSha256OfStrings,
+} from '../../lib/adminLoginGuard';
 
 type StaffAuthRow = {
   id: number;
@@ -44,6 +54,32 @@ async function auditLoginFailed(req: NextApiRequest, username: unknown, reason: 
   });
 }
 
+async function auditLocked(
+  req: NextApiRequest,
+  username: unknown,
+  clientIp: string
+): Promise<void> {
+  const name = maskLoginName(username);
+  const ipHash = hashAuditIp(clientIp);
+  const { record, suppressed } = auditThrottle(
+    `login_locked:${ipHash}`,
+    ADMIN_LOGIN_GUARD_WINDOW_MS
+  );
+  if (!record) return;
+  const detail: Record<string, unknown> = { reason: 'locked', username: name || null };
+  if (suppressed > 0) detail.suppressed_since_last = suppressed;
+  await recordAudit(pool, {
+    actor: { actorType: 'anonymous', name: name || null },
+    action: 'login_failed',
+    entityType: 'admin_session',
+    entityId: null,
+    summary: 'Admin login failed (locked)',
+    detail,
+    req,
+    ipHash,
+  });
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireSameOriginAdminRequest(req, res)) return;
@@ -75,10 +111,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(429).json({ error: 'Too many login attempts. Try again in 15 minutes.' });
   }
 
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
   if (!username || !password) {
     await auditLoginFailed(req, username, 'missing_credentials');
     return res.status(400).json({ success: false, error: 'Missing credentials' });
+  }
+
+  // L2: account lockout BEFORE any credential verification
+  const guard = checkAdminLoginGuard({ username, clientIp });
+  if (guard.locked) {
+    await auditLocked(req, username, clientIp);
+    return res.status(429).json({ ...ADMIN_LOGIN_LOCK_BODY });
   }
 
   // ── Check admin_staff table first (multi-user RBAC) ───────────────────────
@@ -117,6 +160,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             name: String(staff.name || 'Admin'),
           });
           setSessionCookie(res, rawToken);
+          clearAdminLoginGuard({ username, clientIp });
           await recordAudit(pool, {
             actor: {
               actorType: 'staff',
@@ -137,13 +181,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(503).json({ success: false, error: 'Service unavailable' });
         }
       }
-      // Wrong staff password: do not create a staff session. Fall through so
-      // existing master-admin username "admin" behavior remains unchanged.
+      // L3: active staff row matched email but password wrong — no master fall-through
+      recordAdminLoginFailure({ username, clientIp });
+      await auditLoginFailed(req, username, 'wrong_password');
+      return res.status(401).json({ success: false });
     }
   } catch { /* admin_staff unavailable (migration 0003 not applied) — fall through to master admin check */ }
 
-  // ── Master admin login (username must be 'admin') ─────────────────────────
+  // ── Master admin login (username must be 'admin'; only when no staff row matched) ─
   if (username !== 'admin') {
+    recordAdminLoginFailure({ username, clientIp });
     await auditLoginFailed(req, username, 'wrong_password');
     return res.status(401).json({ success: false });
   }
@@ -161,6 +208,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         name: 'Admin',
       });
       setSessionCookie(res, rawToken);
+      clearAdminLoginGuard({ username, clientIp });
       await recordAudit(pool, {
         actor: { actorType: 'master', name: 'Admin', role: 'super_admin' },
         action: 'login_success',
@@ -177,16 +225,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   };
 
+  // L1: timing-safe SHA-256 digest compare (hash input; never === on secrets)
   if (sha256Env) {
     const inputHash = crypto.createHash('sha256').update(String(password)).digest('hex');
-    if (inputHash === sha256Env) {
+    if (timingSafeEqualDigest(inputHash, String(sha256Env))) {
       return finishMaster();
     }
   }
 
   if (hashEnv && hashEnv.startsWith('$2')) {
     try {
-      const bcrypt = require('bcryptjs');
       const match = await bcrypt.compare(String(password), hashEnv);
       if (match) {
         return finishMaster();
@@ -194,7 +242,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } catch {}
   }
 
-  if (plainEnv && String(password) === plainEnv) {
+  // L1: hash both sides then timing-safe compare (never plaintext ===)
+  if (plainEnv && timingSafeEqualSha256OfStrings(String(password), String(plainEnv))) {
     return finishMaster();
   }
 
@@ -203,6 +252,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ success: false, error: 'Server not configured' });
   }
 
+  recordAdminLoginFailure({ username, clientIp });
   await auditLoginFailed(req, username, 'wrong_password');
   return res.status(401).json({ success: false });
 }
