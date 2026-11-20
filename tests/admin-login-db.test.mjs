@@ -265,6 +265,7 @@ await section("staff password change revokes other session; caller stays valid",
 
 await section("deactivate staff → all sessions gone", async () => {
   resetAll();
+  process.env.ADMIN_PASSWORD = MASTER_PW;
   const email = "login01-deact@example.test";
   const hash = await hashAdminStaffPassword(OTHER_STAFF_PW);
   const [ins] = await pool.query(
@@ -309,6 +310,7 @@ await section("deactivate staff → all sessions gone", async () => {
 
 await section("logout-all for staff and master", async () => {
   resetAll();
+  process.env.ADMIN_PASSWORD = MASTER_PW;
   const email = "login01-logoutall@example.test";
   const hash = await hashAdminStaffPassword(STAFF_PW);
   const [ins] = await pool.query(
@@ -450,6 +452,7 @@ await section("self demote/deactivate/delete → 409; last active super_admin �
   eq(r.statusCode, 409, "self delete");
 
   // Master can deactivate one SA while another remains
+  process.env.ADMIN_PASSWORD = MASTER_PW;
   const masterTok = await createAdminSession({
     staffId: null,
     isMaster: true,

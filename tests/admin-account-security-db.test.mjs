@@ -49,12 +49,13 @@ const {
 } = await importFromRoot("lib/adminLoginGuard.ts");
 const { resetAuditThrottleForTests } = await importFromRoot("lib/auditLog.ts");
 const { hashAdminStaffPassword } = await importFromRoot("lib/adminStaffPassword.ts");
-const { createAdminSession } = await importFromRoot("lib/adminAuth.ts");
+const { createAdminSession, hashSessionToken } = await importFromRoot("lib/adminAuth.ts");
 const { MASTER_PASSWORD_HOSTING_MESSAGE } = await importFromRoot("lib/adminChangePassword.ts");
 
 const loginHandler = (await importFromRoot("pages/api/admin-login.ts")).default;
 const sessionHandler = (await importFromRoot("pages/api/admin-session.ts")).default;
 const changeHandler = (await importFromRoot("pages/api/admin-change-password.ts")).default;
+const staffHandler = (await importFromRoot("pages/api/admin-staff.ts")).default;
 
 const { eq, ok, total } = makeAssertions(assert);
 const sections = [];
@@ -300,6 +301,7 @@ await section("M3: too short → 400; same as current → 400", async () => {
 
 await section("M3: master → 403; unauthenticated → 401; cross-origin → rejected", async () => {
   resetAll();
+  process.env.ADMIN_PASSWORD = MASTER_PW;
   const masterTok = await createAdminSession({
     staffId: null,
     isMaster: true,
@@ -342,6 +344,89 @@ await section("M3: master → 403; unauthenticated → 401; cross-origin → rej
     headers: { origin: "https://evil.example" },
   });
   eq(r.statusCode, 403);
+});
+
+await section("F54: master session ends when master env cleared; staff unaffected", async () => {
+  resetAll();
+  process.env.ADMIN_PASSWORD = MASTER_PW;
+
+  const masterLogin = await login("admin", MASTER_PW, "198.51.100.110");
+  eq(masterLogin.statusCode, 200, JSON.stringify(masterLogin.body));
+  const masterTok = cookieFrom(masterLogin);
+  ok(masterTok, "master cookie");
+
+  let staffGet = await invoke(staffHandler, {
+    method: "GET",
+    url: "/api/admin-staff",
+    ...adminReq(masterTok),
+  });
+  eq(staffGet.statusCode, 200, "protected route with master env");
+  let sess = await sessionProbe(masterTok);
+  eq(sess.statusCode, 200);
+  eq(sess.body?.authenticated, true);
+
+  const email = "acctsec-f54-staff@example.test";
+  const hash = await hashAdminStaffPassword(STAFF_PW);
+  const [ins] = await pool.query(
+    "INSERT INTO admin_staff (name,email,password_hash,role,active) VALUES (?,?,?,?,1)",
+    ["F54 Staff", email, hash, "manager"]
+  );
+  const staffId = Number(ins.insertId);
+  const staffTok = await createAdminSession({
+    staffId,
+    isMaster: false,
+    role: "manager",
+    name: "F54 Staff",
+  });
+
+  const [beforeAudit] = await pool.query(
+    `SELECT COUNT(*) AS c FROM admin_audit_log
+     WHERE action = 'logout' AND detail_json LIKE '%master_disabled%'`
+  );
+  const beforeCount = Number((Array.isArray(beforeAudit) ? beforeAudit[0] : beforeAudit)?.c || 0);
+
+  delete process.env.ADMIN_PASSWORD;
+  delete process.env.ADMIN_PASSWORD_SHA256;
+  delete process.env.ADMIN_PASSWORD_HASH;
+
+  staffGet = await invoke(staffHandler, {
+    method: "GET",
+    url: "/api/admin-staff",
+    ...adminReq(masterTok),
+  });
+  eq(staffGet.statusCode, 401, "same master cookie rejected without master env");
+
+  sess = await sessionProbe(masterTok);
+  eq(sess.statusCode, 200);
+  eq(sess.body?.authenticated, false);
+
+  const masterHash = hashSessionToken(masterTok);
+  const [sessRows] = await pool.query(
+    "SELECT id FROM admin_sessions WHERE token_hash = ? LIMIT 1",
+    [masterHash]
+  );
+  eq(Array.isArray(sessRows) ? sessRows.length : 0, 0, "master session row deleted");
+
+  const [afterAudit] = await pool.query(
+    `SELECT COUNT(*) AS c FROM admin_audit_log
+     WHERE action = 'logout' AND detail_json LIKE '%master_disabled%'`
+  );
+  const afterCount = Number((Array.isArray(afterAudit) ? afterAudit[0] : afterAudit)?.c || 0);
+  eq(afterCount, beforeCount + 1, "exactly one master_disabled logout audit");
+
+  const staffGet2 = await invoke(staffHandler, {
+    method: "GET",
+    url: "/api/admin-staff",
+    ...adminReq(staffTok),
+  });
+  // manager lacks staff:view → 403 means session still authenticated
+  eq(staffGet2.statusCode, 403, "staff session still resolves without master env");
+  eq((await sessionProbe(staffTok)).body?.authenticated, true);
+
+  process.env.ADMIN_PASSWORD = MASTER_PW;
+  const again = await login("admin", MASTER_PW, "198.51.100.111");
+  eq(again.statusCode, 200, "master login works again after env restored");
+  ok(cookieFrom(again));
 });
 
 await section("M3: audit leak scan (no password values)", async () => {

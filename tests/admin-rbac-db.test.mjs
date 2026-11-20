@@ -28,6 +28,10 @@ if (!process.env.SANDY_TEST_DB_PASSWORD) {
   console.error("SANDY_TEST_DB_PASSWORD is required");
   process.exit(2);
 }
+// Sessions are minted with staff_id NULL; master env required for getAdminSession to resolve them.
+if (!process.env.ADMIN_PASSWORD && !process.env.ADMIN_PASSWORD_SHA256 && !process.env.ADMIN_PASSWORD_HASH) {
+  process.env.ADMIN_PASSWORD = ["RbacDbMaster", crypto.randomBytes(6).toString("hex")].join("");
+}
 
 const pool = mysql.createPool({
   host: "127.0.0.1",

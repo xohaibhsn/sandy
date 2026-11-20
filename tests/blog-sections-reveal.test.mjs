@@ -21,6 +21,10 @@ import { registerHooks } from "node:module";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// Fake sessions use staff_id NULL / is_master=1; master env must be present for getAdminSession.
+if (!process.env.ADMIN_PASSWORD && !process.env.ADMIN_PASSWORD_SHA256 && !process.env.ADMIN_PASSWORD_HASH) {
+  process.env.ADMIN_PASSWORD = ["BlogRevealMaster", crypto.randomBytes(6).toString("hex")].join("");
+}
 process.removeAllListeners("warning");
 registerHooks({
   resolve(specifier, context, nextResolve) {

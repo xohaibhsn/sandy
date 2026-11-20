@@ -28,6 +28,7 @@ import {
   checkoutBody,
   count,
   createPool,
+  ensureTestMasterLoginEnv,
   importFromRoot,
   installTsResolveHook,
   invoke,
@@ -221,6 +222,7 @@ function expectCodRefused(res, before, after, label = "") {
 }
 
 async function mintToken(role) {
+  ensureTestMasterLoginEnv();
   const raw = crypto.randomBytes(32).toString("hex");
   const hash = crypto.createHash("sha256").update(raw).digest("hex");
   const expires = new Date(Date.now() + 3600 * 1000).toISOString().slice(0, 19).replace("T", " ");

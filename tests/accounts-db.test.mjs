@@ -34,6 +34,7 @@ import {
   checkoutBody,
   count,
   createPool,
+  ensureTestMasterLoginEnv,
   importFromRoot,
   installTsResolveHook,
   invoke,
@@ -233,6 +234,7 @@ async function insertOrder({ phoneNorm = null, customerId = null, email = "guest
 const orderRow = (orderId) => one(pool, "SELECT * FROM orders WHERE order_id = ?", [orderId]);
 
 async function mintToken(role) {
+  ensureTestMasterLoginEnv();
   const raw = crypto.randomBytes(32).toString("hex");
   const hash = crypto.createHash("sha256").update(raw).digest("hex");
   const expires = new Date(Date.now() + 3600 * 1000).toISOString().slice(0, 19).replace("T", " ");

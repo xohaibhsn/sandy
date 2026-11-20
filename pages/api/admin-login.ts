@@ -5,6 +5,7 @@ import { RL_AUTH, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import {
   createAdminSession,
+  isMasterLoginConfigured,
   requireSameOriginAdminRequest,
   setSessionCookie,
   type AdminRole,
@@ -247,7 +248,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return finishMaster();
   }
 
-  if (!hashEnv && !sha256Env && !plainEnv) {
+  if (!isMasterLoginConfigured()) {
     // Clean switch-off: no master env → same as wrong password (401), not 500.
     recordAdminLoginFailure({ username, clientIp });
     await auditLoginFailed(req, username, 'master_disabled');

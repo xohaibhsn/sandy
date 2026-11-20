@@ -450,7 +450,7 @@ await section("login success/failure + logout", async () => {
   row = await latestAudit("admin_session");
   eq(row.action, "logout");
   token = await mintAdminToken(pool);
-  delete process.env.ADMIN_PASSWORD;
+  // keep master env so minted master sessions continue to resolve
 });
 
 await section("viewer filters / pagination / CSV + RBAC", async () => {
@@ -545,7 +545,6 @@ await section("login rate_limited audit throttle (at most one row per ip window)
   eq(detail.reason, "rate_limited");
   ok(detail.suppressed_since_last == null || detail.suppressed_since_last === 0);
   for (const row of list) assertNoLeak(row, "rate_limited");
-  delete process.env.ADMIN_PASSWORD;
   clear();
 });
 

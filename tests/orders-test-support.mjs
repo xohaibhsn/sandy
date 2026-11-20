@@ -225,8 +225,24 @@ export function checkoutBody(overrides = {}) {
   };
 }
 
+/**
+ * Ensure a master login env is present so minted master sessions resolve.
+ * No-op if SHA256 / bcrypt HASH / plain ADMIN_PASSWORD is already configured.
+ * Value is a per-process throwaway and is never printed.
+ */
+export function ensureTestMasterLoginEnv() {
+  const sha256Env = process.env.ADMIN_PASSWORD_SHA256;
+  const hashEnv = process.env.ADMIN_PASSWORD_HASH;
+  const plainEnv = process.env.ADMIN_PASSWORD;
+  if (typeof sha256Env === "string" && sha256Env.length > 0) return;
+  if (typeof hashEnv === "string" && hashEnv.startsWith("$2")) return;
+  if (typeof plainEnv === "string" && plainEnv.length > 0) return;
+  process.env.ADMIN_PASSWORD = ["SandyTestMaster", crypto.randomBytes(8).toString("hex")].join("");
+}
+
 /** Mints a super_admin session directly in the test DB and returns the cookie token. */
 export async function mintAdminToken(pool) {
+  ensureTestMasterLoginEnv();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_sessions (
       id INT AUTO_INCREMENT PRIMARY KEY, token_hash CHAR(64) NOT NULL, staff_id INT NULL,

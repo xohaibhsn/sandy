@@ -99,6 +99,42 @@ function normalizeRole(role: unknown): AdminRole | null {
 }
 
 /**
+ * True when admin-login would accept a master credential:
+ * ADMIN_PASSWORD_SHA256 non-empty, or ADMIN_PASSWORD_HASH starts with "$2",
+ * or ADMIN_PASSWORD non-empty. Empty string = not set. Read at call time.
+ */
+export function isMasterLoginConfigured(): boolean {
+  const sha256Env = process.env.ADMIN_PASSWORD_SHA256;
+  const hashEnv = process.env.ADMIN_PASSWORD_HASH;
+  const plainEnv = process.env.ADMIN_PASSWORD;
+  if (typeof sha256Env === "string" && sha256Env.length > 0) return true;
+  if (typeof hashEnv === "string" && hashEnv.startsWith("$2")) return true;
+  if (typeof plainEnv === "string" && plainEnv.length > 0) return true;
+  return false;
+}
+
+async function endMasterSessionMasterDisabled(sessionId: number): Promise<void> {
+  try {
+    await pool.query("DELETE FROM admin_sessions WHERE id = ?", [sessionId]);
+  } catch {
+    /* best effort */
+  }
+  try {
+    const { recordAudit } = await import("./auditLog");
+    await recordAudit(pool, {
+      actor: { actorType: "master", name: "Admin", role: "super_admin" },
+      action: "logout",
+      entityType: "admin_session",
+      entityId: null,
+      summary: "Master session ended (master login disabled)",
+      detail: { reason: "master_disabled" },
+    });
+  } catch {
+    /* best effort */
+  }
+}
+
+/**
  * Cookie-only session lookup. Ignores x-admin-session / x-admin-role.
  * error=true means infrastructure failure (fail closed for protected routes).
  */
@@ -131,6 +167,10 @@ export async function getAdminSession(req: NextApiRequest): Promise<{
     const sessionId = Number(row.id);
 
     if (isMaster || row.staff_id == null) {
+      if (!isMasterLoginConfigured()) {
+        await endMasterSessionMasterDisabled(sessionId);
+        return { session: null, error: false };
+      }
       const role = normalizeRole(row.role) || "super_admin";
       return {
         session: {
