@@ -40,6 +40,10 @@ The old request-time initialisers did more than create tables. These parts were 
 
 If the owner wants any of these, they should be written as a separate, reviewed one-off SQL script (with a backup and a `SELECT` preview of the affected rows first), never as automatic code.
 
+## Environment (optional)
+
+- `AUDIT_IP_HASH_KEY` — optional, >= 32 random chars; when set, audit `ip_hash` uses HMAC-SHA256 instead of the legacy `sha256(audit-ip:…)` form. Changing it breaks IP correlation across the change only.
+
 ## If a table is missing
 
 Handlers no longer create tables, so a missing table is an explicit failure rather than a silent re-create:

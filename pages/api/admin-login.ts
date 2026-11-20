@@ -9,7 +9,7 @@ import {
   type AdminRole,
 } from '../../lib/adminAuth';
 import { verifyAdminStaffPassword } from '../../lib/adminStaffPassword';
-import { maskEmail, recordAudit } from '../../lib/auditLog';
+import { auditThrottle, hashAuditIp, maskEmail, recordAudit } from '../../lib/auditLog';
 
 type StaffAuthRow = {
   id: number;
@@ -18,6 +18,9 @@ type StaffAuthRow = {
   role: string;
   password_hash: string;
 };
+
+/** Same 15-minute window as RL_AUTH; named locally — do not import rateLimit internals. */
+const AUDIT_LOGIN_RL_WINDOW_MS = 15 * 60 * 1000;
 
 /** Login audit: never log passwords; username is masked unless it is the master "admin". */
 function maskLoginName(username: unknown): string {
@@ -45,9 +48,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireSameOriginAdminRequest(req, res)) return;
 
-  const { allowed } = RL_AUTH(getClientIp(req));
+  const clientIp = getClientIp(req);
+  const { allowed } = RL_AUTH(clientIp);
   if (!allowed) {
-    await auditLoginFailed(req, (req.body || {}).username, 'rate_limited');
+    const username = (req.body || {}).username;
+    const name = maskLoginName(username);
+    const ipHash = hashAuditIp(clientIp);
+    const { record, suppressed } = auditThrottle(
+      `login_rl:${ipHash}`,
+      AUDIT_LOGIN_RL_WINDOW_MS
+    );
+    if (record) {
+      const detail: Record<string, unknown> = { reason: 'rate_limited', username: name || null };
+      if (suppressed > 0) detail.suppressed_since_last = suppressed;
+      await recordAudit(pool, {
+        actor: { actorType: 'anonymous', name: name || null },
+        action: 'login_failed',
+        entityType: 'admin_session',
+        entityId: null,
+        summary: 'Admin login failed (rate_limited)',
+        detail,
+        req,
+        ipHash,
+      });
+    }
     return res.status(429).json({ error: 'Too many login attempts. Try again in 15 minutes.' });
   }
 

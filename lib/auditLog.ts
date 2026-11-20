@@ -114,15 +114,98 @@ const LONG_TEXT_KEYS = new Set([
 
 type Queryable = Pool | PoolConnection;
 
+const NEGATIVE_PROBE_TTL_MS = 60_000;
+const AUDIT_THROTTLE_CAP = 2000;
+
 let schemaKnown: boolean | null = null;
+let schemaKnownAt = 0;
 let schemaWarned = false;
+let auditIpHashLegacyWarned = false;
+
+type ThrottleEntry = { windowStart: number; suppressed: number };
+const auditThrottleMap = new Map<string, ThrottleEntry>();
 
 export function resetAuditSchemaProbeForTests(): void {
   schemaKnown = null;
+  schemaKnownAt = 0;
   schemaWarned = false;
 }
 
+export function resetAuditThrottleForTests(): void {
+  auditThrottleMap.clear();
+}
+
+export function resetAuditIpHashWarnForTests(): void {
+  auditIpHashLegacyWarned = false;
+}
+
+/** Test-only: seed a cached negative probe with a chosen age. */
+export function seedAuditNegativeProbeForTests(ageMs: number): void {
+  schemaKnown = false;
+  schemaKnownAt = Date.now() - ageMs;
+  schemaWarned = true;
+}
+
+/** Test-only: inspect probe cache. */
+export function getAuditSchemaProbeForTests(): {
+  known: boolean | null;
+  at: number;
+} {
+  return { known: schemaKnown, at: schemaKnownAt };
+}
+
+/** Test-only: throttle map size (cap eviction). */
+export function getAuditThrottleSizeForTests(): number {
+  return auditThrottleMap.size;
+}
+
+/**
+ * In-memory write throttle for noisy audit paths (e.g. login rate_limited).
+ * First call in a window → record; later calls increment suppressed; when the
+ * window rolls, the next record returns the prior suppressed count.
+ * Hard cap 2000 keys; evict oldest insertion first. No timers, no I/O.
+ */
+export function auditThrottle(
+  key: string,
+  windowMs: number,
+  now = Date.now()
+): { record: boolean; suppressed: number } {
+  const existing = auditThrottleMap.get(key);
+  if (!existing) {
+    if (auditThrottleMap.size >= AUDIT_THROTTLE_CAP) {
+      const oldest = auditThrottleMap.keys().next().value;
+      if (oldest !== undefined) auditThrottleMap.delete(oldest);
+    }
+    auditThrottleMap.set(key, { windowStart: now, suppressed: 0 });
+    return { record: true, suppressed: 0 };
+  }
+  if (now - existing.windowStart >= windowMs) {
+    const suppressed = existing.suppressed;
+    existing.windowStart = now;
+    existing.suppressed = 0;
+    // Refresh insertion order so active keys are not treated as oldest.
+    auditThrottleMap.delete(key);
+    auditThrottleMap.set(key, existing);
+    return { record: true, suppressed };
+  }
+  existing.suppressed += 1;
+  return { record: false, suppressed: existing.suppressed };
+}
+
+/**
+ * IP hash for audit rows. Optional AUDIT_IP_HASH_KEY (>= 32 chars) → HMAC-SHA256.
+ * Otherwise legacy sha256(`audit-ip:${ip}`) for backward compatibility.
+ * Env is read at call time (tests may toggle). Never derive from DB_PASSWORD.
+ */
 export function hashAuditIp(ip: string): string {
+  const key = process.env.AUDIT_IP_HASH_KEY;
+  if (typeof key === "string" && key.length >= 32) {
+    return crypto.createHmac("sha256", key).update(ip).digest("hex");
+  }
+  if (!auditIpHashLegacyWarned) {
+    auditIpHashLegacyWarned = true;
+    console.warn("[audit] AUDIT_IP_HASH_KEY not set; using legacy ip hash");
+  }
   return crypto.createHash("sha256").update(`audit-ip:${ip}`).digest("hex");
 }
 
@@ -307,7 +390,10 @@ function clip(s: string, n: number): string {
 
 export async function auditTableExists(conn: Queryable): Promise<boolean> {
   if (schemaKnown === true) return true;
-  if (schemaKnown === false) return false;
+  if (schemaKnown === false) {
+    if (Date.now() - schemaKnownAt < NEGATIVE_PROBE_TTL_MS) return false;
+    schemaKnown = null;
+  }
   try {
     const [rows] = await conn.query<RowDataPacket[]>(
       `SELECT 1 AS ok
@@ -319,11 +405,18 @@ export async function auditTableExists(conn: Queryable): Promise<boolean> {
   } catch {
     schemaKnown = false;
   }
+  schemaKnownAt = Date.now();
   if (!schemaKnown && !schemaWarned) {
     schemaWarned = true;
     console.warn("[audit] admin_audit_log missing; writes skipped");
   }
   return !!schemaKnown;
+}
+
+function isNoSuchTableError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { errno?: number; code?: string };
+  return e.errno === 1146 || e.code === "ER_NO_SUCH_TABLE";
 }
 
 export async function recordAudit(conn: Queryable, entry: AuditEntry): Promise<void> {
@@ -382,6 +475,10 @@ export async function recordAudit(conn: Queryable, entry: AuditEntry): Promise<v
       ]
     );
   } catch (err) {
+    if (isNoSuchTableError(err)) {
+      schemaKnown = null;
+      schemaKnownAt = 0;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[audit] write failed:", msg);
   }
