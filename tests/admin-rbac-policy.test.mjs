@@ -52,7 +52,7 @@ const {
 
 const INVENTORY_PATH =
   process.env.INVENTORY_PATH ||
-  "C:\\Users\\LENOVO\\OneDrive\\Desktop\\Web Dev\\sandy-artifacts\\SANDY-BATCH-04\\phase2\\INVENTORY.md";
+  path.join(root, "tests", "fixtures", "admin-rbac-inventory.md");
 
 let assertions = 0;
 const eq = (a, b, m) => {
@@ -205,12 +205,19 @@ check("admin routes call requirePermission; public-only routes never do", () => 
       ok(!/\brequirePermission\(/.test(src[route]), `${route} (not in registry) calls requirePermission`);
     }
   }
-  // getAdminSession is only allowed for the session route and the optional-admin public GETs.
+  // getAdminSession is only allowed for session lifecycle routes and optional-admin public GETs.
+  // admin-logout reads the session before destroy so the audit row can name the actor (BATCH-20).
   const sessionUsers = Object.entries(src)
     .filter(([, t]) => /\bgetAdminSession\b/.test(t))
     .map(([r]) => r)
     .sort();
-  eq(sessionUsers, ["/api/admin-session", "/api/blog", "/api/faqs", "/api/sections"]);
+  eq(sessionUsers, [
+    "/api/admin-logout",
+    "/api/admin-session",
+    "/api/blog",
+    "/api/faqs",
+    "/api/sections",
+  ]);
 });
 
 check("requirePermission() permissions match registry per route", () => {

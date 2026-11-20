@@ -72,10 +72,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const kind = otpFailureKind(err);
     const safe = kind || (err as { code?: string })?.code || "unknown";
     console.error("[api/checkout/otp-start] failed", safe);
-    if (kind === "number_rejected" || kind === "max_attempts") {
-      return res.status(kind === "max_attempts" ? 429 : 400).json({
-        error: CUSTOMER_TEXTS.COD_OTP_NUMBER_REJECTED,
-      });
+    if (kind === "max_attempts") {
+      return res.status(429).json({ error: CUSTOMER_TEXTS.COD_OTP_MAX_ATTEMPTS });
+    }
+    if (kind === "number_rejected") {
+      return res.status(400).json({ error: CUSTOMER_TEXTS.COD_OTP_NUMBER_REJECTED });
     }
     return res.status(500).json({ error: CUSTOMER_TEXTS.COD_OTP_SEND_FAILED });
   } finally {

@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 import {
   TAX_CONFIG_UNAVAILABLE_MESSAGE,
   classifyTaxDbError,
@@ -145,6 +146,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
              VALUES (?, ?, ?, ?)`,
             [classId, rate.value, from.value, session.name]
           );
+          await recordAudit(pool, {
+            actor: session,
+            action: 'create',
+            entityType: 'tax_rate',
+            entityId: Number(result.insertId),
+            summary: `Created tax rate ${rate.value}% for class #${classId}`,
+            detail: { tax_class_id: classId, rate_percent: rate.value, effective_from: from.value.toISOString() },
+            req,
+          });
           return res.status(200).json({ success: true, id: Number(result.insertId) });
         } catch (err) {
           return unavailable(res, err, 'admin-tax:create_rate');
@@ -173,6 +183,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
              VALUES (?, ?, 'per_line_whole_rupee', ?, ?, ?)`,
             [base, shipping, label.value, inclusive, from.value]
           );
+          await recordAudit(pool, {
+            actor: session,
+            action: 'create',
+            entityType: 'tax_rule',
+            entityId: Number(result.insertId),
+            summary: `Created tax rule "${label.value}"`,
+            detail: {
+              tax_base: base,
+              shipping_taxable: shipping,
+              prices_include_tax: inclusive,
+              tax_label: label.value,
+              effective_from: from.value.toISOString(),
+            },
+            req,
+          });
           return res.status(200).json({ success: true, id: Number(result.insertId) });
         } catch (err) {
           return unavailable(res, err, 'admin-tax:create_rule');
@@ -200,6 +225,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
              VALUES (?, ?, ?, 1, ?)`,
             [name, slug, appliesTo, sortRaw]
           );
+          await recordAudit(pool, {
+            actor: session,
+            action: 'create',
+            entityType: 'tax_class',
+            entityId: Number(result.insertId),
+            summary: `Created tax class "${name}"`,
+            detail: { name, slug, applies_to: appliesTo, sort_order: sortRaw },
+            req,
+          });
           return res.status(200).json({ success: true, id: Number(result.insertId) });
         } catch (err) {
           const e = err as { code?: string; errno?: number };
@@ -219,26 +253,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Class id required' });
       const sets: string[] = [];
       const params: unknown[] = [];
+      const patch: Record<string, unknown> = {};
       if (body.applies_to !== undefined) {
         if (typeof body.applies_to !== 'string' || !APPLIES_TO.has(body.applies_to)) {
           return res.status(400).json({ error: 'Invalid applies_to' });
         }
         sets.push('applies_to = ?');
         params.push(body.applies_to);
+        patch.applies_to = body.applies_to;
       }
       if (body.active !== undefined) {
         const f = toFlag(body.active);
         if (f === null) return res.status(400).json({ error: 'Invalid active flag' });
         sets.push('active = ?');
         params.push(f);
+        patch.active = f;
       }
       if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
       try {
+        let beforeRow: Record<string, unknown> | null = null;
+        try {
+          const [beforeRows] = await pool.query<RowDataPacket[]>(
+            'SELECT name, applies_to, active FROM tax_classes WHERE id = ? LIMIT 1',
+            [id]
+          );
+          beforeRow = (Array.isArray(beforeRows) ? beforeRows[0] : null) as Record<string, unknown> | null;
+        } catch {
+          beforeRow = null;
+        }
         const [result] = await pool.query<ResultSetHeader>(
           `UPDATE tax_classes SET ${sets.join(', ')} WHERE id = ?`,
           [...params, id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ error: 'Tax class not found' });
+        const beforeSlice: Record<string, unknown> = {};
+        if (beforeRow) {
+          for (const k of Object.keys(patch)) beforeSlice[k] = k === 'active' ? Number(beforeRow[k]) : beforeRow[k];
+        }
+        await recordAudit(pool, {
+          actor: session,
+          action: 'update',
+          entityType: 'tax_class',
+          entityId: id,
+          summary: `Updated tax class ${beforeRow?.name ? `"${String(beforeRow.name)}"` : `#${id}`}`,
+          detail: { changes: beforeRow ? auditFieldDiff(beforeSlice, patch) : patch },
+          req,
+        });
         return res.status(200).json({ success: true });
       } catch (err) {
         return unavailable(res, err, 'admin-tax:PUT');

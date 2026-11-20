@@ -55,6 +55,9 @@ import {
 } from '../../lib/shipping';
 import { hasDeliveryOpsSchema, hasShippingSchema } from '../../lib/shippingSchema';
 import type { RowDataPacket } from 'mysql2/promise';
+import crypto from 'crypto';
+import type { AdminSession } from '../../lib/adminAuth';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 
 export class ContentValidationError extends Error {
   constructor(message: string) {
@@ -513,6 +516,71 @@ const DEFAULTS = [
   ['refund_cta_btn','WhatsApp Us','text','legal','Refund CTA Button'],
 ];
 
+/** Settings/flag keys: audited as `setting_change` with { changes: { key: { from, to } } }. */
+function isAuditSettingKey(contentKey: unknown): boolean {
+  return (
+    contentKey === LOW_STOCK_CONTENT_KEY ||
+    isOrderProtectionContentKey(contentKey) ||
+    isAccountSettingsContentKey(contentKey) ||
+    isShippingSettingsContentKey(contentKey)
+  );
+}
+
+/** Best-effort "before" snapshot for the audit diff. Never blocks or fails the write. */
+async function loadSiteContentSnapshot(keys: string[]): Promise<Record<string, string | null>> {
+  const out: Record<string, string | null> = {};
+  const uniq = Array.from(new Set(keys));
+  for (const k of uniq) out[k] = null;
+  if (!uniq.length) return out;
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT content_key, content_value FROM site_content WHERE content_key IN (?)',
+      [uniq]
+    );
+    for (const r of Array.isArray(rows) ? rows : []) {
+      out[String(r.content_key)] = r.content_value == null ? '' : String(r.content_value);
+    }
+  } catch {
+    /* audit-only read; ignore */
+  }
+  return out;
+}
+
+/** Long / rich-HTML values are logged as length + short hash only. */
+function describeAuditValue(contentKey: string, value: string | null): unknown {
+  if (value === null) return null;
+  if (RICH_HTML_CONTENT_KEYS.has(contentKey) || value.length > 120) {
+    return { length: value.length, hash: crypto.createHash('sha256').update(value).digest('hex').slice(0, 12) };
+  }
+  return value;
+}
+
+async function auditSiteContentWrite(
+  req: NextApiRequest,
+  session: AdminSession,
+  before: Record<string, string | null>,
+  rows: { contentKey: string; safeValue: string | null }[],
+  action: 'update' | 'delete'
+): Promise<void> {
+  const beforeMap: Record<string, unknown> = {};
+  const afterMap: Record<string, unknown> = {};
+  for (const row of rows) {
+    beforeMap[row.contentKey] = describeAuditValue(row.contentKey, before[row.contentKey] ?? null);
+    afterMap[row.contentKey] = describeAuditValue(row.contentKey, row.safeValue);
+  }
+  const keys = rows.map((r) => r.contentKey);
+  const isSetting = action === 'update' && keys.some((k) => isAuditSettingKey(k));
+  await recordAudit(pool, {
+    actor: session,
+    action: isSetting ? 'setting_change' : action,
+    entityType: 'site_content',
+    entityId: keys.length === 1 ? keys[0] : null,
+    summary: `${action === 'delete' ? 'Deleted' : 'Updated'} site content: ${keys.join(', ')}`,
+    detail: { keys, changes: auditFieldDiff(beforeMap, afterMap) },
+    req,
+  });
+}
+
 /*
  * Schema and default rows come from migrations/0003-admin-schema.sql and
  * migrations/0004-default-content-seed.sql (owner-run). This handler never creates or alters
@@ -605,6 +673,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         for (const row of prepared) {
           await assertShippingEnableAllowed(row.contentKey, row.safeValue);
         }
+        const auditBefore = await loadSiteContentSnapshot(prepared.map((row) => row.contentKey));
         for (const row of prepared) {
           await upsert(row.contentKey, row.safeValue);
         }
@@ -617,10 +686,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (prepared.some((row) => isAccountSettingsContentKey(row.contentKey))) {
           resetAccountSettingsCache();
         }
+        if (prepared.length > 0) {
+          await auditSiteContentWrite(req, session, auditBefore, prepared, 'update');
+        }
       } else if (key) {
         const contentKey = String(key);
         const safeValue = persistSiteContentValue(contentKey, value);
         await assertShippingEnableAllowed(contentKey, safeValue);
+        const auditBefore = await loadSiteContentSnapshot([contentKey]);
         await upsert(contentKey, safeValue);
         if (isShippingSettingsContentKey(contentKey)) {
           resetShippingSettingsCache();
@@ -631,6 +704,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (isAccountSettingsContentKey(contentKey)) {
           resetAccountSettingsCache();
         }
+        await auditSiteContentWrite(req, session, auditBefore, [{ contentKey, safeValue }], 'update');
       } else {
         return res.status(400).json({ error: 'No content keys provided' });
       }
@@ -642,6 +716,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const key = String(content_key || '');
       const safeValue = persistSiteContentValue(key, content_value, content_type);
       await assertShippingEnableAllowed(key, safeValue);
+      const auditBefore = await loadSiteContentSnapshot([key]);
       await pool.query(
         'INSERT INTO site_content (content_key,content_value,content_type,page_name,label) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE content_value=?,label=?',
         [content_key, safeValue, content_type||'text', page_name||'', label||content_key, safeValue, label||content_key]
@@ -652,17 +727,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (isShippingSettingsContentKey(key)) {
         resetShippingSettingsCache();
       }
+      await auditSiteContentWrite(req, session, auditBefore, [{ contentKey: key, safeValue }], 'update');
       return res.status(200).json({ success: true });
     }
 
     if (req.method === 'DELETE') {
       const { key } = req.query;
+      const deleteKey = String(key ?? '');
+      const auditBefore = await loadSiteContentSnapshot([deleteKey]);
       await pool.query('DELETE FROM site_content WHERE content_key=?', [key]);
       if (isAccountSettingsContentKey(key)) {
         resetAccountSettingsCache();
       }
       if (isShippingSettingsContentKey(key)) {
         resetShippingSettingsCache();
+      }
+      if (auditBefore[deleteKey] !== null) {
+        await auditSiteContentWrite(req, session, auditBefore, [{ contentKey: deleteKey, safeValue: null }], 'delete');
       }
       return res.status(200).json({ success: true });
     }

@@ -6,6 +6,9 @@ import {
   requirePermission,
   requireSessionPermission,
 } from '../../lib/adminPermissions';
+import type { AdminSession } from '../../lib/adminAuth';
+import pool from '../../lib/db';
+import { recordAudit } from '../../lib/auditLog';
 
 export const config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
@@ -47,6 +50,31 @@ function assertSafeUploadDataUrl(file: unknown, isReceipt: boolean): string {
     throw new Error('INVALID_FILE_DATA');
   }
   return file;
+}
+
+/** Audit an upload: folder, MIME type and approximate size only. Never the URL, name or file bytes. */
+async function auditUpload(
+  req: NextApiRequest,
+  session: AdminSession,
+  folder: string,
+  safeFile: string,
+  name: string,
+  storage: 'cloudinary' | 'local'
+): Promise<void> {
+  const comma = safeFile.indexOf(',');
+  const header = comma > 0 ? safeFile.slice(0, comma) : '';
+  const mime = /^data:([^;,]+)/i.exec(header)?.[1] || 'unknown';
+  const base64Len = comma >= 0 ? safeFile.length - comma - 1 : 0;
+  const ext = (String(name).split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
+  await recordAudit(pool, {
+    actor: session,
+    action: 'upload',
+    entityType: 'upload',
+    entityId: null,
+    summary: `Uploaded ${mime} to ${folder}`,
+    detail: { folder, type: mime, ext, size_bytes: Math.floor((base64Len * 3) / 4), storage },
+    req,
+  });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -127,6 +155,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       const result = await cloudinary.uploader.upload(safeFile, uploadOptions);
+      await auditUpload(req, session, cloudinaryFolder, safeFile, name, 'cloudinary');
       return res.status(200).json({ path: result.secure_url });
     }
 
@@ -144,11 +173,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const inputBuffer = Buffer.from(base64Data, 'base64');
         const webpName = safeName.replace(/\.[^.]+$/, '.webp');
         await sharp(inputBuffer).resize(800, 800, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toFile(path.join(uploadsDir, webpName));
+        await auditUpload(req, session, cloudinaryFolder, safeFile, name, 'local');
         return res.status(200).json({ path: `/uploads/${webpName}` });
       } catch { /* sharp not available, fall through */ }
     }
 
     fs.writeFileSync(path.join(uploadsDir, safeName), base64Data, 'base64');
+    await auditUpload(req, session, cloudinaryFolder, safeFile, name, 'local');
     const sub = localSub ? `${localSub}/` : '';
     return res.status(200).json({ path: `/uploads/${sub}${safeName}` });
 

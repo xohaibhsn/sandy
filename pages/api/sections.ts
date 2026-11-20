@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { getAdminSession } from '../../lib/adminAuth';
 import { hasPermission, requirePermission } from '../../lib/adminPermissions';
+import { recordAudit } from '../../lib/auditLog';
 import {
   assertSafeImageUrl,
   assertSafeInternalPath,
@@ -85,7 +86,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const validated = validateSectionValue(parsed);
       const json = JSON.stringify(validated);
-      await pool.query('UPDATE site_content SET content_value=? WHERE content_key=?', [json, key]);
+      const [updateResult]: any = await pool.query('UPDATE site_content SET content_value=? WHERE content_key=?', [json, key]);
+      if (Number(updateResult?.affectedRows ?? 1) > 0) {
+        await recordAudit(pool, {
+          actor: session,
+          action: 'update',
+          entityType: 'section',
+          entityId: String(key),
+          summary: `Updated section "${String(key).slice(0, 120)}"`,
+          detail: { key, content: json },
+          req,
+        });
+      }
       return res.status(200).json({ success: true });
     }
 
@@ -93,7 +105,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { action } = req.query;
       if (action === 'visibility') {
         const { key, is_visible } = req.body;
+        const [beforeRows]: any = await pool.query('SELECT is_visible FROM site_content WHERE content_key=? LIMIT 1', [key]);
+        const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
         await pool.query('UPDATE site_content SET is_visible=? WHERE content_key=?', [is_visible?1:0, key]);
+        if (before) {
+          await recordAudit(pool, {
+            actor: session,
+            action: 'status_change',
+            entityType: 'section',
+            entityId: String(key),
+            summary: `${is_visible ? 'Showed' : 'Hid'} section "${String(key).slice(0, 120)}"`,
+            detail: { key, changes: { is_visible: { from: Number(before.is_visible) ? 1 : 0, to: is_visible ? 1 : 0 } } },
+            req,
+          });
+        }
         return res.status(200).json({ success: true });
       }
       if (action === 'reorder') {
@@ -101,6 +126,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         for (const item of (order||[])) {
           await pool.query('UPDATE site_content SET section_order=? WHERE content_key=?', [item.section_order, item.key]);
         }
+        await recordAudit(pool, {
+          actor: session,
+          action: 'update',
+          entityType: 'section',
+          entityId: 'reorder',
+          summary: `Reordered ${(order||[]).length} sections`,
+          detail: {
+            order: (order||[]).slice(0, 50).map((item: any) => ({ key: item?.key, section_order: item?.section_order })),
+          },
+          req,
+        });
         return res.status(200).json({ success: true });
       }
       return res.status(400).json({ error: 'Unknown action' });

@@ -7,6 +7,8 @@ import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
 import { assertSafeImageUrl, UrlValidationError } from '../../lib/urlValidation';
 import { TAX_CONFIG_UNAVAILABLE_MESSAGE, toTaxUnavailable } from '../../lib/taxStore';
 import { hasRequiresShippingColumn } from '../../lib/shippingSchema';
+import type { AdminSession } from '../../lib/adminAuth';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 
 /**
  * Optional products.tax_class_id from the product form.
@@ -101,6 +103,21 @@ type ProductInventoryRow = RowDataPacket & {
   stock: string | null;
   track_inventory: number | null;
   stock_quantity: number | null;
+  // Extra columns read only so the audit log can record a before/after diff.
+  name: string | null;
+  slug: string | null;
+  description: string | null;
+  price: number | string | null;
+  badge: string | null;
+  image: string | null;
+  active: number | null;
+  short_description: string | null;
+  full_description: string | null;
+  seo_title: string | null;
+  meta_description: string | null;
+  focus_keyword: string | null;
+  features: string | null;
+  og_image: string | null;
 };
 
 function normalizeTrackInventory(
@@ -195,11 +212,12 @@ async function resolveProductCategory(
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  let session: AdminSession | null = null;
   if (req.method === 'GET') {
-    const session = await requirePermission(req, res, 'products:view');
+    session = await requirePermission(req, res, 'products:view');
     if (!session) return;
   } else {
-    const session = await requirePermission(req, res, 'products:write');
+    session = await requirePermission(req, res, 'products:write');
     if (!session) return;
   }
   try {
@@ -299,6 +317,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
            safeShortDescription, safeFullDescription, finalSeoTitle, finalMetaDesc,
            focus_keyword || '', features || '', safeOgImage]
         );
+        // Product row is committed at this point: audit now (even if the optional tax-class write below 503s).
+        await recordAudit(pool, {
+          actor: session!,
+          action: 'create',
+          entityType: 'product',
+          entityId: Number(result.insertId),
+          summary: `Created product "${String(name).slice(0, 120)}"`,
+          detail: {
+            name,
+            slug: finalSlug,
+            price: numericPrice,
+            category: finalCategory,
+            badge: badge || null,
+            track_inventory: trackInventory,
+            stock_quantity: stockQuantity,
+            description: safeDescription,
+            tax_class_id: taxInput.provided ? taxInput.value : undefined,
+            requires_shipping: shipInput.provided ? shipInput.value : undefined,
+          },
+          req,
+        });
         if (taxInput.provided && taxInput.value !== null) {
           try {
             await writeProductTaxClass(Number(result.insertId), taxInput.value);
@@ -345,7 +384,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const numericPrice = parsePrice(price);
       const [existingRows] = await pool.query<ProductInventoryRow[]>(
-        'SELECT category, stock, track_inventory, stock_quantity FROM products WHERE id = ? LIMIT 1',
+        `SELECT category, stock, track_inventory, stock_quantity, name, slug, description, price, badge, image, active,
+                short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image
+         FROM products WHERE id = ? LIMIT 1`,
         [id]
       );
       const existingProduct = Array.isArray(existingRows) ? existingRows[0] : null;
@@ -421,6 +462,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
            safeShortDescription, safeFullDescription, finalSeoTitle, finalMetaDesc,
            focus_keyword || '', features || '', safeOgImage, id]
         );
+        // Main UPDATE is committed: audit now (even if the optional tax-class write below 503s).
+        await recordAudit(pool, {
+          actor: session!,
+          action: 'update',
+          entityType: 'product',
+          entityId: Number(id),
+          summary: `Updated product "${String(name).slice(0, 120)}"`,
+          detail: {
+            changes: auditFieldDiff(
+              {
+                name: existingProduct.name,
+                slug: existingProduct.slug,
+                description: existingProduct.description,
+                price: Number(existingProduct.price),
+                category: existingProduct.category,
+                badge: existingProduct.badge || null,
+                image: existingProduct.image || null,
+                stock: existingProduct.stock,
+                track_inventory: Number(existingProduct.track_inventory) === 1 ? 1 : 0,
+                stock_quantity:
+                  existingProduct.stock_quantity == null ? null : Number(existingProduct.stock_quantity),
+                active: Number(existingProduct.active) === 0 ? 0 : 1,
+                short_description: existingProduct.short_description,
+                full_description: existingProduct.full_description,
+                seo_title: existingProduct.seo_title,
+                meta_description: existingProduct.meta_description,
+                focus_keyword: existingProduct.focus_keyword,
+                features: existingProduct.features,
+                og_image: existingProduct.og_image,
+              },
+              {
+                name,
+                slug: finalSlug,
+                description: safeDescription,
+                price: Number(numericPrice),
+                category: finalCategory,
+                badge: badge || null,
+                image: safeImage || null,
+                stock: legacyStock,
+                track_inventory: trackInventory,
+                stock_quantity: stockQuantity,
+                active: Number(active ?? 1) === 0 ? 0 : 1,
+                short_description: safeShortDescription,
+                full_description: safeFullDescription,
+                seo_title: finalSeoTitle,
+                meta_description: finalMetaDesc,
+                focus_keyword: focus_keyword || '',
+                features: features || '',
+                og_image: safeOgImage,
+              }
+            ),
+            requested: {
+              tax_class_id: taxInput.provided ? taxInput.value : undefined,
+              requires_shipping: shipInput.provided ? shipInput.value : undefined,
+            },
+          },
+          req,
+        });
         if (taxInput.provided) {
           try {
             await writeProductTaxClass(Number(id), taxInput.value);
@@ -458,6 +557,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'active must be 0 or 1' });
       }
 
+      const [beforeActiveRows]: any = await pool.query(
+        'SELECT name, active FROM products WHERE id = ? LIMIT 1',
+        [productId]
+      );
+      const beforeActive = Array.isArray(beforeActiveRows) ? beforeActiveRows[0] : null;
       const updateResult = await pool.query(
         'UPDATE products SET active = ? WHERE id = ?',
         [normalized, productId]
@@ -466,12 +570,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!result || result.affectedRows === 0) {
         return res.status(404).json({ error: 'Product not found' });
       }
+      await recordAudit(pool, {
+        actor: session!,
+        action: 'status_change',
+        entityType: 'product',
+        entityId: productId,
+        summary: `${normalized === 1 ? 'Activated' : 'Deactivated'} product "${String(beforeActive?.name ?? productId).slice(0, 120)}"`,
+        detail: {
+          changes: {
+            active: { from: beforeActive ? (Number(beforeActive.active) === 0 ? 0 : 1) : null, to: normalized },
+          },
+        },
+        req,
+      });
       return res.status(200).json({ success: true, id: productId, active: normalized });
     }
 
     if (req.method === 'DELETE') {
       const { id } = req.query;
+      const [beforeRows]: any = await pool.query('SELECT name, slug FROM products WHERE id = ? LIMIT 1', [id]);
+      const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query('DELETE FROM products WHERE id = ?', [id]);
+      if (before) {
+        await recordAudit(pool, {
+          actor: session!,
+          action: 'delete',
+          entityType: 'product',
+          entityId: String(id),
+          summary: `Deleted product "${String(before.name ?? id).slice(0, 120)}"`,
+          detail: { name: before.name, slug: before.slug },
+          req,
+        });
+      }
       return res.status(200).json({ success: true });
     }
 

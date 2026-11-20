@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 
 /**
  * Pickup points CRUD (SANDY-BATCH-17 self-pickup). super_admin only (settings:shipping).
@@ -183,6 +184,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [name, city, address, hours, mapUrl, active, sort]
       );
+      await recordAudit(pool, {
+        actor: session,
+        action: 'create',
+        entityType: 'pickup_point',
+        entityId: Number(result.insertId),
+        summary: `Created pickup point "${name}" (${city})`,
+        detail: { name, city, hours_text: hours, active, sort_order: sort, address_set: true, map_url_set: !!mapUrl },
+        req,
+      });
       return res.status(200).json({ success: true, id: Number(result.insertId) });
     }
 
@@ -190,57 +200,78 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const id = parseId(body.id);
       const sets: string[] = [];
       const params: unknown[] = [];
+      const patch: Record<string, unknown> = {};
       if (body.name !== undefined) {
         sets.push('name = ?');
         params.push(parseName(body.name));
+        patch.name = params[params.length - 1];
       }
       if (body.city !== undefined) {
         sets.push('city = ?');
         params.push(parseCity(body.city));
+        patch.city = params[params.length - 1];
       }
       if (body.address !== undefined) {
         sets.push('address = ?');
         params.push(parseAddress(body.address));
+        patch.address = params[params.length - 1];
       }
       if (body.hours_text !== undefined) {
         sets.push('hours_text = ?');
         params.push(parseHours(body.hours_text));
+        patch.hours_text = params[params.length - 1];
       }
       if (body.map_url !== undefined) {
         sets.push('map_url = ?');
         params.push(parseMapUrl(body.map_url));
+        patch.map_url = params[params.length - 1];
       }
       if (body.active !== undefined) {
         const f = toFlag(body.active);
         if (f === null) throw new ValidationError('Invalid active flag');
         sets.push('active = ?');
         params.push(f);
+        patch.active = f;
       }
       if (body.sort_order !== undefined) {
         sets.push('sort_order = ?');
         params.push(parseSort(body.sort_order));
+        patch.sort_order = params[params.length - 1];
       }
       if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
 
       const [exists] = await pool.query<RowDataPacket[]>(
-        'SELECT id FROM pickup_points WHERE id = ? LIMIT 1',
+        'SELECT id, name, city, address, hours_text, map_url, active, sort_order FROM pickup_points WHERE id = ? LIMIT 1',
         [id]
       );
       if (!Array.isArray(exists) || exists.length === 0) {
         return res.status(404).json({ error: 'Pickup point not found' });
       }
       await pool.query(`UPDATE pickup_points SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
+      const beforeRow = exists[0] as Record<string, unknown>;
+      const beforeSlice: Record<string, unknown> = {};
+      for (const k of Object.keys(patch)) beforeSlice[k] = k === 'active' ? Number(beforeRow[k]) : beforeRow[k];
+      await recordAudit(pool, {
+        actor: session,
+        action: 'update',
+        entityType: 'pickup_point',
+        entityId: id,
+        summary: `Updated pickup point "${String(beforeRow.name ?? id)}"`,
+        detail: { changes: auditFieldDiff(beforeSlice, patch) },
+        req,
+      });
       return res.status(200).json({ success: true });
     }
 
     const id = parseId(body.id ?? req.query.id);
     const [exists] = await pool.query<RowDataPacket[]>(
-      'SELECT id FROM pickup_points WHERE id = ? LIMIT 1',
+      'SELECT id, name FROM pickup_points WHERE id = ? LIMIT 1',
       [id]
     );
     if (!Array.isArray(exists) || exists.length === 0) {
       return res.status(404).json({ error: 'Pickup point not found' });
     }
+    const pointName = String((exists[0] as { name?: unknown }).name ?? id);
 
     let inUse = false;
     try {
@@ -256,9 +287,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (inUse) {
       await pool.query('UPDATE pickup_points SET active = 0 WHERE id = ?', [id]);
+      await recordAudit(pool, {
+        actor: session,
+        action: 'status_change',
+        entityType: 'pickup_point',
+        entityId: id,
+        summary: `Deactivated pickup point "${pointName}" (in use by orders)`,
+        detail: { name: pointName, changes: { active: { from: 1, to: 0 } }, deleted: false },
+        req,
+      });
       return res.status(200).json({ success: true, deactivated: true, deleted: false });
     }
     await pool.query('DELETE FROM pickup_points WHERE id = ?', [id]);
+    await recordAudit(pool, {
+      actor: session,
+      action: 'delete',
+      entityType: 'pickup_point',
+      entityId: id,
+      summary: `Deleted pickup point "${pointName}"`,
+      detail: { name: pointName },
+      req,
+    });
     return res.status(200).json({ success: true, deactivated: false, deleted: true });
   } catch (error: unknown) {
     if (error instanceof ValidationError) {

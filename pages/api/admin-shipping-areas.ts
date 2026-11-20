@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 import {
   findDuplicateArea,
   loadShippingAreas,
@@ -247,6 +248,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         ];
       }
+      if (created.length > 0) {
+        // Audit INSIDE the transaction so a rollback drops the audit row too.
+        await recordAudit(conn, {
+          actor: session,
+          action: 'create',
+          entityType: 'shipping_area',
+          entityId: null,
+          summary: `Bulk-added ${created.length} delivery areas in ${city}`,
+          detail: { city, parent_id: parentId, created_ids: created.slice(0, 50), created_count: created.length, skipped_count: skipped.length },
+          req,
+        });
+      }
       await conn.commit();
       resetShippingAreasCache();
       return res.status(200).json({ success: true, created, skipped });
@@ -272,6 +285,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [city, name, parentId, zoneId, active, sort]
       );
+      // Audit INSIDE the transaction so a rollback drops the audit row too.
+      await recordAudit(conn, {
+        actor: session,
+        action: 'create',
+        entityType: 'shipping_area',
+        entityId: Number(result.insertId),
+        summary: `Created delivery area "${name}" in ${city}`,
+        detail: { city, name, parent_id: parentId, zone_id: zoneId, active, sort_order: sort },
+        req,
+      });
       await conn.commit();
       resetShippingAreasCache();
       return res.status(200).json({ success: true, id: Number(result.insertId) });
@@ -308,31 +331,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const sets: string[] = [];
       const params: unknown[] = [];
+      const patch: Record<string, unknown> = {};
       if (body.city !== undefined) {
         sets.push('city = ?');
         params.push(nextCity);
+        patch.city = nextCity;
       }
       if (body.name !== undefined) {
         sets.push('name = ?');
         params.push(nextName);
+        patch.name = nextName;
       }
       if (body.parent_id !== undefined) {
         sets.push('parent_id = ?');
         params.push(nextParent);
+        patch.parent_id = nextParent;
       }
       if (body.zone_id !== undefined) {
         sets.push('zone_id = ?');
         params.push(nextZone);
+        patch.zone_id = nextZone;
       }
       if (body.active !== undefined) {
         const f = toFlag(body.active);
         if (f === null) throw new ValidationError('Invalid active flag');
         sets.push('active = ?');
         params.push(f);
+        patch.active = f;
       }
       if (body.sort_order !== undefined) {
         sets.push('sort_order = ?');
         params.push(parseSort(body.sort_order));
+        patch.sort_order = params[params.length - 1];
       }
       if (!sets.length) {
         await conn.rollback();
@@ -340,6 +370,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       await conn.query(`UPDATE shipping_areas SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
+      // Audit INSIDE the transaction so a rollback drops the audit row too.
+      const areaBefore = serialise(existing) as Record<string, unknown>;
+      const areaBeforeSlice: Record<string, unknown> = {};
+      for (const k of Object.keys(patch)) {
+        areaBeforeSlice[k] = k === 'active' ? (areaBefore.active ? 1 : 0) : areaBefore[k];
+      }
+      await recordAudit(conn, {
+        actor: session,
+        action: 'update',
+        entityType: 'shipping_area',
+        entityId: id,
+        summary: `Updated delivery area "${String(existing.name ?? id)}"`,
+        detail: { changes: auditFieldDiff(areaBeforeSlice, patch) },
+        req,
+      });
       await conn.commit();
       resetShippingAreasCache();
       return res.status(200).json({ success: true });
@@ -361,11 +406,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const inUse = await areaReferencedByOrders(conn, existing, areas);
     if (inUse) {
       await conn.query('UPDATE shipping_areas SET active = 0 WHERE id = ?', [id]);
+      await recordAudit(conn, {
+        actor: session,
+        action: 'status_change',
+        entityType: 'shipping_area',
+        entityId: id,
+        summary: `Deactivated delivery area "${String(existing.name ?? id)}" (in use by orders)`,
+        detail: { name: existing.name, city: existing.city, changes: { active: { from: serialise(existing).active ? 1 : 0, to: 0 } }, deleted: false },
+        req,
+      });
       await conn.commit();
       resetShippingAreasCache();
       return res.status(200).json({ success: true, deactivated: true, deleted: false });
     }
     await conn.query('DELETE FROM shipping_areas WHERE id = ?', [id]);
+    await recordAudit(conn, {
+      actor: session,
+      action: 'delete',
+      entityType: 'shipping_area',
+      entityId: id,
+      summary: `Deleted delivery area "${String(existing.name ?? id)}"`,
+      detail: { name: existing.name, city: existing.city },
+      req,
+    });
     await conn.commit();
     resetShippingAreasCache();
     return res.status(200).json({ success: true, deactivated: false, deleted: true });

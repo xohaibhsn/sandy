@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import cloudinary from '../../lib/cloudinary';
 import { requirePermission } from '../../lib/adminPermissions';
+import { recordAudit } from '../../lib/auditLog';
 
 export const config = { api: { bodyParser: { sizeLimit: '2mb' } } };
 
@@ -40,6 +41,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
          label = 'Favicon URL'`,
       [publicUrl]
     );
+
+    // Type + approximate size only: never the URL or file bytes.
+    const faviconData = String(file);
+    const faviconComma = faviconData.indexOf(',');
+    const faviconMime = /^data:([^;,]+)/i.exec(faviconData)?.[1] || 'unknown';
+    await recordAudit(pool, {
+      actor: session,
+      action: 'upload',
+      entityType: 'favicon',
+      entityId: 'favicon_url',
+      summary: 'Uploaded favicon',
+      detail: {
+        folder: 'sandy/favicon',
+        type: faviconMime,
+        ext,
+        size_bytes: faviconComma >= 0 ? Math.floor(((faviconData.length - faviconComma - 1) * 3) / 4) : faviconData.length,
+      },
+      req,
+    });
 
     return res.status(200).json({ success: true, url: publicUrl });
   } catch (error: any) {

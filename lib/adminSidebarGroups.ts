@@ -17,6 +17,7 @@ export type SidhuNavTabId =
   | "redirects"
   | "staff"
   | "tax"
+  | "activity"
   | "settings";
 
 export type AdminRoleName = "super_admin" | "manager" | "writer";
@@ -163,6 +164,12 @@ export const SIDEBAR_GROUPS: SidebarGroupDef[] = [
         label: "Tax",
         roles: ["super_admin"],
       },
+      {
+        id: "activity",
+        icon: "📋",
+        label: "Activity Log",
+        roles: ["super_admin"],
+      },
     ],
   },
 ];
@@ -182,6 +189,7 @@ export const ALL_SIDEBAR_TAB_IDS: SidhuNavTabId[] = [
   "settings",
   "staff",
   "tax",
+  "activity",
 ];
 
 export const SIDEBAR_GROUP_STORAGE_KEY = "sandy-sidhu-sidebar-groups-v1";

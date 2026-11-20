@@ -304,6 +304,9 @@ export const ADMIN_ENDPOINT_POLICY: readonly AdminEndpointPolicy[] = [
   { route: "/api/admin-tax", method: "POST", permission: "tax:manage" },
   { route: "/api/admin-tax", method: "PUT", permission: "tax:manage" },
 
+  { route: "/api/admin-audit-log", method: "GET", permission: "audit:view" },
+  { route: "/api/admin-audit-log", method: "GET", query: "export=csv", permission: "audit:view" },
+
   { route: "/api/admin-blacklist", method: "GET", permission: "customers:block" },
   { route: "/api/admin-blacklist", method: "POST", permission: "customers:block" },
   { route: "/api/admin-blacklist", method: "PATCH", permission: "customers:block" },

@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
 import { hashAdminStaffPassword } from '../../lib/adminStaffPassword';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -28,6 +29,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         [name, email, hash, finalRole]
       );
       const insertId = Number((result as { insertId?: number } | undefined)?.insertId || 0);
+      await recordAudit(pool, {
+        actor: session,
+        action: 'create',
+        entityType: 'admin_staff',
+        entityId: insertId || null,
+        summary: `Created staff user "${String(name).slice(0, 80)}" (${finalRole})`,
+        detail: { name, email, role: finalRole, credentialSet: true },
+        req,
+      });
       return res.status(200).json({ success: true, id: insertId });
     }
 
@@ -36,6 +46,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!id) return res.status(400).json({ error: 'ID required' });
       const validRoles = ['super_admin','manager','writer'];
       const finalRole = validRoles.includes(role) ? role : 'writer';
+      const [beforeRows] = await pool.query('SELECT name,email,role,active FROM admin_staff WHERE id=? LIMIT 1', [id]);
+      const before = (Array.isArray(beforeRows) ? beforeRows[0] : null) as
+        | { name: unknown; email: unknown; role: unknown; active: unknown }
+        | null;
       if (password) {
         const hash = await hashAdminStaffPassword(String(password));
         await pool.query('UPDATE admin_staff SET name=?,email=?,role=?,password_hash=?,active=? WHERE id=?',
@@ -44,12 +58,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await pool.query('UPDATE admin_staff SET name=?,email=?,role=?,active=? WHERE id=?',
           [name, email, finalRole, active??1, id]);
       }
+      if (before) {
+        const changes = auditFieldDiff(
+          { name: before.name, email: before.email, role: before.role, active: Number(before.active) },
+          { name, email, role: finalRole, active: Number(active ?? 1) }
+        );
+        await recordAudit(pool, {
+          actor: session,
+          action: 'update',
+          entityType: 'admin_staff',
+          entityId: String(id),
+          summary: `Updated staff user #${String(id).slice(0, 20)}`,
+          detail: { changes, credentialChanged: !!password },
+          req,
+        });
+      }
       return res.status(200).json({ success: true });
     }
 
     if (req.method === 'DELETE') {
       const { id } = req.query;
+      const [beforeRows] = await pool.query('SELECT name,email,role FROM admin_staff WHERE id=? LIMIT 1', [id]);
+      const before = (Array.isArray(beforeRows) ? beforeRows[0] : null) as
+        | { name: unknown; email: unknown; role: unknown }
+        | null;
       await pool.query('DELETE FROM admin_staff WHERE id=?', [id]);
+      if (before) {
+        await recordAudit(pool, {
+          actor: session,
+          action: 'delete',
+          entityType: 'admin_staff',
+          entityId: String(id),
+          summary: `Deleted staff user "${String(before.name ?? '').slice(0, 80)}"`,
+          detail: { name: before.name, email: before.email, role: before.role },
+          req,
+        });
+      }
       return res.status(200).json({ success: true });
     }
 

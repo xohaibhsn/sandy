@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
+import { auditFieldDiff, maskPhone, recordAudit } from '../../lib/auditLog';
 import { canonicalPkMobile, digitsOnly } from '../../lib/customerIdentity';
 
 /**
@@ -134,6 +135,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           'INSERT INTO riders (name, phone, active, sort_order) VALUES (?, ?, ?, ?)',
           [name, phone, active, sort]
         );
+        await recordAudit(pool, {
+          actor: session,
+          action: 'create',
+          entityType: 'rider',
+          entityId: Number(result.insertId),
+          summary: `Created rider "${name}"`,
+          detail: { name, phone_masked: maskPhone(phone), active, sort_order: sort },
+          req,
+        });
         return res.status(200).json({ success: true, id: Number(result.insertId) });
       } catch (err) {
         const e = err as { errno?: number; code?: string };
@@ -148,27 +158,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const id = parseId(body.id);
       const sets: string[] = [];
       const params: unknown[] = [];
+      const patch: Record<string, unknown> = {};
       if (body.name !== undefined) {
         sets.push('name = ?');
         params.push(parseName(body.name));
+        patch.name = params[params.length - 1];
       }
       if (body.phone !== undefined) {
         sets.push('phone = ?');
         params.push(parsePhone(body.phone));
+        patch.phone = params[params.length - 1];
       }
       if (body.active !== undefined) {
         const f = toFlag(body.active);
         if (f === null) throw new ValidationError('Invalid active flag');
         sets.push('active = ?');
         params.push(f);
+        patch.active = f;
       }
       if (body.sort_order !== undefined) {
         sets.push('sort_order = ?');
         params.push(parseSort(body.sort_order));
+        patch.sort_order = params[params.length - 1];
       }
       if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
 
-      const [exists] = await pool.query<RowDataPacket[]>('SELECT id FROM riders WHERE id = ? LIMIT 1', [id]);
+      const [exists] = await pool.query<RowDataPacket[]>(
+        'SELECT id, name, phone, active, sort_order FROM riders WHERE id = ? LIMIT 1',
+        [id]
+      );
       if (!Array.isArray(exists) || exists.length === 0) {
         return res.status(404).json({ error: 'Rider not found' });
       }
@@ -181,14 +199,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         throw err;
       }
+      const beforeRow = exists[0] as Record<string, unknown>;
+      const beforeSlice: Record<string, unknown> = {};
+      for (const k of Object.keys(patch)) beforeSlice[k] = k === 'active' ? Number(beforeRow[k]) : beforeRow[k];
+      const changes: Record<string, unknown> = { ...auditFieldDiff(beforeSlice, patch) };
+      if (changes.phone) {
+        // Never log rider phone numbers in full: replace the generic marker with masked from/to.
+        changes.phone_masked = { from: maskPhone(beforeRow.phone), to: maskPhone(patch.phone) };
+        delete changes.phone;
+      }
+      await recordAudit(pool, {
+        actor: session,
+        action: 'update',
+        entityType: 'rider',
+        entityId: id,
+        summary: `Updated rider "${String(beforeRow.name ?? id)}"`,
+        detail: { changes },
+        req,
+      });
       return res.status(200).json({ success: true });
     }
 
     const id = parseId(body.id ?? req.query.id);
-    const [exists] = await pool.query<RowDataPacket[]>('SELECT id FROM riders WHERE id = ? LIMIT 1', [id]);
+    const [exists] = await pool.query<RowDataPacket[]>('SELECT id, name FROM riders WHERE id = ? LIMIT 1', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       return res.status(404).json({ error: 'Rider not found' });
     }
+    const riderName = String((exists[0] as { name?: unknown }).name ?? id);
 
     let inUse = false;
     try {
@@ -204,9 +241,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (inUse) {
       await pool.query('UPDATE riders SET active = 0 WHERE id = ?', [id]);
+      await recordAudit(pool, {
+        actor: session,
+        action: 'status_change',
+        entityType: 'rider',
+        entityId: id,
+        summary: `Deactivated rider "${riderName}" (in use by orders)`,
+        detail: { name: riderName, changes: { active: { from: 1, to: 0 } }, deleted: false },
+        req,
+      });
       return res.status(200).json({ success: true, deactivated: true, deleted: false });
     }
     await pool.query('DELETE FROM riders WHERE id = ?', [id]);
+    await recordAudit(pool, {
+      actor: session,
+      action: 'delete',
+      entityType: 'rider',
+      entityId: id,
+      summary: `Deleted rider "${riderName}"`,
+      detail: { name: riderName },
+      req,
+    });
     return res.status(200).json({ success: true, deactivated: false, deleted: true });
   } catch (error: unknown) {
     if (error instanceof ValidationError) {

@@ -3,14 +3,18 @@ import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import { formatPrice } from '../../lib/site';
 import { requirePermission } from '../../lib/adminPermissions';
+import type { AdminSession } from '../../lib/adminAuth';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { allowed } = RL_GENERAL(getClientIp(req));
   if (!allowed) return res.status(429).json({ error: 'Too many requests' });
 
   const isValidate = req.method === 'POST' && req.query.action === 'validate';
+  // Set for every non-validate request (admin branches); null only on the public validate path.
+  let session: AdminSession | null = null;
   if (!isValidate) {
-    const session = await requirePermission(
+    session = await requirePermission(
       req,
       res,
       req.method === 'GET' ? 'coupons:view' : 'coupons:write'
@@ -62,21 +66,88 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         'INSERT INTO coupons (code,type,value,minimum_order,usage_limit,expires_at) VALUES (?,?,?,?,?,?)',
         [String(code).toUpperCase().trim(), type, value, minimum_order||0, usage_limit||null, expires_at||null]
       );
+      await recordAudit(pool, {
+        actor: session!,
+        action: 'create',
+        entityType: 'coupon',
+        entityId: r.insertId,
+        summary: `Created coupon ${String(code).toUpperCase().trim().slice(0, 40)}`,
+        detail: {
+          coupon_code: String(code).toUpperCase().trim(),
+          type,
+          value,
+          minimum_order: minimum_order||0,
+          usage_limit: usage_limit||null,
+          expires_at: expires_at||null,
+        },
+        req,
+      });
       return res.status(200).json({ success:true, id:r.insertId });
     }
 
     if (req.method === 'PUT') {
       const { id, code, type, value, minimum_order, usage_limit, expires_at, is_active } = req.body;
+      const [beforeRows]: any = await pool.query(
+        'SELECT code,type,value,minimum_order,usage_limit,expires_at,is_active FROM coupons WHERE id=? LIMIT 1',
+        [id]
+      );
+      const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query(
         'UPDATE coupons SET code=?,type=?,value=?,minimum_order=?,usage_limit=?,expires_at=?,is_active=? WHERE id=?',
         [String(code).toUpperCase().trim(), type, value, minimum_order||0, usage_limit||null, expires_at||null, is_active?1:0, id]
       );
+      if (before) {
+        const iso = (d: unknown) => (d ? new Date(d as string | number | Date).toISOString() : null);
+        await recordAudit(pool, {
+          actor: session!,
+          action: 'update',
+          entityType: 'coupon',
+          entityId: id,
+          summary: `Updated coupon ${String(code).toUpperCase().trim().slice(0, 40)}`,
+          detail: {
+            changes: auditFieldDiff(
+              {
+                coupon_code: before.code,
+                type: before.type,
+                value: Number(before.value),
+                minimum_order: Number(before.minimum_order || 0),
+                usage_limit: before.usage_limit == null ? null : Number(before.usage_limit),
+                expires_at: iso(before.expires_at),
+                is_active: Number(before.is_active) ? 1 : 0,
+              },
+              {
+                coupon_code: String(code).toUpperCase().trim(),
+                type,
+                value: Number(value),
+                minimum_order: Number(minimum_order || 0),
+                usage_limit: usage_limit ? Number(usage_limit) : null,
+                expires_at: iso(expires_at),
+                is_active: is_active ? 1 : 0,
+              }
+            ),
+          },
+          req,
+        });
+      }
       return res.status(200).json({ success:true });
     }
 
     if (req.method === 'DELETE') {
       const { id } = req.query;
+      const [beforeRows]: any = await pool.query('SELECT code FROM coupons WHERE id=? LIMIT 1', [id]);
+      const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query('DELETE FROM coupons WHERE id=?', [id]);
+      if (before) {
+        await recordAudit(pool, {
+          actor: session!,
+          action: 'delete',
+          entityType: 'coupon',
+          entityId: String(id),
+          summary: `Deleted coupon ${String(before.code ?? id).slice(0, 40)}`,
+          detail: { coupon_code: before.code },
+          req,
+        });
+      }
       return res.status(200).json({ success:true });
     }
 

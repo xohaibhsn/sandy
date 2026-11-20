@@ -11,6 +11,7 @@ export const CUSTOMER_TEXTS = {
   COD_OTP_VERIFIED: "Phone confirmed",
   COD_OTP_INVALID: "That code didn't work. Please try again.",
   COD_OTP_LOCKED: "Too many attempts. Request a new code.",
+  COD_OTP_MAX_ATTEMPTS: "Too many attempts, please try again later.",
   COD_OTP_EXPIRED: "This code has expired. Request a new one.",
   COD_OTP_SEND_FAILED: "We couldn't send a code right now. Please try again shortly.",
   COD_OTP_NUMBER_REJECTED:
@@ -38,6 +39,7 @@ export const CUSTOMER_TEXTS = {
   ACCOUNT_OTP_VERIFY: "Verify and sign in",
   ACCOUNT_OTP_INVALID: "That code didn't work. Please try again.",
   ACCOUNT_OTP_LOCKED: "Too many attempts. Request a new code.",
+  ACCOUNT_OTP_MAX_ATTEMPTS: "Too many attempts, please try again later.",
   ACCOUNT_OTP_EXPIRED: "This code has expired. Request a new one.",
   ACCOUNT_OTP_SEND_FAILED: "We couldn't send a code right now. Please try again shortly.",
   ACCOUNT_OTP_NUMBER_REJECTED:

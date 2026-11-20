@@ -9,6 +9,7 @@ import {
   type AdminRole,
 } from '../../lib/adminAuth';
 import { verifyAdminStaffPassword } from '../../lib/adminStaffPassword';
+import { maskEmail, recordAudit } from '../../lib/auditLog';
 
 type StaffAuthRow = {
   id: number;
@@ -18,15 +19,43 @@ type StaffAuthRow = {
   password_hash: string;
 };
 
+/** Login audit: never log passwords; username is masked unless it is the master "admin". */
+function maskLoginName(username: unknown): string {
+  const s = String(username ?? '').trim().slice(0, 120);
+  if (!s) return '';
+  if (s === 'admin') return s;
+  if (s.includes('@')) return maskEmail(s);
+  return `${s[0]}•••`;
+}
+
+async function auditLoginFailed(req: NextApiRequest, username: unknown, reason: string) {
+  const name = maskLoginName(username);
+  await recordAudit(pool, {
+    actor: { actorType: 'anonymous', name: name || null },
+    action: 'login_failed',
+    entityType: 'admin_session',
+    entityId: null,
+    summary: `Admin login failed (${reason})`,
+    detail: { reason, username: name || null },
+    req,
+  });
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireSameOriginAdminRequest(req, res)) return;
 
   const { allowed } = RL_AUTH(getClientIp(req));
-  if (!allowed) return res.status(429).json({ error: 'Too many login attempts. Try again in 15 minutes.' });
+  if (!allowed) {
+    await auditLoginFailed(req, (req.body || {}).username, 'rate_limited');
+    return res.status(429).json({ error: 'Too many login attempts. Try again in 15 minutes.' });
+  }
 
   const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ success: false, error: 'Missing credentials' });
+  if (!username || !password) {
+    await auditLoginFailed(req, username, 'missing_credentials');
+    return res.status(400).json({ success: false, error: 'Missing credentials' });
+  }
 
   // ── Check admin_staff table first (multi-user RBAC) ───────────────────────
   try {
@@ -46,9 +75,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             );
             const affected = Number((upgradeResult as { affectedRows?: number } | undefined)?.affectedRows || 0);
             if (affected !== 1) {
+              await auditLoginFailed(req, username, 'hash_upgrade_conflict');
               return res.status(401).json({ success: false });
             }
           } catch {
+            await auditLoginFailed(req, username, 'service_unavailable');
             return res.status(503).json({ success: false, error: 'Service unavailable' });
           }
         }
@@ -62,8 +93,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             name: String(staff.name || 'Admin'),
           });
           setSessionCookie(res, rawToken);
+          await recordAudit(pool, {
+            actor: {
+              actorType: 'staff',
+              staffId: Number(staff.id),
+              name: String(staff.name || 'Admin'),
+              role,
+            },
+            action: 'login_success',
+            entityType: 'admin_session',
+            entityId: Number(staff.id),
+            summary: `Staff login: ${String(staff.name || 'Admin')}`,
+            detail: { username: maskLoginName(username), role },
+            req,
+          });
           return res.status(200).json({ success: true, role, name: staff.name, staffUser: true });
         } catch {
+          await auditLoginFailed(req, username, 'service_unavailable');
           return res.status(503).json({ success: false, error: 'Service unavailable' });
         }
       }
@@ -74,6 +120,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // ── Master admin login (username must be 'admin') ─────────────────────────
   if (username !== 'admin') {
+    await auditLoginFailed(req, username, 'wrong_password');
     return res.status(401).json({ success: false });
   }
 
@@ -90,8 +137,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         name: 'Admin',
       });
       setSessionCookie(res, rawToken);
+      await recordAudit(pool, {
+        actor: { actorType: 'master', name: 'Admin', role: 'super_admin' },
+        action: 'login_success',
+        entityType: 'admin_session',
+        entityId: null,
+        summary: 'Master admin login',
+        detail: { username: 'admin', role: 'super_admin' },
+        req,
+      });
       return res.status(200).json({ success: true, role: 'super_admin', name: 'Admin' });
     } catch {
+      await auditLoginFailed(req, 'admin', 'service_unavailable');
       return res.status(503).json({ success: false, error: 'Service unavailable' });
     }
   };
@@ -118,8 +175,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (!hashEnv && !sha256Env && !plainEnv) {
+    await auditLoginFailed(req, username, 'server_not_configured');
     return res.status(500).json({ success: false, error: 'Server not configured' });
   }
 
+  await auditLoginFailed(req, username, 'wrong_password');
   return res.status(401).json({ success: false });
 }

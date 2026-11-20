@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 
 /**
  * Couriers CRUD (SANDY-BATCH-12, manual courier flow). super_admin only (settings:shipping).
@@ -158,6 +159,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         'INSERT INTO couriers (name, tracking_url_template, active, sort_order) VALUES (?, ?, ?, ?)',
         [name, template, active, sort]
       );
+      await recordAudit(pool, {
+        actor: session,
+        action: 'create',
+        entityType: 'courier',
+        entityId: Number(result.insertId),
+        summary: `Created courier "${name}"`,
+        detail: { name, tracking_url_template: template, active, sort_order: sort },
+        req,
+      });
       return res.status(200).json({ success: true, id: Number(result.insertId) });
     }
 
@@ -165,40 +175,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const id = parseId(body.id);
       const sets: string[] = [];
       const params: unknown[] = [];
+      const patch: Record<string, unknown> = {};
       if (body.name !== undefined) {
         sets.push('name = ?');
         params.push(parseName(body.name));
+        patch.name = params[params.length - 1];
       }
       if (body.tracking_url_template !== undefined) {
         sets.push('tracking_url_template = ?');
         params.push(parseTemplate(body.tracking_url_template));
+        patch.tracking_url_template = params[params.length - 1];
       }
       if (body.active !== undefined) {
         const f = toFlag(body.active);
         if (f === null) throw new ValidationError('Invalid active flag');
         sets.push('active = ?');
         params.push(f);
+        patch.active = f;
       }
       if (body.sort_order !== undefined) {
         sets.push('sort_order = ?');
         params.push(parseSort(body.sort_order));
+        patch.sort_order = params[params.length - 1];
       }
       if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
 
-      const [exists] = await pool.query<RowDataPacket[]>('SELECT id FROM couriers WHERE id = ? LIMIT 1', [id]);
+      const [exists] = await pool.query<RowDataPacket[]>(
+        'SELECT id, name, tracking_url_template, active, sort_order FROM couriers WHERE id = ? LIMIT 1',
+        [id]
+      );
       if (!Array.isArray(exists) || exists.length === 0) {
         return res.status(404).json({ error: 'Courier not found' });
       }
       await pool.query(`UPDATE couriers SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
+      const beforeRow = exists[0] as Record<string, unknown>;
+      const beforeSlice: Record<string, unknown> = {};
+      for (const k of Object.keys(patch)) beforeSlice[k] = k === 'active' ? Number(beforeRow[k]) : beforeRow[k];
+      await recordAudit(pool, {
+        actor: session,
+        action: 'update',
+        entityType: 'courier',
+        entityId: id,
+        summary: `Updated courier "${String(beforeRow.name ?? id)}"`,
+        detail: { changes: auditFieldDiff(beforeSlice, patch) },
+        req,
+      });
       return res.status(200).json({ success: true });
     }
 
     // DELETE
     const id = parseId(body.id ?? req.query.id);
-    const [exists] = await pool.query<RowDataPacket[]>('SELECT id FROM couriers WHERE id = ? LIMIT 1', [id]);
+    const [exists] = await pool.query<RowDataPacket[]>('SELECT id, name FROM couriers WHERE id = ? LIMIT 1', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       return res.status(404).json({ error: 'Courier not found' });
     }
+    const courierName = String((exists[0] as { name?: unknown }).name ?? id);
 
     let inUse = false;
     try {
@@ -215,9 +246,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (inUse) {
       await pool.query('UPDATE couriers SET active = 0 WHERE id = ?', [id]);
+      await recordAudit(pool, {
+        actor: session,
+        action: 'status_change',
+        entityType: 'courier',
+        entityId: id,
+        summary: `Deactivated courier "${courierName}" (in use by orders)`,
+        detail: { name: courierName, changes: { active: { from: 1, to: 0 } }, deleted: false },
+        req,
+      });
       return res.status(200).json({ success: true, deactivated: true, deleted: false });
     }
     await pool.query('DELETE FROM couriers WHERE id = ?', [id]);
+    await recordAudit(pool, {
+      actor: session,
+      action: 'delete',
+      entityType: 'courier',
+      entityId: id,
+      summary: `Deleted courier "${courierName}"`,
+      detail: { name: courierName },
+      req,
+    });
     return res.status(200).json({ success: true, deactivated: false, deleted: true });
   } catch (error: unknown) {
     if (error instanceof ValidationError) {

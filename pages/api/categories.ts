@@ -4,6 +4,8 @@ import pool from "../../lib/db";
 import { requirePermission } from "../../lib/adminPermissions";
 import { categorySlugFromName } from "../../lib/categorySlug";
 import { assertSafeImageUrl, UrlValidationError } from "../../lib/urlValidation";
+import type { AdminSession } from "../../lib/adminAuth";
+import { auditFieldDiff, recordAudit } from "../../lib/auditLog";
 
 const NAME_MAX = 100;
 const SLUG_MAX = 120;
@@ -121,15 +123,16 @@ function safeImage(value: unknown): string {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  let session: AdminSession | null = null;
   if (req.method === "GET") {
-    const session = await requirePermission(req, res, "categories:view");
+    session = await requirePermission(req, res, "categories:view");
     if (!session) return;
   } else if (
     req.method === "POST" ||
     req.method === "PUT" ||
     req.method === "DELETE"
   ) {
-    const session = await requirePermission(req, res, "categories:write");
+    session = await requirePermission(req, res, "categories:write");
     if (!session) return;
   } else {
     return res.status(405).json({ error: "Method not allowed" });
@@ -200,6 +203,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
            VALUES (?, ?, ?, ?, NULL, ?, ?)`,
           [name, slug, description, image || null, activeNorm, sortNorm]
         );
+        await recordAudit(pool, {
+          actor: session!,
+          action: "create",
+          entityType: "category",
+          entityId: result.insertId,
+          summary: `Created category "${name}"`,
+          detail: { name, slug, description, image: image || null, active: activeNorm, sort_order: sortNorm },
+          req,
+        });
         return res.status(201).json({
           success: true,
           id: result.insertId,
@@ -307,6 +319,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!result || result.affectedRows === 0) {
           return res.status(404).json({ error: "Category not found" });
         }
+        await recordAudit(pool, {
+          actor: session!,
+          action: "update",
+          entityType: "category",
+          entityId: id,
+          summary: `Updated category "${nextName}"`,
+          detail: {
+            changes: auditFieldDiff(
+              {
+                name: existing.name,
+                slug: existing.slug,
+                description: existing.description ?? null,
+                image: existing.image ?? null,
+                active: existing.active === 0 ? 0 : 1,
+                sort_order: Number(existing.sort_order) || 0,
+              },
+              {
+                name: nextName,
+                slug: nextSlug,
+                description: nextDescription,
+                image: nextImage,
+                active: nextActive,
+                sort_order: nextSort,
+              }
+            ),
+          },
+          req,
+        });
         return res.status(200).json({
           success: true,
           id,
@@ -353,6 +393,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!result || result.affectedRows !== 1) {
         return res.status(404).json({ error: "Category not found" });
       }
+      await recordAudit(pool, {
+        actor: session!,
+        action: "delete",
+        entityType: "category",
+        entityId: id,
+        summary: `Deleted category "${existing.name}"`,
+        detail: { name: existing.name, slug: existing.slug },
+        req,
+      });
       return res.status(200).json({ success: true });
     }
 

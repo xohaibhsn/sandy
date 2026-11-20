@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import pool from "../../lib/db";
 import { requirePermission, type AdminPermission } from "../../lib/adminPermissions";
+import type { AdminSession } from "../../lib/adminAuth";
+import { recordAudit } from "../../lib/auditLog";
 import {
   CANCEL_COLUMN_MISSING,
   CANCEL_COLUMN_MISSING_MESSAGE,
@@ -58,7 +60,7 @@ const RTO_CANCEL_REASON = "Returned to origin (RTO)";
 async function cancelOrderWithRollback(
   orderId: string,
   cancelReason: string,
-  options: { rto?: boolean } = {}
+  options: { rto?: boolean; audit?: { session: AdminSession; req: NextApiRequest } } = {}
 ): Promise<
   | { ok: true; already_cancelled: boolean }
   | { ok: false; status: number; error: string; code?: string }
@@ -145,6 +147,28 @@ async function cancelOrderWithRollback(
         `UPDATE orders SET rto = 1, rto_at = NOW() WHERE order_id = ?`,
         [orderId]
       );
+    }
+
+    if (options.audit) {
+      // Audit INSIDE the transaction (before commit) so a rollback drops the audit row too.
+      await recordAudit(connection, {
+        actor: options.audit.session,
+        action: options.rto ? "rto" : "cancel",
+        entityType: "order",
+        entityId: orderId,
+        summary: options.rto
+          ? `Order ${orderId} marked returned to origin (RTO)`
+          : `Order ${orderId} cancelled`,
+        detail: {
+          order_id: orderId,
+          from_status: String(order.status),
+          to_status: "cancelled",
+          cancel_reason: cancelReason,
+          item_lines: Array.isArray(itemRows) ? itemRows.length : 0,
+          coupon_rolled_back: !!couponCode,
+        },
+        req: options.audit.req,
+      });
     }
 
     await connection.commit();
@@ -726,7 +750,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(rtoCheck.status).json({ error: rtoCheck.error, code: rtoCheck.code });
           }
         }
-        const rtoOutcome = await cancelOrderWithRollback(rtoOrderId, RTO_CANCEL_REASON, { rto: true });
+        const rtoOutcome = await cancelOrderWithRollback(rtoOrderId, RTO_CANCEL_REASON, {
+          rto: true,
+          audit: { session, req },
+        });
         if (!rtoOutcome.ok) {
           return res.status(rtoOutcome.status).json({ error: rtoOutcome.error });
         }
@@ -871,6 +898,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               await connection.rollback();
               return res.status(409).json({ error: "Unable to confirm order" });
             }
+            // Audit INSIDE the transaction (before commit) so a rollback drops the audit row too.
+            await recordAudit(connection, {
+              actor: session,
+              action: "confirm",
+              entityType: "order",
+              entityId: trimmedId,
+              summary: `COD order ${trimmedId} confirmed by ${method}`,
+              detail: {
+                order_id: trimmedId,
+                from_status: String(row.status),
+                to_status: "confirmed",
+                confirmation_method: method,
+                note_length: note.length,
+              },
+              req,
+            });
             await connection.commit();
             return res.status(200).json({
               success: true,
@@ -922,6 +965,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Flag off (or any other status): the original single-column UPDATE, unchanged.
         let updateSql = "UPDATE orders SET status = ? WHERE order_id = ? AND status <> 'cancelled'";
         let updateParams: unknown[] = [status, trimmedId];
+        // Non-secret dispatch context for the audit row (courier / rider ids, tracking number).
+        const auditExtra: Record<string, unknown> = {};
 
         if (status === "dispatched" || status === "delivered") {
           const shippingOn = (await loadShippingSettings()).shipping_enabled;
@@ -955,6 +1000,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 if (!courierOk) return res.status(400).json({ error: "Invalid courier" });
                 sets.push("courier_id = ?");
                 setParams.push(courierId);
+                auditExtra.courier_id = courierId;
               }
 
               const rawTracking = body.tracking_number;
@@ -964,6 +1010,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
                 sets.push("tracking_number = ?");
                 setParams.push(rawTracking.trim());
+                auditExtra.tracking_number = rawTracking.trim();
               }
 
               // Own-rider dispatch (BATCH-17): optional active rider; tracking stays optional.
@@ -989,6 +1036,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 if (!riderOk) return res.status(400).json({ error: "Invalid rider" });
                 sets.push("rider_id = ?");
                 setParams.push(riderId);
+                auditExtra.rider_id = riderId;
               }
             } else {
               sets.push("delivered_at = COALESCE(delivered_at, NOW())");
@@ -1013,6 +1061,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               error: "Cancelled orders cannot change status",
             });
           }
+        } else {
+          await recordAudit(pool, {
+            actor: session,
+            action:
+              status === "dispatched"
+                ? "dispatch"
+                : status === "confirmed"
+                  ? "confirm"
+                  : "status_change",
+            entityType: "order",
+            entityId: trimmedId,
+            summary: `Order ${trimmedId} status ${currentStatus || "?"} -> ${status}`,
+            detail: {
+              order_id: trimmedId,
+              from_status: currentStatus,
+              to_status: status,
+              ...auditExtra,
+            },
+            req,
+          });
         }
         return res.status(200).json({
           success: true,
@@ -1043,7 +1111,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
 
-      const outcome = await cancelOrderWithRollback(trimmedId, composed.reason);
+      const outcome = await cancelOrderWithRollback(trimmedId, composed.reason, {
+        audit: { session, req },
+      });
       if (!outcome.ok) {
         return res.status(outcome.status).json({ error: outcome.error });
       }
@@ -1071,6 +1141,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       await pool.query("DELETE FROM order_items WHERE order_id=?", [order_id]);
       await pool.query("DELETE FROM orders WHERE order_id=?", [order_id]);
+
+      await recordAudit(pool, {
+        actor: session,
+        action: "delete",
+        entityType: "order",
+        entityId: String(order_id),
+        summary: `Order ${String(order_id).slice(0, 64)} deleted`,
+        detail: {
+          order_id: String(order_id),
+          was_status: order.status,
+          total: Number(order.total || 0),
+          payment_method: order.payment_method ?? null,
+        },
+        req,
+      });
 
       return res.status(200).json({
         success: true,

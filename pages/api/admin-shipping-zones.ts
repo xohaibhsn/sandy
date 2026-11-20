@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { requirePermission } from '../../lib/adminPermissions';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 import { loadShippingSettings } from '../../lib/shippingSettings';
 import { resetShippingZonesCache } from '../../lib/shipping';
 import { hasDeliveryOpsZoneColumns } from '../../lib/shippingSchema';
@@ -220,6 +221,26 @@ const ZONE_COLUMNS =
   'id, name, cities, provinces, is_default, rate, free_min, estimate_text, active, sort_order';
 const ZONE_COLUMNS_OPS = `${ZONE_COLUMNS}, delivery_method, same_day_cutoff`;
 
+/** Normalised "before" values (same shapes the PATCH handler writes) for the audit diff. */
+function serialiseForAudit(row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    name: row.name,
+    cities: row.cities ?? null,
+    provinces: row.provinces ?? null,
+    rate: Number(row.rate),
+    free_min: row.free_min === null || row.free_min === undefined ? null : Number(row.free_min),
+    estimate_text: row.estimate_text ?? null,
+    sort_order: Number(row.sort_order ?? 0),
+    active: Number(row.active) === 1 ? 1 : 0,
+    is_default: Number(row.is_default) === 1 ? 1 : 0,
+    delivery_method: row.delivery_method === undefined ? undefined : String(row.delivery_method ?? 'courier').trim().toLowerCase(),
+    same_day_cutoff:
+      row.same_day_cutoff === undefined || row.same_day_cutoff === null
+        ? null
+        : String(row.same_day_cutoff).slice(0, 8),
+  };
+}
+
 function asOverlapZones(rows: ZoneRow[]): OverlapZoneInput[] {
   return (Array.isArray(rows) ? rows : []).map((row) => ({
     id: Number(row.id),
@@ -340,6 +361,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [name, cities, provinces, isDefault, rate, freeMin, estimate, active, sort]
             );
+        // Audit INSIDE the transaction so a rollback drops the audit row too.
+        await recordAudit(conn, {
+          actor: session,
+          action: 'create',
+          entityType: 'shipping_zone',
+          entityId: Number(result.insertId),
+          summary: `Created shipping zone "${name}"`,
+          detail: {
+            name,
+            cities,
+            provinces,
+            is_default: isDefault,
+            rate,
+            free_min: freeMin,
+            estimate_text: estimate,
+            active,
+            sort_order: sort,
+            delivery_method: deliveryMethod,
+            same_day_cutoff: cutoff,
+          },
+          req,
+        });
         await conn.commit();
         resetShippingZonesCache();
         return res.status(200).json({ success: true, id: Number(result.insertId) });
@@ -375,6 +418,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const sets: string[] = [];
         const params: unknown[] = [];
+        const patch: Record<string, unknown> = {};
         let nextActive = Number(existing.active) === 1 ? 1 : 0;
         let nextDefault = Number(existing.is_default) === 1 ? 1 : 0;
         let nextCities: string | null = existing.cities;
@@ -383,32 +427,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (body.name !== undefined) {
           sets.push('name = ?');
           params.push(parseName(body.name));
+          patch.name = params[params.length - 1];
         }
         if (body.cities !== undefined) {
           nextCities = parseList(body.cities, 'Cities');
           sets.push('cities = ?');
           params.push(nextCities);
+          patch.cities = nextCities;
         }
         if (body.provinces !== undefined) {
           nextProvinces = parseList(body.provinces, 'Provinces');
           sets.push('provinces = ?');
           params.push(nextProvinces);
+          patch.provinces = nextProvinces;
         }
         if (body.rate !== undefined) {
           sets.push('rate = ?');
           params.push(parseMoney(body.rate, 'Rate'));
+          patch.rate = params[params.length - 1];
         }
         if (body.free_min !== undefined) {
           sets.push('free_min = ?');
           params.push(parseFreeMin(body.free_min));
+          patch.free_min = params[params.length - 1];
         }
         if (body.estimate_text !== undefined) {
           sets.push('estimate_text = ?');
           params.push(parseEstimate(body.estimate_text));
+          patch.estimate_text = params[params.length - 1];
         }
         if (body.sort_order !== undefined) {
           sets.push('sort_order = ?');
           params.push(parseSort(body.sort_order));
+          patch.sort_order = params[params.length - 1];
         }
         if (body.active !== undefined) {
           const f = toFlag(body.active);
@@ -416,6 +467,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           nextActive = f;
           sets.push('active = ?');
           params.push(f);
+          patch.active = f;
         }
         if (body.is_default !== undefined) {
           const f = toFlag(body.is_default);
@@ -423,14 +475,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           nextDefault = f;
           sets.push('is_default = ?');
           params.push(f);
+          patch.is_default = f;
         }
         if (opsCols && body.delivery_method !== undefined) {
           sets.push('delivery_method = ?');
           params.push(parseDeliveryMethod(body.delivery_method));
+          patch.delivery_method = params[params.length - 1];
         }
         if (opsCols && body.same_day_cutoff !== undefined) {
           sets.push('same_day_cutoff = ?');
           params.push(parseSameDayCutoff(body.same_day_cutoff));
+          patch.same_day_cutoff = params[params.length - 1];
         }
         if (!sets.length) {
           await conn.rollback();
@@ -474,6 +529,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         await conn.query(`UPDATE shipping_zones SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
+        // Audit INSIDE the transaction so a rollback drops the audit row too.
+        const zoneBefore = serialiseForAudit(existing as unknown as Record<string, unknown>);
+        const zoneBeforeSlice: Record<string, unknown> = {};
+        for (const k of Object.keys(patch)) zoneBeforeSlice[k] = zoneBefore[k];
+        await recordAudit(conn, {
+          actor: session,
+          action: 'update',
+          entityType: 'shipping_zone',
+          entityId: id,
+          summary: `Updated shipping zone "${String(existing.name ?? id)}"`,
+          detail: { changes: auditFieldDiff(zoneBeforeSlice, patch) },
+          req,
+        });
         await conn.commit();
         resetShippingZonesCache();
         return res.status(200).json({ success: true });
@@ -544,12 +612,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (inUse) {
         await conn.query('UPDATE shipping_zones SET active = 0 WHERE id = ?', [id]);
+        await recordAudit(conn, {
+          actor: session,
+          action: 'status_change',
+          entityType: 'shipping_zone',
+          entityId: id,
+          summary: `Deactivated shipping zone "${String(existing.name ?? id)}" (in use)`,
+          detail: { name: existing.name, changes: { active: { from: Number(existing.active), to: 0 } }, deleted: false },
+          req,
+        });
         await conn.commit();
         resetShippingZonesCache();
         return res.status(200).json({ success: true, deactivated: true, deleted: false });
       }
 
       await conn.query('DELETE FROM shipping_zones WHERE id = ?', [id]);
+      await recordAudit(conn, {
+        actor: session,
+        action: 'delete',
+        entityType: 'shipping_zone',
+        entityId: id,
+        summary: `Deleted shipping zone "${String(existing.name ?? id)}"`,
+        detail: { name: existing.name, is_default: Number(existing.is_default), active: Number(existing.active) },
+        req,
+      });
       await conn.commit();
       resetShippingZonesCache();
       return res.status(200).json({ success: true, deactivated: false, deleted: true });

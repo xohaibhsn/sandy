@@ -4,6 +4,7 @@ import { SITE_URL } from '../../lib/site';
 import { getAdminSession } from '../../lib/adminAuth';
 import { hasPermission, requirePermission } from '../../lib/adminPermissions';
 import { sanitizeRichHtml } from '../../lib/richHtmlSanitizer';
+import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 import {
   assertSafeCanonicalUrl,
   assertSafeImageUrl,
@@ -75,6 +76,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         'INSERT INTO blog_posts (title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
         [title, slug || '', excerpt || '', safeContent, category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', safeFeaturedImage, meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null]
       );
+      await recordAudit(pool, {
+        actor: session,
+        action: 'create',
+        entityType: 'blog_post',
+        entityId: result.insertId,
+        summary: `Created blog post "${String(title || '').slice(0, 120)}"`,
+        detail: {
+          title,
+          slug: slug || '',
+          category: category || 'Guides',
+          status: status || 'published',
+          featured: featured ? 1 : 0,
+          content: safeContent,
+        },
+        req,
+      });
       return res.status(200).json({ success: true, id: result.insertId });
     }
 
@@ -83,16 +100,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const safeFeaturedImage = resolveBlogFeaturedImage(featured_image);
       const finalCanonical = resolveBlogCanonical(canonical_url, slug);
       const safeContent = sanitizeRichHtml(content || '');
+      const [beforeRows]: any = await pool.query(
+        'SELECT title, slug, excerpt, content, category, status, featured, canonical_url, featured_image, meta_title, meta_description, focus_keyword FROM blog_posts WHERE id = ? LIMIT 1',
+        [id]
+      );
+      const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query(
         'UPDATE blog_posts SET title=?, slug=?, excerpt=?, content=?, category=?, emoji=?, badge=?, badgeText=?, featured_image=?, meta_title=?, meta_description=?, focus_keyword=?, status=?, featured=?, canonical_url=?, faqs=? WHERE id=?',
         [title, slug || '', excerpt || '', safeContent, category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', safeFeaturedImage, meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null, id]
       );
+      if (before) {
+        await recordAudit(pool, {
+          actor: session,
+          action: 'update',
+          entityType: 'blog_post',
+          entityId: id,
+          summary: `Updated blog post "${String(title || '').slice(0, 120)}"`,
+          detail: {
+            changes: auditFieldDiff(
+              { ...before, featured: Number(before.featured) ? 1 : 0 },
+              {
+                title,
+                slug: slug || '',
+                excerpt: excerpt || '',
+                content: safeContent,
+                category: category || 'Guides',
+                status: status || 'published',
+                featured: featured ? 1 : 0,
+                canonical_url: finalCanonical,
+                featured_image: safeFeaturedImage,
+                meta_title: meta_title || '',
+                meta_description: meta_description || '',
+                focus_keyword: focus_keyword || '',
+              }
+            ),
+          },
+          req,
+        });
+      }
       return res.status(200).json({ success: true });
     }
 
     if (req.method === 'DELETE') {
       const { id } = req.query;
+      const [beforeRows]: any = await pool.query('SELECT title, slug FROM blog_posts WHERE id = ? LIMIT 1', [id]);
+      const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query('DELETE FROM blog_posts WHERE id = ?', [id]);
+      if (before) {
+        await recordAudit(pool, {
+          actor: session,
+          action: 'delete',
+          entityType: 'blog_post',
+          entityId: String(id),
+          summary: `Deleted blog post "${String(before.title ?? id).slice(0, 120)}"`,
+          detail: { title: before.title, slug: before.slug },
+          req,
+        });
+      }
       return res.status(200).json({ success: true });
     }
 

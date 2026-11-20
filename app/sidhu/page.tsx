@@ -22,6 +22,7 @@ import {
 } from "../../lib/orderCancel";
 import RedirectManager from "../../components/admin/RedirectManager";
 import TaxSettingsPanel from "../../components/admin/TaxSettingsPanel";
+import ActivityLogPanel from "../../components/admin/ActivityLogPanel";
 import OrderProtectionSettingsPanel from "../../components/admin/OrderProtectionSettingsPanel";
 import ShippingSettingsPanel from "../../components/admin/ShippingSettingsPanel";
 import BlacklistPanel, { CustomerBlockButton } from "../../components/admin/BlacklistPanel";
@@ -214,7 +215,7 @@ const demoCustomers = [
   { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026", blocked:false },
 ];
 
-type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff"|"tax";
+type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff"|"tax"|"activity";
 type StoreCategory = { id:number; name:string; slug:string; description:string; image:string; parent_id:number|null; active:number; sort_order:number; };
 type AdminRole = "super_admin"|"manager"|"writer";
 type OrderStatus = "pending"|"confirmed"|"ready_for_pickup"|"dispatched"|"delivered"|"cancelled";
@@ -1810,6 +1811,9 @@ export default function AdminPage() {
                 {tab==="pages" && <>Content <span>Editor</span></>}
                 {tab==="redirects" && <>Manage <span>Redirects</span></>}
                 {tab==="settings" && <>Site <span>Settings</span></>}
+                {tab==="staff" && <>Staff <span>Users</span></>}
+                {tab==="tax" && <>Tax <span>Settings</span></>}
+                {tab==="activity" && <>Activity <span>Log</span></>}
               </h1>
             </div>
             <div className="top-right">
@@ -2540,6 +2544,9 @@ export default function AdminPage() {
 
           {/* 🧾 TAX (super_admin only; /api/admin-tax enforces this server-side too) */}
           {tab==="tax" && adminRole==="super_admin" && <TaxSettingsPanel />}
+
+          {/* 📋 ACTIVITY LOG (super_admin / audit:view; API enforces too) */}
+          {tab==="activity" && adminRole==="super_admin" && <ActivityLogPanel />}
 
           {/* 👤 STAFF USERS */}
           {tab==="staff" && adminRole==="super_admin" && (

@@ -3,6 +3,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import pool from "../../lib/db";
 import { requirePermission } from "../../lib/adminPermissions";
 import { normaliseEmail, normalisePhone } from "../../lib/customerIdentity";
+import { maskEmail as maskAuditEmail, maskPhone as maskAuditPhone, recordAudit } from "../../lib/auditLog";
 
 function maskPhone(raw: string | null | undefined): string {
   const s = String(raw || "");
@@ -139,6 +140,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         [phoneNorm, emailNorm, reason, sourceOrderId, createdBy]
       );
 
+      await recordAudit(pool, {
+        actor: session,
+        action: "create",
+        entityType: "customer_blacklist",
+        entityId: result.insertId,
+        summary: "Blacklisted customer",
+        detail: {
+          phone_masked: phoneNorm ? maskAuditPhone(phoneNorm) : null,
+          email_masked: emailNorm ? maskAuditEmail(emailNorm) : null,
+          reason,
+          source_order_id: sourceOrderId,
+        },
+        req,
+      });
+
       return res.status(200).json({
         success: true,
         id: result.insertId,
@@ -176,6 +192,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!result || Number(result.affectedRows) === 0) {
         return res.status(404).json({ error: "Not found or already inactive" });
       }
+      await recordAudit(pool, {
+        actor: session,
+        action: "status_change",
+        entityType: "customer_blacklist",
+        entityId: id,
+        summary: "Removed customer from blacklist",
+        detail: { method, changes: { active: { from: 1, to: 0 } }, removed_reason: removedReason },
+        req,
+      });
       return res.status(200).json({ success: true, id, active: false });
     }
 
