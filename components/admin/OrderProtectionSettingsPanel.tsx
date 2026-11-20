@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { adminRequest } from "@/lib/adminRequest";
 import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
+import { otpHealthViewFromBody } from "@/lib/otp/healthView";
 import AdminBanner from "./AdminBanner";
 
 /**
@@ -86,15 +87,8 @@ export default function OrderProtectionSettingsPanel({
   const [busy, setBusy] = useState(false);
   const [otpHealthBusy, setOtpHealthBusy] = useState(false);
   const [otpHealthHint, setOtpHealthHint] = useState("");
-  const [otpHealthChecks, setOtpHealthChecks] = useState<
-    Array<{
-      name: string;
-      missing: boolean;
-      hadWhitespace: boolean;
-      hadQuotes: boolean;
-      format: string;
-    }>
-  >([]);
+  const [otpHealthTone, setOtpHealthTone] = useState<"ok" | "error" | "">("");
+  const [otpHealthLines, setOtpHealthLines] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -129,36 +123,23 @@ export default function OrderProtectionSettingsPanel({
   const testOtpConnection = async () => {
     setOtpHealthBusy(true);
     setOtpHealthHint("");
-    setOtpHealthChecks([]);
+    setOtpHealthTone("");
+    setOtpHealthLines([]);
     setBanner("");
-    const res = await adminRequest<{
-      ok?: boolean;
-      hint?: string;
-      stage?: string;
-      checks?: Array<{
-        name: string;
-        missing: boolean;
-        hadWhitespace: boolean;
-        hadQuotes: boolean;
-        format: string;
-      }>;
-    }>("/api/admin-otp-health", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const res = await adminRequest<Record<string, unknown>>(
+      "/api/admin-otp-health",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      { expectSuccess: false }
+    );
     setOtpHealthBusy(false);
     if (!res.ok) {
       setBanner(res.errorMessage || "OTP connection test failed.");
       return;
     }
-    const data = res.data || {};
-    setOtpHealthHint(
-      typeof data.hint === "string" && data.hint
-        ? data.hint
-        : data.stage === "env"
-          ? "OTP provider env incomplete — fix the checks below (no Twilio call made)."
-          : data.ok
-            ? "Connected."
-            : "OTP connection check returned not ok."
-    );
-    setOtpHealthChecks(Array.isArray(data.checks) ? data.checks : []);
+    const view = otpHealthViewFromBody(res.data);
+    setOtpHealthHint(view.hint);
+    setOtpHealthTone(view.tone);
+    setOtpHealthLines(view.lines);
   };
 
   const save = async () => {
@@ -249,25 +230,23 @@ export default function OrderProtectionSettingsPanel({
               </button>
             </div>
             {otpHealthHint && (
-              <p data-otp-health-hint="1" style={{ margin: "8px 0 0", lineHeight: 1.5, color: "#444" }}>
+              <p
+                data-otp-health-hint="1"
+                data-otp-health-tone={otpHealthTone || undefined}
+                style={{
+                  margin: "8px 0 0",
+                  lineHeight: 1.5,
+                  color: otpHealthTone === "ok" ? "#15803D" : otpHealthTone === "error" ? "#DC2626" : "#444",
+                }}
+              >
                 {otpHealthHint}
               </p>
             )}
-            {otpHealthChecks.length > 0 && (
+            {otpHealthLines.length > 0 && (
               <ul data-otp-health-checks="1" style={{ margin: "8px 0 0", paddingLeft: 18, lineHeight: 1.6, color: "#666" }}>
-                {otpHealthChecks.map((c) => {
-                  const flags = [
-                    c.missing ? "missing" : "present",
-                    c.hadWhitespace ? "whitespace" : null,
-                    c.hadQuotes ? "quotes" : null,
-                    c.format === "bad" ? "bad-format" : c.format === "ok" ? "ok" : null,
-                  ].filter(Boolean);
-                  return (
-                    <li key={c.name}>
-                      {c.name}: {flags.join(", ")}
-                    </li>
-                  );
-                })}
+                {otpHealthLines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
               </ul>
             )}
           </div>
