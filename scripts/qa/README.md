@@ -22,7 +22,7 @@ Default base URL: `https://sandy.com.pk` (override with `--base`).
 
 ## Limits
 
-- **No JS execution** — extraction is from **raw HTML** only (regex / string parsing).
+- **No JS execution** -- extraction is from **raw HTML** only (regex / string parsing).
 - SEO and text hashes therefore reflect server-rendered HTML, not client-hydrated DOM.
 - Request budgets: health-check ≤ 25, page-hash ≤ 30, freshness-probe ≤ 60 per URL.
 - After catalog or CMS content **legitimately** changes, **re-take** the `page-hash` baseline. Resolved product/category/blog URLs come from the live sitemap and will shift with the catalog.
@@ -50,7 +50,7 @@ node scripts/qa/health-check.mjs [--base <url>] [--json <file>]
 node scripts/qa/health-check.mjs --self-test
 ```
 
-Checks (GET): `/`, `/products`, first category from sitemap (fallback `/category/subscription`), first `/products/*` from sitemap, `/about`, `/contact`, `/faq`, `/blog`, first `/blog/*`, `/terms`, `/privacy-policy`, `/refund-policy`, `/order-tracking`, `/cart` — expect HTTP 200, non-empty `<title>`, and report (non-fatal) when `<h1>` count ≠ 1.
+Checks (GET): `/`, `/products`, first category from sitemap (fallback `/category/subscription`), first `/products/*` from sitemap, `/about`, `/contact`, `/faq`, `/blog`, first `/blog/*`, `/terms`, `/privacy-policy`, `/refund-policy`, `/order-tracking`, `/cart` -- expect HTTP 200, non-empty `<title>`, and report (non-fatal) when `<h1>` count ≠ 1.
 
 Also: `/api/products` JSON array length ≥ 1; `/sitemap.xml` 200 XML with ≥ 1 `<loc>`; `/robots.txt` 200 text; `/api/admin-orders` and `/api/admin-products` without cookie must be 401 or 403; `/sidhu` 200 or redirect and must not contain order-data markers.
 
@@ -68,7 +68,7 @@ node scripts/qa/page-hash.mjs --compare baseline.json [--base <url>]
 node scripts/qa/page-hash.mjs --self-test
 ```
 
-Targets: `/`, `/products`, first category URL, first product URL, `/about`, `/contact`, `/faq`, `/blog`, first blog post URL, `/terms`, `/privacy-policy`, `/refund-policy` (dynamic URLs resolved from the live sitemap — recorded in the baseline).
+Targets: `/`, `/products`, first category URL, first product URL, `/about`, `/contact`, `/faq`, `/blog`, first blog post URL, `/terms`, `/privacy-policy`, `/refund-policy` (dynamic URLs resolved from the live sitemap -- recorded in the baseline).
 
 Per page from raw HTML: status, final URL, title, meta description, canonical, meta robots, H1 texts, og:title/description/url, hreflang, JSON-LD (parsed, keys sorted), `html[lang]`, normalised visible-text hash.
 
@@ -93,7 +93,7 @@ Patterns: private key blocks, URL-embedded credentials, bearer/basic literals, A
 
 Reports **only** file path, line number, pattern id, and match **length**. Never prints matched values or full lines. Skips binaries, lockfiles, `node_modules`.
 
-Test placeholders: `secret_assignment` ignores values that are ENTIRELY a known fake (e.g. `not-a-token`, `test`, `dummy`, `placeholder`, `<your-token>`, `\`). Substring matches such as `test-9fK2…` are still flagged. Covered by `--self-test` and `tests/secrets-gate.test.ts`.
+Test placeholders: `secret_assignment` ignores values that are ENTIRELY a known fake (e.g. `not-a-token`, `test`, `dummy`, `placeholder`, `<your-token>`, `\`). Substring matches such as `test-9fK2...` are still flagged. Covered by `--self-test` and `tests/secrets-gate.test.ts`.
 
 Baseline mode fails only on new or increased path+pattern counts. Do not commit baseline files from routine runs into the app repo unless intentionally adopted.
 
@@ -101,7 +101,7 @@ Baseline mode fails only on new or increased path+pattern counts. Do not commit 
 
 ## `freshness-probe.mjs`
 
-CMS freshness tester — polls until a marker appears (or disappears).
+CMS freshness tester -- polls until a marker appears (or disappears).
 
 ```bash
 node scripts/qa/freshness-probe.mjs --marker "<text>" [--expect absent] [--urls "/,/about,/faq"] [--interval 5] [--timeout 300] [--base <url>]
@@ -139,16 +139,16 @@ Output contains only file paths, counts and rule names. It never prints source l
 
 ---
 
-## `check-evidence-encoding.mjs` (mandatory pre-zip gate — D36)
+## `check-evidence-encoding.mjs` (mandatory pre-zip gate -- D36)
 
-Byte-level encoding + source-file scan for evidence folders **before** zipping. Node built-ins only.
+Byte-level encoding + source-file + TOKEN + MOJIBAKE scan for evidence folders **before** zipping. Node built-ins only.
 
 ```bash
 node scripts/qa/check-evidence-encoding.mjs <folder> [--fix]
 node scripts/qa/check-evidence-encoding.mjs --zip <zipfile> [<folder>]
 ```
 
-**Post-zip mode (`--zip`)** parses the ZIP central directory itself (`fs` + `zlib` only) and fails on: any arcname containing `\` (`BACKSLASH`), any source-extension entry (`SOURCE`), any text-extension entry with a UTF-16/UTF-8 BOM or NUL (inflated before checking), unreadable entries, and — when a `<folder>` is also given — a ZIP that is not inside that folder (`ZIP_OUTSIDE_FOLDER`). Output totals are prefixed `ZIP_` (`ZIP_SCANNED`, `ZIP_BACKSLASH`, `ZIP_UTF16`, `ZIP_UTF8_BOM`, `ZIP_NUL`, `ZIP_SOURCE`, `ZIP_UNREADABLE`, `ZIP_OUTSIDE_FOLDER`). `--fix` never modifies a ZIP.
+**Post-zip mode (`--zip`)** parses the ZIP central directory itself (`fs` + `zlib` only) and fails on: any arcname containing `\` (`BACKSLASH`), any source-extension entry (`SOURCE`), any text-extension entry with a UTF-16/UTF-8 BOM or NUL (inflated before checking), TOKEN / MOJIBAKE hits in text entries, unreadable entries, and -- when a `<folder>` is also given -- a ZIP that is not inside that folder (`ZIP_OUTSIDE_FOLDER`). Output totals are prefixed `ZIP_` (`ZIP_SCANNED`, `ZIP_BACKSLASH`, `ZIP_UTF16`, `ZIP_UTF8_BOM`, `ZIP_NUL`, `ZIP_SOURCE`, `ZIP_UNREADABLE`, `ZIP_OUTSIDE_FOLDER`, `ZIP_TOKEN`, `ZIP_MOJIBAKE`). `--fix` never modifies a ZIP.
 
 Walks `<folder>` recursively. For every `.txt` `.md` `.json` `.log` `.tsv` `.csv` `.patch` `.sql` file, reads **raw bytes** and flags:
 
@@ -156,21 +156,30 @@ Walks `<folder>` recursively. For every `.txt` `.md` `.json` `.log` `.tsv` `.csv
 - UTF-16BE BOM (`FE FF`)
 - UTF-8 BOM (`EF BB BF`)
 - any `NUL` (`0x00`) byte
+- **TOKEN** patterns (Cursor `crsr_...`, OpenAI-style `sk-...`, GitHub `ghp_` / `github_pat_`, AWS `AKIA...`, Slack `xox...`, `--api-key ...`, `Bearer ...`, PEM private-key headers, MySQL URLs with embedded userinfo, Twilio `SK` + 32 hex). Hits print as `<path>:<line>: TOKEN(<pattern-id>)` -- **never** the matched text. Totals: `TOKEN=<n>` / `ZIP_TOKEN=<n>`.
+- **MOJIBAKE** / double-encoded UTF-8: text containing U+00E2 then U+20AC, U+00E2 then U+0153, or U+00C3 followed by a byte in U+0080–U+00BF (classic double-encoded UTF-8). Hits print as `<path>:<line>: MOJIBAKE`. Totals: `MOJIBAKE=<n>` / `ZIP_MOJIBAKE=<n>`.
 
-Also flags `.js` `.mjs` `.cjs` `.ts` `.tsx` `.py` `.ps1` `.sh` as `SOURCE_IN_EVIDENCE` (must be removed by hand — never shipped in the ZIP).
+Also flags `.js` `.mjs` `.cjs` `.ts` `.tsx` `.py` `.ps1` `.sh` as `SOURCE_IN_EVIDENCE` (must be removed by hand -- never shipped in the ZIP).
 
-Prints one line per offender (`rel/path: KIND[,KIND…]`) then totals:
+Allowed without a TOKEN hit: the literal placeholder `[SECRET - ask Professor]`, and any line containing `[REDACTED`.
+
+Prints offender / TOKEN / MOJIBAKE lines, then totals (existing counters first, then new ones), then **`EXIT <code>` as the last stdout line** (same code the process exits with):
 
 ```
-SCANNED=…
-UTF16=…
-UTF8_BOM=…
-NUL=…
-SOURCE=…
+SCANNED=...
+UTF16=...
+UTF8_BOM=...
+NUL=...
+SOURCE=...
+TOKEN=...
+MOJIBAKE=...
+EXIT 0
 ```
 
-Exit **1** if any offender remains; exit **0** only when all totals are 0. A scan that prints zeros while offenders still exist is a gate failure — this script must not false-pass.
+Exit **1** if any offender / TOKEN / MOJIBAKE remains; exit **0** only when all totals are 0. A scan that prints zeros while offenders still exist is a gate failure -- this script must not false-pass.
 
-`--fix` rewrites UTF-16 / UTF-8-BOM text files to UTF-8 **without** BOM, then rescans. It never touches source files. NUL-only files without a BOM are reported but not auto-rewritten.
+`--fix` rewrites UTF-16 / UTF-8-BOM text files to UTF-8 **without** BOM, then rescans. It never touches source files, and **never** rewrites or clears TOKEN / MOJIBAKE hits (report only). NUL-only files without a BOM are reported but not auto-rewritten.
 
-**Mandatory:** run this on the artifacts folder (with `--fix` if needed) and ship the full stdout as `encoding-scan.txt` with exit code 0 before creating the evidence ZIP.
+**Process checks (Finding 51):** when recording running processes for evidence, list **only** PID + executable name + whether this batch started it (`yes`/`no`). Never write process command lines, environment variables, tokens, or API keys into any file, log, or chat. Run this script’s TOKEN scan on the artifacts folder before zipping; any hit = STOP.
+
+**Mandatory:** run this on the artifacts folder (with `--fix` if needed) and ship the full stdout as `encoding-scan.txt` with exit code 0 and `TOKEN=0` / `MOJIBAKE=0` before creating the evidence ZIP. After building the ZIP, run `--zip` mode and ship stdout as `zip-scan.txt` (exit 0).

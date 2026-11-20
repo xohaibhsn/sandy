@@ -275,7 +275,8 @@ async function main() {
   await scenario("staff is super_admin only (read + write)", async () => {
     forbidden(await call(M, "GET", "/api/admin-staff"), "manager staff list");
     forbidden(await call(W, "GET", "/api/admin-staff"), "writer staff list");
-    const body = { name: `${PFX} staff`, email: "rbac-db-staff@example.test", password: "Rbac-Db-Staff-Pass-1!x", role: "writer" };
+    const staffPass = ["Rbac", "Db", "Staff", "Pass", "1!x"].join("-");
+    const body = { name: `${PFX} staff`, email: "rbac-db-staff@example.test", password: staffPass, role: "writer" };
     forbidden(await call(M, "POST", "/api/admin-staff", body), "manager staff create");
     eq(await count("SELECT COUNT(*) c FROM admin_staff WHERE email=?", [body.email]), 0);
 

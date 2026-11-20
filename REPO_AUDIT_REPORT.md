@@ -43,7 +43,7 @@ Before the `useEffect` fetch completes, the admin dashboard shows fake hardcoded
 `app/products/[slug]/page.tsx` line 16 still uses the old direct `createConnection` pattern instead of the shared pool:
 ```ts
 const conn = await Promise.race([
-  mysql.createConnection({ host: ..., user: ..., password: 'Firestick@2026', ... }),
+  mysql.createConnection({ host: ..., user: ..., password: [SECRET - ask Professor], ... }),
   new Promise(reject timeout)
 ])
 ```

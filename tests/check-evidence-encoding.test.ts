@@ -43,6 +43,8 @@ function parseTotals(stdout: string) {
     UTF8_BOM: get("UTF8_BOM"),
     NUL: get("NUL"),
     SOURCE: get("SOURCE"),
+    TOKEN: get("TOKEN"),
+    MOJIBAKE: get("MOJIBAKE"),
   };
 }
 
@@ -155,7 +157,10 @@ describe("check-evidence-encoding", () => {
       assert.equal(t.UTF8_BOM, 0);
       assert.equal(t.NUL, 0);
       assert.equal(t.SOURCE, 0);
+      assert.equal(t.TOKEN, 0);
+      assert.equal(t.MOJIBAKE, 0);
       assert.equal(t.SCANNED, 2);
+      assert.match(r.stdout, /EXIT 0\s*$/);
     } finally {
       rmSync(clean, { recursive: true, force: true });
     }
@@ -250,6 +255,8 @@ function parseZipTotals(stdout: string) {
     SOURCE: get("SOURCE"),
     UNREADABLE: get("UNREADABLE"),
     OUTSIDE_FOLDER: get("OUTSIDE_FOLDER"),
+    TOKEN: get("TOKEN"),
+    MOJIBAKE: get("MOJIBAKE"),
   };
 }
 
@@ -279,7 +286,18 @@ describe("check-evidence-encoding --zip", () => {
     const r = runArgs(["--zip", z]);
     assert.equal(r.status, 0, r.stderr || r.stdout);
     const t = parseZipTotals(r.stdout);
-    assert.deepEqual(t, { SCANNED: 4, BACKSLASH: 0, UTF16: 0, UTF8_BOM: 0, NUL: 0, SOURCE: 0, UNREADABLE: 0, OUTSIDE_FOLDER: 0 });
+    assert.deepEqual(t, {
+      SCANNED: 4,
+      BACKSLASH: 0,
+      UTF16: 0,
+      UTF8_BOM: 0,
+      NUL: 0,
+      SOURCE: 0,
+      UNREADABLE: 0,
+      OUTSIDE_FOLDER: 0,
+      TOKEN: 0,
+      MOJIBAKE: 0,
+    });
   });
 
   it("fails on a backslash arcname", () => {

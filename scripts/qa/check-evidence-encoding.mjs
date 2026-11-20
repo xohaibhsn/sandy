@@ -8,20 +8,25 @@
  *   - UTF-16BE BOM (FE FF)
  *   - UTF-8 BOM (EF BB BF)
  *   - any NUL (0x00) byte
+ *   - TOKEN patterns (API keys / credentials) — path:line: TOKEN(<id>), never the match
+ *   - MOJIBAKE (double-encoded UTF-8 markers)
  * Also flags .js/.mjs/.cjs/.ts/.tsx/.py/.ps1/.sh as SOURCE_IN_EVIDENCE.
  *
  * Usage: node scripts/qa/check-evidence-encoding.mjs <folder> [--fix]
  *        node scripts/qa/check-evidence-encoding.mjs --zip <zipfile> [<folder>]
  * Exit: 0 = clean, 1 = offenders remain, 2 = usage/runtime error.
+ * Last stdout line is always `EXIT <code>` (same code the process exits with).
  *
  * --fix rewrites UTF-16 / UTF-8-BOM text files as UTF-8 without BOM, then rescans.
  * Source files are never rewritten (remove them by hand).
+ * --fix never rewrites or clears TOKEN / MOJIBAKE hits (report only).
  *
  * --zip <zipfile> (post-zip gate, BATCH-12 H3) parses the ZIP central directory itself
  * (Node built-ins only: fs, zlib, path) and FAILS when:
  *   - any arcname contains a backslash (BACKSLASH)
  *   - any entry has a source extension .js .mjs .cjs .ts .tsx .py .ps1 .sh (SOURCE)
  *   - any text-extension entry has a UTF-16 / UTF-8 BOM or a NUL byte (UTF16/UTF8_BOM/NUL)
+ *   - any text-extension entry has TOKEN or MOJIBAKE hits
  *   - the entry cannot be read (encrypted / unsupported method / corrupt) (UNREADABLE)
  *   - a <folder> is also given and the ZIP file is not inside it (ZIP_OUTSIDE_FOLDER)
  * --fix never modifies a ZIP.
@@ -59,14 +64,112 @@ const BOM_UTF16LE = Buffer.from([0xff, 0xfe]);
 const BOM_UTF16BE = Buffer.from([0xfe, 0xff]);
 const BOM_UTF8 = Buffer.from([0xef, 0xbb, 0xbf]);
 
+function finish(code) {
+  console.log(`EXIT ${code}`);
+  process.exit(code);
+}
+
 function usage(code = EXIT_USAGE) {
   console.error(
     "Usage: node scripts/qa/check-evidence-encoding.mjs <folder> [--fix]\n" +
       "       node scripts/qa/check-evidence-encoding.mjs --zip <zipfile> [<folder>]\n\n" +
-      "Byte-level scan of evidence files for UTF-16 / UTF-8 BOM / NUL bytes and source files.\n" +
-      "Exit: 0=clean, 1=offenders, 2=usage/runtime error."
+      "Byte-level scan of evidence files for UTF-16 / UTF-8 BOM / NUL bytes, source files,\n" +
+      "TOKEN patterns, and MOJIBAKE. Exit: 0=clean, 1=offenders, 2=usage/runtime error.\n" +
+      "Last stdout line: EXIT <code>."
   );
-  process.exit(code);
+  finish(code);
+}
+
+/** Token patterns — report id only, never the matched text. Built without contiguous secret literals where practical. */
+function buildTokenPatterns() {
+  const begin = "BEGIN";
+  const priv = "PRIVATE";
+  const key = "KEY";
+  const dash5 = "-".repeat(5);
+  return [
+    { id: "crsr", re: /crsr_[A-Za-z0-9]{20,}/g },
+    { id: "sk", re: /sk-[A-Za-z0-9_-]{20,}/g },
+    { id: "ghp", re: /ghp_[A-Za-z0-9]{20,}/g },
+    { id: "github_pat", re: /github_pat_[A-Za-z0-9_]{20,}/g },
+    { id: "akia", re: /AKIA[0-9A-Z]{16}/g },
+    { id: "xox", re: /xox[abprs]-[A-Za-z0-9-]{10,}/g },
+    { id: "api_key_flag", re: /--api-key[ =]+\S{8,}/g },
+    { id: "bearer", re: /Bearer\s+[A-Za-z0-9._~+/-]{20,}/g },
+    {
+      id: "private_key",
+      re: new RegExp(`${dash5}${begin} [A-Z ]*${priv} ${key}${dash5}`, "g"),
+    },
+    { id: "mysql_url", re: /mysql:\/\/[^:\s]+:[^@\s]+@/g },
+    { id: "twilio_sk", re: /\bSK[0-9a-fA-F]{32}\b/g },
+  ];
+}
+
+const TOKEN_PATTERNS = buildTokenPatterns();
+
+const ALLOW_SECRET_PLACEHOLDER = "[SECRET - ask Professor]";
+const ALLOW_REDACTED_MARKER = "[REDACTED";
+
+function lineAllowsTokenSkip(line) {
+  return line.includes(ALLOW_SECRET_PLACEHOLDER) || line.includes(ALLOW_REDACTED_MARKER);
+}
+
+/**
+ * Scan UTF-8 text for TOKEN hits. Returns { hits: [{line, id}], count }.
+ * Never includes matched text in the result.
+ */
+function scanTokens(text) {
+  const hits = [];
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (lineAllowsTokenSkip(line)) continue;
+    for (const p of TOKEN_PATTERNS) {
+      p.re.lastIndex = 0;
+      let m;
+      while ((m = p.re.exec(line))) {
+        hits.push({ line: i + 1, id: p.id });
+        if (m[0].length === 0) p.re.lastIndex += 1;
+      }
+    }
+  }
+  return hits;
+}
+
+/**
+ * Mojibake / double-encoded UTF-8 markers in decoded text.
+ * Flags: U+00E2 then U+20AC; U+00E2 then U+0153; or U+00C3 followed by U+0080-U+00BF.
+ */
+function scanMojibake(text) {
+  const hits = [];
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let found = false;
+    if (line.includes("\u00e2\u20ac") || line.includes("\u00e2\u0153")) {
+      found = true;
+    } else {
+      for (let j = 0; j < line.length - 1; j++) {
+        if (line.charCodeAt(j) === 0x00c3) {
+          const next = line.charCodeAt(j + 1);
+          if (next >= 0x0080 && next <= 0x00bf) {
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+    if (found) hits.push({ line: i + 1 });
+  }
+  return hits;
+}
+
+/** Decode text bytes as UTF-8 for TOKEN/MOJIBAKE (BOM stripped if present). */
+function decodeUtf8Text(buf) {
+  let start = 0;
+  if (hasPrefix(buf, BOM_UTF8)) start = 3;
+  // UTF-16 content is not decoded here for token/mojibake; those files already fail encoding.
+  if (hasPrefix(buf, BOM_UTF16LE) || hasPrefix(buf, BOM_UTF16BE)) return null;
+  return buf.slice(start).toString("utf8");
 }
 
 function parseArgs(argv) {
@@ -169,6 +272,8 @@ function relDisplay(root, full) {
 function scanOnce(root) {
   const files = walkFiles(root);
   const offenders = [];
+  const tokenHits = [];
+  const mojibakeHits = [];
   let scanned = 0;
   let utf16 = 0;
   let utf8Bom = 0;
@@ -196,31 +301,62 @@ function scanOnce(root) {
     } catch (err) {
       throw new Error(`cannot read ${full}: ${err.message}`);
     }
+    const rel = relDisplay(root, full);
     const { kinds, encodingHint } = classifyText(buf);
-    if (kinds.length === 0) continue;
     if (kinds.includes("UTF16")) utf16 += 1;
     if (kinds.includes("UTF8_BOM")) utf8Bom += 1;
     if (kinds.includes("NUL")) nul += 1;
-    offenders.push({
-      path: relDisplay(root, full),
-      full,
-      kinds,
-      encodingHint,
-    });
+    if (kinds.length > 0) {
+      offenders.push({
+        path: rel,
+        full,
+        kinds,
+        encodingHint,
+      });
+    }
+
+    const text = decodeUtf8Text(buf);
+    if (text != null) {
+      for (const h of scanTokens(text)) {
+        tokenHits.push({ path: rel, line: h.line, id: h.id });
+      }
+      for (const h of scanMojibake(text)) {
+        mojibakeHits.push({ path: rel, line: h.line });
+      }
+    }
   }
 
-  return { scanned, utf16, utf8Bom, nul, source, offenders };
+  return {
+    scanned,
+    utf16,
+    utf8Bom,
+    nul,
+    source,
+    token: tokenHits.length,
+    mojibake: mojibakeHits.length,
+    offenders,
+    tokenHits,
+    mojibakeHits,
+  };
 }
 
 function printScan(result) {
   for (const o of result.offenders) {
     console.log(`${o.path}: ${o.kinds.join(",")}`);
   }
+  for (const h of result.tokenHits) {
+    console.log(`${h.path}:${h.line}: TOKEN(${h.id})`);
+  }
+  for (const h of result.mojibakeHits) {
+    console.log(`${h.path}:${h.line}: MOJIBAKE`);
+  }
   console.log(`SCANNED=${result.scanned}`);
   console.log(`UTF16=${result.utf16}`);
   console.log(`UTF8_BOM=${result.utf8Bom}`);
   console.log(`NUL=${result.nul}`);
   console.log(`SOURCE=${result.source}`);
+  console.log(`TOKEN=${result.token}`);
+  console.log(`MOJIBAKE=${result.mojibake}`);
 }
 
 function applyFixes(root, offenders) {
@@ -341,7 +477,11 @@ function scanZip(zipPath, folderRoot) {
     source: 0,
     unreadable: 0,
     outside: 0,
+    token: 0,
+    mojibake: 0,
     offenders: [],
+    tokenHits: [],
+    mojibakeHits: [],
     dirty: false,
   };
 
@@ -372,18 +512,37 @@ function scanZip(zipPath, folderRoot) {
         if (c.kinds.includes("UTF16")) res.utf16 += 1;
         if (c.kinds.includes("UTF8_BOM")) res.utf8Bom += 1;
         if (c.kinds.includes("NUL")) res.nul += 1;
+
+        const text = decodeUtf8Text(data);
+        if (text != null) {
+          for (const h of scanTokens(text)) {
+            res.tokenHits.push({ path: e.name, line: h.line, id: h.id });
+          }
+          for (const h of scanMojibake(text)) {
+            res.mojibakeHits.push({ path: e.name, line: h.line });
+          }
+        }
       }
     }
     if (kinds.length > 0) res.offenders.push({ path: e.name, kinds });
   }
 
-  res.dirty = res.offenders.length > 0;
+  res.token = res.tokenHits.length;
+  res.mojibake = res.mojibakeHits.length;
+  res.dirty =
+    res.offenders.length > 0 || res.token > 0 || res.mojibake > 0;
   return res;
 }
 
 function printZipScan(r) {
   for (const o of r.offenders) {
     console.log(`${o.path}: ${o.kinds.join(",")}`);
+  }
+  for (const h of r.tokenHits) {
+    console.log(`${h.path}:${h.line}: TOKEN(${h.id})`);
+  }
+  for (const h of r.mojibakeHits) {
+    console.log(`${h.path}:${h.line}: MOJIBAKE`);
   }
   console.log(`ZIP_SCANNED=${r.scanned}`);
   console.log(`ZIP_BACKSLASH=${r.backslash}`);
@@ -393,6 +552,8 @@ function printZipScan(r) {
   console.log(`ZIP_SOURCE=${r.source}`);
   console.log(`ZIP_UNREADABLE=${r.unreadable}`);
   console.log(`ZIP_OUTSIDE_FOLDER=${r.outside}`);
+  console.log(`ZIP_TOKEN=${r.token}`);
+  console.log(`ZIP_MOJIBAKE=${r.mojibake}`);
 }
 
 function main() {
@@ -401,7 +562,7 @@ function main() {
   if (!args.folder && !args.zip) usage();
   if (args.fix && !args.folder) {
     console.error("error: --fix needs a <folder> (ZIP files are never modified)");
-    process.exit(EXIT_USAGE);
+    finish(EXIT_USAGE);
   }
 
   let root = null;
@@ -410,13 +571,13 @@ function main() {
     let st;
     try {
       st = statSync(root);
-    } catch (err) {
+    } catch {
       console.error(`error: folder not found: ${root}`);
-      process.exit(EXIT_USAGE);
+      finish(EXIT_USAGE);
     }
     if (!st.isDirectory()) {
       console.error(`error: not a directory: ${root}`);
-      process.exit(EXIT_USAGE);
+      finish(EXIT_USAGE);
     }
   }
 
@@ -425,6 +586,7 @@ function main() {
   if (root) {
     let result = scanOnce(root);
     if (args.fix && result.offenders.length > 0) {
+      // --fix only rewrites encoding; never touches TOKEN / MOJIBAKE hits.
       const n = applyFixes(root, result.offenders);
       console.log(`FIX_PASS rewritten=${n}`);
       result = scanOnce(root);
@@ -433,7 +595,9 @@ function main() {
     printScan(result);
     dirty =
       result.utf16 + result.utf8Bom + result.nul + result.source > 0 ||
-      result.offenders.length > 0;
+      result.offenders.length > 0 ||
+      result.token > 0 ||
+      result.mojibake > 0;
   }
 
   if (args.zip) {
@@ -443,13 +607,13 @@ function main() {
       zipResult = scanZip(zipPath, root);
     } catch (err) {
       console.error(`error: ${err.message}`);
-      process.exit(EXIT_USAGE);
+      finish(EXIT_USAGE);
     }
     printZipScan(zipResult);
     if (zipResult.dirty) dirty = true;
   }
 
-  process.exit(dirty ? EXIT_FAIL : EXIT_OK);
+  finish(dirty ? EXIT_FAIL : EXIT_OK);
 }
 
 main();

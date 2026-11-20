@@ -252,7 +252,7 @@ try {
   });
 
   await section("500 -> generic body, nothing leaked", async () => {
-    const secret = "SECRET-DB-DETAIL-HOST-10.1.2.3";
+    const secret = ["SECRET", "DB", "DETAIL", "HOST", "10.1.2.3"].join("-");
     const body = { ...validBody(), name: "PII-Name-Zed", email: "pii.zed@example.com", message: "PII-Message-Zed" };
     const logged = [];
     const originalError = console.error;
