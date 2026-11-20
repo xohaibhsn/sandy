@@ -572,6 +572,99 @@ try {
     eq((await call(H.loginStart, { method: "POST", body: { phone: newPerson().phone } })).statusCode, 200, "mock path works again");
   });
 
+  /* 4b ----------------------------------------------------------- */
+  await section("4b. login-verify Twilio OtpProviderError: max_attempts 429 / number_rejected 400 (fake fetch)", async () => {
+    await setAccounts("1");
+    const SERVICE_SID = "VA" + "d".repeat(32);
+    const ACCOUNT_SID = "AC" + "e".repeat(32);
+    const AUTH_TOKEN = "test-auth-token-batch35";
+    const VE_SID = "VE" + "f".repeat(32);
+    const START_URL = `https://verify.twilio.com/v2/Services/${encodeURIComponent(SERVICE_SID)}/Verifications`;
+    const CHECK_URL = `https://verify.twilio.com/v2/Services/${encodeURIComponent(SERVICE_SID)}/VerificationCheck`;
+    const saved = {
+      fetch: globalThis.fetch,
+      provider: process.env.OTP_PROVIDER,
+      sid: process.env.TWILIO_ACCOUNT_SID,
+      auth: process.env.TWILIO_AUTH_TOKEN,
+      svc: process.env.TWILIO_VERIFY_SERVICE_SID,
+      channel: process.env.OTP_CHANNEL,
+    };
+    let checkMode = "max";
+    try {
+      process.env.OTP_PROVIDER = "twilio_verify";
+      delete process.env.OTP_CHANNEL;
+      process.env.TWILIO_ACCOUNT_SID = ACCOUNT_SID;
+      process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN;
+      process.env.TWILIO_VERIFY_SERVICE_SID = SERVICE_SID;
+      resetOtpProviderCache();
+      globalThis.fetch = async (url, init) => {
+        const u = String(url);
+        if (u === START_URL) {
+          return new Response(JSON.stringify({ sid: VE_SID }), { status: 201 });
+        }
+        if (u === CHECK_URL) {
+          if (checkMode === "max") {
+            return new Response(JSON.stringify({ code: 60202, message: "max checks" }), { status: 429 });
+          }
+          return new Response(JSON.stringify({ code: 60200, message: "invalid param" }), { status: 400 });
+        }
+        throw new Error("unexpected outbound fetch: " + u);
+      };
+
+      const pMax = newPerson();
+      const ipMax = freshIp();
+      const sMax = await call(H.loginStart, { method: "POST", body: { phone: pMax.phoneFormatted }, ip: ipMax });
+      eq(sMax.statusCode, 200, JSON.stringify(sMax.body));
+      const linesMax = await captureConsole(async () => {
+        const r = await call(H.loginVerify, {
+          method: "POST",
+          body: { challengeId: sMax.body.challengeId, code: "123456" },
+          ip: ipMax,
+        });
+        eq(r.statusCode, 429);
+        eq(r.body, { error: CUSTOMER_TEXTS.ACCOUNT_OTP_MAX_ATTEMPTS });
+      });
+      ok(
+        linesMax.some((l) => l.includes("[otp] login-verify failed") && l.includes("kind=") && l.includes("http=") && l.includes("code=")),
+        "max_attempts log has kind/http/code"
+      );
+      ok(!linesMax.some((l) => l.includes(pMax.phoneFormatted) || l.includes(pMax.phone)), "log never includes phone");
+
+      checkMode = "reject";
+      const pRej = newPerson();
+      const ipRej = freshIp();
+      const sRej = await call(H.loginStart, { method: "POST", body: { phone: pRej.phoneFormatted }, ip: ipRej });
+      eq(sRej.statusCode, 200, JSON.stringify(sRej.body));
+      const linesRej = await captureConsole(async () => {
+        const r = await call(H.loginVerify, {
+          method: "POST",
+          body: { challengeId: sRej.body.challengeId, code: "123456" },
+          ip: ipRej,
+        });
+        eq(r.statusCode, 400);
+        eq(r.body, { error: CUSTOMER_TEXTS.ACCOUNT_OTP_NUMBER_REJECTED });
+      });
+      ok(
+        linesRej.some((l) => l.includes("[otp] login-verify failed") && l.includes("kind=") && l.includes("http=") && l.includes("code=")),
+        "number_rejected log has kind/http/code"
+      );
+      ok(!linesRej.some((l) => l.includes(pRej.phoneFormatted) || l.includes(pRej.phone)), "reject log never includes phone");
+    } finally {
+      globalThis.fetch = saved.fetch;
+      for (const [k, v] of [
+        ["OTP_PROVIDER", saved.provider],
+        ["TWILIO_ACCOUNT_SID", saved.sid],
+        ["TWILIO_AUTH_TOKEN", saved.auth],
+        ["TWILIO_VERIFY_SERVICE_SID", saved.svc],
+        ["OTP_CHANNEL", saved.channel],
+      ]) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      resetOtpProviderCache();
+    }
+  });
+
   /* 5 ------------------------------------------------------------ */
   await section("5. login-verify hardening: wrong code, lockout, reuse, wrong purpose, bad hints, disabled customer", async () => {
     await setAccounts("1");

@@ -83,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       entityType: "otp",
       entityId: null,
       summary: "OTP connection env check",
-      detail: { stage: "env", ok: false, http: null, code: null },
+      detail: { stage: "env", ok: false, http: null, twilio_error: null },
       req,
     });
     return res.status(200).json(body);
@@ -146,7 +146,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     entityType: "otp",
     entityId: null,
     summary: "OTP connection Twilio check",
-    detail: { stage: "twilio", ok, http, code },
+    detail: { stage: "twilio", ok, http, twilio_error: code },
     req,
   });
 

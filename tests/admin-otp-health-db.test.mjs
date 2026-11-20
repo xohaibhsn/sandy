@@ -166,6 +166,13 @@ await section("super_admin 200 connected path (fake GET)", async () => {
   eq(row?.action, "setting_check");
   eq(row?.entity_type, "otp");
   assertNoSecretLeak(row?.detail_json || "");
+  const detailOk = JSON.parse(row?.detail_json || "{}");
+  ok(!Object.prototype.hasOwnProperty.call(detailOk, "code") || detailOk.code === undefined, "audit detail must not use redacted key code");
+  ok(
+    Object.prototype.hasOwnProperty.call(detailOk, "twilio_error"),
+    "setting_check detail uses twilio_error"
+  );
+  ok(!JSON.stringify(detailOk).includes("[redacted]"), "twilio_error must not be redacted");
 });
 
 await section("manager and writer forbidden", async () => {
@@ -277,6 +284,41 @@ await section("otp_send_failed audit throttled; no phone/secrets", async () => {
   const row = await one(pool, "SELECT detail_json, summary FROM admin_audit_log WHERE action='otp_send_failed' LIMIT 1");
   assertNoSecretLeak(JSON.stringify(row));
   ok(!String(row?.detail_json || "").includes(phone), "no phone in audit detail");
+  const detailFail = JSON.parse(row?.detail_json || "{}");
+  eq(detailFail.twilio_error, 20008, "otp_send_failed stores numeric twilio_error");
+  ok(!JSON.stringify(detailFail).includes("[redacted]"), "twilio_error must not be redacted");
+  ok(!Object.prototype.hasOwnProperty.call(detailFail, "code"), "old audit key code must not be present");
+});
+
+await section("setting_check stores numeric twilio_error on Twilio error response", async () => {
+  await clearAudit();
+  __resetAdminOtpHealthRateLimitForTests();
+  await setOtpEnv(true);
+  installStrictFetch(async () => {
+    return new Response(JSON.stringify({ code: 20008, message: "test credentials" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  const token = await mintToken("super_admin");
+  const res = await admin(healthHandler, token);
+  eq(res.statusCode, 200);
+  eq(res.body.ok, false);
+  eq(res.body.code, 20008, "JSON response keeps code field for UI");
+  // recordAudit is fire-and-forget on the handler; poll briefly for the row.
+  let row = null;
+  for (let i = 0; i < 40; i++) {
+    row = await one(
+      pool,
+      "SELECT detail_json FROM admin_audit_log WHERE action='setting_check' ORDER BY id DESC LIMIT 1"
+    );
+    if (row?.detail_json) break;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  const detail = JSON.parse(row?.detail_json || "{}");
+  eq(detail.twilio_error, 20008, "setting_check detail has numeric twilio_error");
+  ok(!JSON.stringify(detail).includes("[redacted]"), "no redacted twilio_error");
+  assertNoSecretLeak(JSON.stringify(row));
 });
 
 __setAdminOtpHealthFetchForTests(null);

@@ -11,6 +11,7 @@ import {
   setCustomerSessionCookie,
 } from "../../../lib/customerAuth";
 import { otpIsEffective, verifyOtpChallenge } from "../../../lib/otp";
+import { otpFailureKind, otpFailureLogParts } from "../../../lib/otp/twilioFailure";
 
 const PHONE_LIMIT = 3;
 const IP_LIMIT = 10;
@@ -142,7 +143,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } catch {
       /* ignore */
     }
-    console.error("[api/account/login-verify] failed", (err as { code?: string })?.code || "unknown");
+    const parts = otpFailureLogParts(err);
+    const kind = otpFailureKind(err) || parts.kind;
+    console.error(`[otp] login-verify failed kind=${kind} http=${parts.http} code=${parts.code}`);
+    if (kind === "max_attempts") {
+      return res.status(429).json({ error: CUSTOMER_TEXTS.ACCOUNT_OTP_MAX_ATTEMPTS });
+    }
+    if (kind === "number_rejected") {
+      return res.status(400).json({ error: CUSTOMER_TEXTS.ACCOUNT_OTP_NUMBER_REJECTED });
+    }
     return res.status(500).json({ error: CUSTOMER_TEXTS.ACCOUNT_GENERIC_ERROR });
   } finally {
     connection.release();

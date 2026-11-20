@@ -34,7 +34,7 @@ async function auditOtpSendFailed(
       entityType: "otp",
       entityId: null,
       summary: "OTP send failed",
-      detail: { kind, http: httpStatus, code: twilioCode },
+      detail: { kind, http: httpStatus, twilio_error: twilioCode },
       req,
     });
   } catch {
