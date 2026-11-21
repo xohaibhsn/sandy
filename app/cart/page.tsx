@@ -1078,7 +1078,7 @@ export default function CartPage() {
 
                     {label:"Full Name", key:"name", type:"text", placeholder:"Ahmed Khan"},
                     {label:"Email Address", key:"email", type:"email", placeholder:"ahmed@email.com"},
-                    {label:"WhatsApp / Phone", key:"phone", type:"tel", placeholder:contact.phone},
+                    {label:"WhatsApp / Phone", key:"phone", type:"tel", placeholder:"03XX XXXXXXX"},
                     {label:"House / Street Address", key:"address", type:"text", placeholder:"House 12, Street 5"},
                     {label:"Area / Locality", key:"area", type:"text", placeholder:"DHA Phase 5"},
                   ].filter(f => !(isPickupSel && (f.key === "address" || f.key === "area"))).map(f => (

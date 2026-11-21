@@ -265,7 +265,7 @@ export default function ContactPage() {
                 <div className="form-row">
                   <div className="form-group">
                     <label>Phone / WhatsApp</label>
-                    <input type="tel" placeholder={contact.phone} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+                    <input type="tel" placeholder="03XX XXXXXXX" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
                   </div>
                   <div className="form-group">
                     <label>Subject</label>
