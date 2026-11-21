@@ -264,7 +264,7 @@ try {
     const fakeBytes = Buffer.from("FAKE-CLD-BYTES-PNG-CONTENT!!!!!!!!!!!!");
     let signedSeen = "";
     __setReceiptProxyDepsForTests({
-      signUrl: ({ publicId, resourceType, format }) => {
+      signUrl: async ({ publicId, resourceType, format }) => {
         eq(publicId, `sandy/receipts/${cldId}`);
         eq(resourceType, "image");
         eq(format, "png");

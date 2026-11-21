@@ -34,8 +34,9 @@ const AUDIT_WINDOW_MS = 10 * 60 * 1000;
 type SignUrlFn = (args: {
   publicId: string;
   resourceType: "image" | "raw";
-  format: string;
-}) => string;
+  /** Present for image resources; omitted for raw/PDF (Finding 65). */
+  format?: string;
+}) => string | Promise<string>;
 
 type FetchFn = (
   input: string,
@@ -113,23 +114,25 @@ function allowStaffRate(sessionKey: string): boolean {
   return true;
 }
 
-function defaultSignUrl(args: {
+async function defaultSignUrl(args: {
   publicId: string;
   resourceType: "image" | "raw";
-  format: string;
-}): string {
-  // Dynamic import kept sync via require for the default path (tests inject instead).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const cloudinary = require("../../../lib/cloudinary").default as {
+  format?: string;
+}): Promise<string> {
+  const cloudinary = (await import("../../../lib/cloudinary")).default as {
     url: (publicId: string, opts: Record<string, unknown>) => string;
   };
-  return cloudinary.url(args.publicId, {
+  const opts: Record<string, unknown> = {
     type: "authenticated",
     sign_url: true,
     resource_type: args.resourceType,
-    format: args.format,
     secure: true,
-  });
+  };
+  // Finding 65: raw/PDF assets have no extension on public_id — do not pass format.
+  if (args.resourceType !== "raw" && args.format) {
+    opts.format = args.format;
+  }
+  return cloudinary.url(args.publicId, opts);
 }
 
 function setReceiptHeaders(
@@ -261,11 +264,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const sign = injectedSignUrl || defaultSignUrl;
       let signedUrl = "";
       try {
-        signedUrl = sign({
+        const signArgs: {
+          publicId: string;
+          resourceType: "image" | "raw";
+          format?: string;
+        } = {
           publicId,
           resourceType,
-          format: ref.ext,
-        });
+        };
+        // Images keep format; raw/PDF must not (Finding 65).
+        if (resourceType !== "raw") {
+          signArgs.format = ref.ext;
+        }
+        signedUrl = await sign(signArgs);
       } catch {
         return res.status(404).json({ error: "Not found" });
       }
