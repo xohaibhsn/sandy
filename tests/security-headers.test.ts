@@ -2,7 +2,10 @@
  * HARDEN-01: exported security header list assertions (no network).
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import { installTsResolveHook } from "./orders-test-support.mjs";
 
 installTsResolveHook();
@@ -10,6 +13,7 @@ installTsResolveHook();
 const { securityHeaders, CONTENT_SECURITY_POLICY } = await import(
   "../lib/securityHeaders.ts"
 );
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function header(key: string): string {
   const h = securityHeaders.find((x) => x.key === key);
@@ -59,5 +63,10 @@ describe("security headers (HARDEN-01)", () => {
     assert.ok(csp.includes("base-uri 'self'"));
     assert.ok(csp.includes("frame-ancestors 'none'"));
     assert.ok(csp.includes("form-action 'self'"));
+  });
+
+  it("disables X-Powered-By via next.config poweredByHeader false", () => {
+    const src = readFileSync(path.join(rootDir, "next.config.ts"), "utf8");
+    assert.match(src, /poweredByHeader:\s*false/);
   });
 });

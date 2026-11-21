@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { securityHeaders } from "./lib/securityHeaders";
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   generateEtags: false,
   images: {
     unoptimized: false,

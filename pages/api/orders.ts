@@ -1005,6 +1005,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let riskScore: number | null = null;
       let riskReasons: string | null = null;
       let otpVerified: number | null = null;
+      let otpConsumedOrderId: string | null = null;
       let advanceAmount: number | null = null;
       let advanceReference: string | null = null;
       let advanceReceiptPath: string | null = null;
@@ -1059,10 +1060,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             );
           }
           // order_id already assigned above for this txn
+          otpConsumedOrderId = order_id;
           const consumed = await consumeVerificationToken(connection, {
             token: verificationToken,
             phoneNorm,
-            orderId: order_id,
+            orderId: otpConsumedOrderId,
           });
           if (!consumed.ok) {
             throw new OrderHttpError(
@@ -1174,6 +1176,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
           throw insErr;
         }
+      }
+
+      // Finding 62: consumeVerificationToken stamped the pre-retry id; keep challenge in sync.
+      if (otpVerified === 1 && otpConsumedOrderId && order_id !== otpConsumedOrderId) {
+        await connection.query(
+          'UPDATE otp_challenges SET consumed_order_id = ? WHERE consumed_order_id = ?',
+          [order_id, otpConsumedOrderId]
+        );
       }
 
       // Link the order to the signed-in customer (same transaction). Guests are untouched; a missing

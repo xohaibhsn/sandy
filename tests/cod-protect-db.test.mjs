@@ -50,6 +50,10 @@ globalThis._mysqlPool = pool;
 const { __rateLimitTestUtils } = await importFromRoot("lib/rateLimit.ts");
 const { resetOrderProtectionSettingsCache, ORDER_PROTECTION_KEYS } = await importFromRoot("lib/orderProtectionSettings.ts");
 const { resetOtpProviderCache, hashToken } = await importFromRoot("lib/otp/index.ts");
+const {
+  resetOrderIdStateForTests,
+  setOrderIdClockForTests,
+} = await importFromRoot("lib/orderId.ts");
 const { CUSTOMER_TEXTS } = await importFromRoot("lib/customerTexts.ts");
 const { normalisePhone, normaliseEmail } = await importFromRoot("lib/customerIdentity.ts");
 
@@ -812,6 +816,37 @@ try {
       eq(ch.status, "consumed");
       eq(ch.consumed_order_id, winner.body.order_id);
       eq(await count(pool, "SELECT COUNT(*) AS c FROM orders WHERE customer_phone_norm = ?", [c.phoneNorm]), 1);
+    }
+  });
+
+  /* 10b Finding 62 ------------------------------------------------ */
+  await section("10b. OTP consume realigns consumed_order_id after order_id collision retry", async () => {
+    try {
+      await setSettings({ cod_protection_enabled: 1, cod_otp_enabled: 1, cod_max_open_per_phone: 10 });
+      const FIXED = 1_800_000_000_100;
+      await pool.query(
+        `INSERT INTO orders (order_id, customer_name, customer_email, customer_phone, delivery_address, city, postcode, notes, payment_method, total, status)
+         VALUES (?, 'Pre', 'pre-f62@example.test', '03339990001', 'Addr', 'Lahore', '54000', '', 'cod', 500, 'pending')`,
+        [`ORD-${FIXED}`]
+      );
+      setOrderIdClockForTests(() => FIXED);
+      resetOrderIdStateForTests();
+      const c = newCustomer();
+      const { token, challengeId } = await getToken(c.phone);
+      clear();
+      const placed = await place(c, { items: cart(1, 1), verification_token: token });
+      eq(placed.statusCode, 200, JSON.stringify(placed.body));
+      const finalId = placed.body.order_id;
+      ok(finalId !== `ORD-${FIXED}`, `retry must leave collision id; got ${finalId}`);
+      ok(String(finalId).startsWith("ORD-"));
+      const ch = await challengeRow(challengeId);
+      eq(ch.status, "consumed");
+      eq(ch.consumed_order_id, finalId, "Finding 62: challenge tracks final order_id");
+      const orow = await orderRow(finalId);
+      eq(orow.otp_verified, 1);
+    } finally {
+      setOrderIdClockForTests(null);
+      resetOrderIdStateForTests();
     }
   });
 
