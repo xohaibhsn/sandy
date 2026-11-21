@@ -3,6 +3,7 @@
  * No DB, network, filesystem, or side effects. The only environment read is
  * CLOUDINARY_CLOUD_NAME in assertSafeReceiptUrl (never logged).
  */
+import { parseReceiptRef } from "./receiptRef";
 
 export const MAX_URL_REFERENCE_LENGTH = 2048;
 
@@ -275,10 +276,25 @@ function cloudinaryReceiptPathRe(cloudName: string): RegExp {
 }
 
 /**
+ * Opaque receipt refs from /api/upload-receipt (Finding 64):
+ * rcpt:v1:<cld|loc>:<id>.<ext> — see lib/receiptRef.ts.
+ */
+export function assertSafeReceiptRef(value: unknown): string {
+  const raw = requireString(value);
+  const trimmed = trimBounded(raw);
+  if (!trimmed) return "";
+  if (hasControlOrBackslash(trimmed)) fail("Invalid URL or path");
+  const parsed = parseReceiptRef(trimmed);
+  if (!parsed) fail("Invalid URL or path");
+  return parsed.raw;
+}
+
+/**
  * Order receipt references: empty, or exactly what /api/upload-receipt produces:
+ * - opaque rcpt:v1:<cld|loc>:<id>.<ext> (new private storage), or
  * - https://res.cloudinary.com/<CLOUDINARY_CLOUD_NAME>/.../sandy/receipts/receipt-<uuid>[.ext]
- *   (only when CLOUDINARY_CLOUD_NAME is configured), or
- * - local /uploads/receipts/<uuid>.<ext>
+ *   (legacy public Cloudinary URLs; only when CLOUDINARY_CLOUD_NAME is configured), or
+ * - legacy local /uploads/receipts/<uuid>.<ext>
  * Anything else is rejected. The configured cloud name is read from the environment and never logged.
  */
 export function assertSafeReceiptUrl(value: unknown): string {
@@ -289,6 +305,10 @@ export function assertSafeReceiptUrl(value: unknown): string {
   if (hasControlOrBackslash(trimmed)) fail("Invalid URL or path");
   if (looksDangerousScheme(trimmed)) fail("Invalid URL or path");
   if (isProtocolRelative(trimmed)) fail("Invalid URL or path");
+
+  if (trimmed.startsWith("rcpt:")) {
+    return assertSafeReceiptRef(trimmed);
+  }
 
   if (trimmed.startsWith("/")) {
     if (!LOCAL_RECEIPT_RE.test(trimmed)) fail("Invalid URL or path");

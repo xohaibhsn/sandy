@@ -15,6 +15,7 @@ export const PROBES = {
   "PATCH /api/admin-orders": { url: "/api/admin-orders", body: { order_id: NOPE, status: "confirmed" }, ok: [404] },
   "DELETE /api/admin-orders": { url: "/api/admin-orders", body: { order_id: NOPE }, ok: [404] },
   "GET /api/admin-orders-export": { url: "/api/admin-orders-export", ok: [200] },
+  "GET /api/admin-receipt/[file]": { url: "/api/admin-receipt/ORD-NOPE.png", ok: [404] },
 
   "GET /api/admin-products": { url: "/api/admin-products", ok: [200] },
   "GET /api/admin-products?tax_classes=1": { url: "/api/admin-products?tax_classes=1", ok: [200, 503] },

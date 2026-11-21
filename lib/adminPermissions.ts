@@ -255,6 +255,7 @@ export const ADMIN_ENDPOINT_POLICY: readonly AdminEndpointPolicy[] = [
   { route: "/api/admin-orders", method: "PATCH", permission: "orders:update" },
   { route: "/api/admin-orders", method: "DELETE", permission: "orders:delete" },
   { route: "/api/admin-orders-export", method: "GET", permission: "orders:export" },
+  { route: "/api/admin-receipt/[file]", method: "GET", permission: "orders:view" },
 
   { route: "/api/admin-products", method: "GET", permission: "products:view" },
   { route: "/api/admin-products", method: "GET", query: "tax_classes=1", permission: "products:view" },

@@ -188,18 +188,20 @@ try {
     expectRejected(await run({ file: dataUrl("image/jpeg", tooBig) }), "over 5 MB");
   });
 
-  await section("valid files accepted locally with UUID file names", async () => {
+  await section("valid files accepted locally as loc refs outside public/", async () => {
     for (const [key, f] of Object.entries(FILES)) {
       // A hostile client-supplied name must have no influence on the stored name.
       const { res, rec } = await run({ file: dataUrl(f.mime, f.bytes), name: "../../evil name.php" });
       eq(res.statusCode, 200, key);
-      ok(new RegExp(`^/uploads/receipts/${UUID}\\.${f.ext}$`).test(res.body.path), `${key}: ${res.body.path}`);
+      ok(new RegExp(`^rcpt:v1:loc:${UUID}\\.${f.ext}$`).test(res.body.path), `${key}: ${res.body.path}`);
       eq(Object.keys(res.body), ["path"], `${key}: response contract`);
       eq(rec.uploads.length, 0, `${key}: no cloud upload in local mode`);
       eq(rec.writes.length, 1, `${key}: exactly one write`);
       const written = rec.writes[0];
-      eq(path.basename(written.file), path.basename(res.body.path));
-      eq(path.dirname(written.file), path.join(process.cwd(), "public", "uploads", "receipts"));
+      const id = res.body.path.split(":")[3].split(".")[0];
+      eq(path.basename(written.file), `${id}.${f.ext}`);
+      eq(path.dirname(written.file), path.join(process.cwd(), "private-uploads", "receipts"));
+      ok(!String(written.file).includes(`${path.sep}public${path.sep}`), `${key}: not under public/`);
       ok(Buffer.from(written.data).equals(f.bytes), `${key}: bytes written unchanged`);
       ok(!/evil|php|\d{13}/.test(written.file), `${key}: no user-controlled or timestamp name parts`);
     }
@@ -208,17 +210,19 @@ try {
     ok(a !== b, "names are unique per upload");
   });
 
-  await section("valid files accepted via Cloudinary with UUID public_id", async () => {
+  await section("valid files accepted via Cloudinary as authenticated cld refs", async () => {
     for (const [key, f] of Object.entries(FILES)) {
       const { res, rec } = await run({ file: dataUrl(f.mime, f.bytes), name: "../../evil.php" }, { cloud: true });
       eq(res.statusCode, 200, key);
       eq(Object.keys(res.body), ["path"], `${key}: response contract`);
-      ok(res.body.path.startsWith("https://res.cloudinary.com/"), key);
+      ok(new RegExp(`^rcpt:v1:cld:receipt-${UUID}\\.${f.ext}$`).test(res.body.path), `${key}: ${res.body.path}`);
+      ok(!String(res.body.path).includes("http"), `${key}: no URL in response`);
       eq(rec.writes.length, 0, `${key}: nothing written locally`);
       eq(rec.uploads.length, 1, `${key}: one upload`);
       const { options } = rec.uploads[0];
       ok(new RegExp(`^receipt-${UUID}$`).test(options.public_id), `${key}: public_id ${options.public_id}`);
       eq(options.folder, "sandy/receipts");
+      eq(options.type, "authenticated", `${key}: authenticated upload`);
       eq(options.resource_type, f.mime === "application/pdf" ? "raw" : "image", `${key}: resource_type`);
     }
   });

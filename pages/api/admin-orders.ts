@@ -11,6 +11,7 @@ import {
   hasCancelReasonColumn,
 } from "../../lib/orderCancel";
 import { assertSafeReceiptUrl } from "../../lib/urlValidation";
+import { parseReceiptRef, staffReceiptProxyPath } from "../../lib/receiptRef";
 import { formatPktDateTime } from "../../lib/pktDateRange";
 import {
   ORDER_STATUSES,
@@ -403,15 +404,53 @@ async function handleDetail(res: NextApiResponse, orderId: string) {
     /* legacy / missing table */
   }
 
+  const orderIdStr = String(order.order_id || "");
   let receipt_url: string | null = null;
   const rawReceipt = order.receipt_path;
   if (rawReceipt != null && String(rawReceipt).trim()) {
-    try {
-      receipt_url = assertSafeReceiptUrl(String(rawReceipt));
-      if (!receipt_url) receipt_url = null;
-    } catch {
-      receipt_url = null;
+    const raw = String(rawReceipt).trim();
+    const ref = parseReceiptRef(raw);
+    if (ref) {
+      try {
+        receipt_url = staffReceiptProxyPath(orderIdStr, ref.ext, "receipt");
+      } catch {
+        receipt_url = null;
+      }
+    } else {
+      try {
+        receipt_url = assertSafeReceiptUrl(raw);
+        if (!receipt_url) receipt_url = null;
+      } catch {
+        receipt_url = null;
+      }
     }
+  }
+
+  let advance_receipt_url: string | null = null;
+  let advance_receipt_path: string | boolean | null = order.advance_receipt_path ?? null;
+  if (advance_receipt_path != null && String(advance_receipt_path).trim()) {
+    const rawAdv = String(advance_receipt_path).trim();
+    const advRef = parseReceiptRef(rawAdv);
+    if (advRef) {
+      try {
+        advance_receipt_url = staffReceiptProxyPath(orderIdStr, advRef.ext, "advance");
+      } catch {
+        advance_receipt_url = null;
+      }
+      // Never return the opaque ref as a usable path to the browser.
+      advance_receipt_path = true;
+    } else {
+      try {
+        const safeAdv = assertSafeReceiptUrl(rawAdv);
+        advance_receipt_url = safeAdv || null;
+        advance_receipt_path = safeAdv || null;
+      } catch {
+        advance_receipt_url = null;
+        advance_receipt_path = null;
+      }
+    }
+  } else {
+    advance_receipt_path = null;
   }
 
   const reasonCodes = String(order.risk_reasons || "")
@@ -575,7 +614,8 @@ async function handleDetail(res: NextApiResponse, orderId: string) {
       confirmed_at: order.confirmed_at ?? null,
       advance_amount: order.advance_amount ?? null,
       advance_reference: order.advance_reference ?? null,
-      advance_receipt_path: order.advance_receipt_path ?? null,
+      advance_receipt_path,
+      advance_receipt_url,
       ...shippingFields,
     },
     items,

@@ -108,6 +108,15 @@ try {
     }
   });
 
+  run("accepts opaque rcpt:v1 refs (cld + loc)", () => {
+    for (const ext of ["jpg", "png", "webp", "pdf"]) {
+      const loc = `rcpt:v1:loc:${U()}.${ext}`;
+      const cld = `rcpt:v1:cld:receipt-${U()}.${ext}`;
+      eq(accepted(loc, loc), loc, loc);
+      eq(accepted(cld, cld), cld, cld);
+    }
+  });
+
   run("empty / whitespace stays empty (receipt is optional)", () => {
     eq(accepted("", "empty"), "");
     eq(accepted("   ", "blank"), "");

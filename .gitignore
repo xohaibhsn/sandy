@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# Private local receipt uploads (Finding 64) — never under public/
+/private-uploads/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

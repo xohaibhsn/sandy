@@ -4,6 +4,11 @@ import fs from 'fs';
 import path from 'path';
 import { rateLimit, getClientIp } from '../../lib/rateLimit';
 import { assertSafeReceiptUrl, UrlValidationError } from '../../lib/urlValidation';
+import {
+  formatReceiptRef,
+  privateReceiptsDir,
+  type ReceiptRefExt,
+} from '../../lib/receiptRef';
 
 export const config = {
   api: { bodyParser: { sizeLimit: '8mb' } },
@@ -55,16 +60,16 @@ function matchesMagicBytes(buf: Buffer, mime: string): boolean {
   }
 }
 
-function extensionForMime(mime: string): string {
+function extensionForMime(mime: string): ReceiptRefExt | '' {
   switch (mime) {
     case 'image/jpeg':
-      return '.jpg';
+      return 'jpg';
     case 'image/png':
-      return '.png';
+      return 'png';
     case 'image/webp':
-      return '.webp';
+      return 'webp';
     case 'application/pdf':
-      return '.pdf';
+      return 'pdf';
     default:
       return '';
   }
@@ -102,6 +107,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const fileId = crypto.randomUUID();
+    const ext = extensionForMime(parsed.mime);
+    if (!ext) {
+      return res.status(400).json({ error: 'Invalid receipt file' });
+    }
     const isPdf = parsed.mime === 'application/pdf';
     let storedPath = '';
 
@@ -115,22 +124,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         folder: RECEIPT_FOLDER,
         public_id: `receipt-${fileId}`,
         resource_type: isPdf ? 'raw' : 'image',
+        type: 'authenticated',
       };
       if (!isPdf) {
         uploadOptions.transformation = [{ quality: 90 }];
       }
 
-      const result = await cloudinary.uploader.upload(parsed.dataUrl, uploadOptions);
-      storedPath = typeof result.secure_url === 'string' ? result.secure_url : '';
+      await cloudinary.uploader.upload(parsed.dataUrl, uploadOptions);
+      // Never return secure_url — only an opaque ref the staff proxy can resolve.
+      storedPath = formatReceiptRef('cld', `receipt-${fileId}`, ext);
     } else {
-      // Local/dev fallback only — restricted to public/uploads/receipts
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'receipts');
+      // Local/dev fallback — private directory (never under public/)
+      const uploadsDir = privateReceiptsDir();
       if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
       }
-      const fileName = `${fileId}${extensionForMime(parsed.mime)}`;
-      fs.writeFileSync(path.join(uploadsDir, fileName), decoded);
-      storedPath = `/uploads/receipts/${fileName}`;
+      const fileName = `${fileId}.${ext}`;
+      const dest = path.join(uploadsDir, fileName);
+      // Refuse to write outside the private receipts dir (basename + resolve check).
+      if (path.basename(dest) !== fileName || !dest.startsWith(uploadsDir)) {
+        return res.status(500).json({ error: 'Unable to upload receipt' });
+      }
+      fs.writeFileSync(dest, decoded);
+      storedPath = formatReceiptRef('loc', fileId, ext);
     }
 
     let safePath = '';

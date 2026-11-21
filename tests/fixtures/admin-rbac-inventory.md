@@ -24,6 +24,7 @@ Method rows below are machine-checked by `tests/admin-rbac-policy.test.mjs` and
 | `/api/admin-orders` | PATCH | — | requireRole -> SA,M (status change + cancel w/ reason) | `orders:update` | SA,M | none |
 | `/api/admin-orders` | DELETE | — | requireRole -> SA,M | `orders:delete` | SA | TIGHTENED (manager can no longer delete orders; D3) |
 | `/api/admin-orders-export` | GET | — | requireRole -> SA,M | `orders:export` | SA,M | none |
+| `/api/admin-receipt/[file]` | GET | — | n/a (BATCH-44) | `orders:view` | SA,M | NEW (BATCH-44 staff receipt proxy) |
 | `/api/admin-products` | GET | — | requireAdmin -> SA,M,W (finding 7) | `products:view` | SA,M | TIGHTENED (writer 403) |
 | `/api/admin-products` | GET | `tax_classes=1` | requireAdmin -> SA,M,W (finding 7) | `products:view` | SA,M | TIGHTENED (writer 403) |
 | `/api/admin-products` | POST | — | requireRole -> SA,M | `products:write` | SA,M | none |
