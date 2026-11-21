@@ -1,5 +1,5 @@
 /**
- * Finding 67 — receiptKindFromUrl classification (no network).
+ * Finding 67 / 73 — receiptKindFromUrl classification (no network).
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -27,11 +27,21 @@ describe("receiptKindFromUrl", () => {
     assert.equal(receiptKindFromUrl("/api/admin-receipt/ORD-1.png#frag"), "image");
   });
 
-  it("returns unknown for no extension, absolute, javascript, empty", () => {
+  it("returns unknown for no extension, javascript, empty", () => {
     assert.equal(receiptKindFromUrl("/api/admin-receipt/ORD-1"), "unknown");
-    assert.equal(receiptKindFromUrl("https://evil.example/x.pdf"), "unknown");
     assert.equal(receiptKindFromUrl("javascript:alert(1)"), "unknown");
     assert.equal(receiptKindFromUrl(""), "unknown");
     assert.equal(receiptKindFromUrl("   "), "unknown");
+  });
+
+  it("Finding 73: protocol-relative and non-https schemes are unknown", () => {
+    assert.equal(receiptKindFromUrl("//evil/x.pdf"), "unknown");
+    assert.equal(receiptKindFromUrl("http://x/y.png"), "unknown");
+    assert.equal(receiptKindFromUrl("data:image/png;base64,AA"), "unknown");
+  });
+
+  it("Finding 73: https absolute URLs classified by extension", () => {
+    assert.equal(receiptKindFromUrl("https://x/y.png"), "image");
+    assert.equal(receiptKindFromUrl("https://x/y.pdf"), "pdf");
   });
 });

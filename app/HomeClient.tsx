@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import xss from "xss";
 import { fixContentLinkRels } from "@/lib/seoLinks";
 import { looksLikeHtml, plainLinesToListHtml } from "@/lib/contentHtml";
@@ -134,10 +135,11 @@ export default function HomeClient({
   const [newsletterDone, setNewsletterDone] = useState(false);
   const { addToCart, removeFromCart, cart } = useCart();
   const sc = useSiteContent();
+  const router = useRouter();
 
   const handleSearch = () => {
     const q = searchTerm.trim();
-    if (q) window.location.href = `/products?q=${encodeURIComponent(q)}`;
+    if (q) router.push(`/products?q=${encodeURIComponent(q)}`);
   };
 
   // Section data from DB
@@ -684,7 +686,7 @@ export default function HomeClient({
             <div className="loading">No products found.</div>
           ) : (
             products.slice(0, showCount).map((p) => (
-              <div className="product-card" key={p.id} style={{cursor:"pointer"}} onClick={()=>window.location.href=`/products/${p.slug || p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`}>
+              <div className="product-card" key={p.id} style={{cursor:"pointer"}} onClick={()=>router.push(`/products/${p.slug || p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`)}>
                 <div className="product-image">
                   {p.badge && (
                     <span className={`badge ${p.badge==="BEST VALUE"?"gold":p.badge==="NEW"?"new":p.badge==="BUNDLE"?"bundle":""}`}>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 
 export const metadata: Metadata = {
@@ -42,14 +43,14 @@ export default function NotFound() {
             Let&apos;s get you back on track.
           </p>
           <div className="btns">
-            <a href="/" className="btn-primary">Go Home</a>
-            <a href="/products" className="btn-secondary">Browse Products</a>
+            <Link href="/" className="btn-primary">Go Home</Link>
+            <Link href="/products" className="btn-secondary">Browse Products</Link>
           </div>
           <div className="links">
             <a href="/order-tracking">Track Order</a>
             <a href="/contact">Contact Us</a>
             <a href="/faq">FAQ</a>
-            <a href="/blog">Blog</a>
+            <Link href="/blog">Blog</Link>
           </div>
         </div>
       </div>

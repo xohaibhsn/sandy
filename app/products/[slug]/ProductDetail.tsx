@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import xss from "xss";
 import { fixContentLinkRels } from "@/lib/seoLinks";
 import { useCart } from "../../lib/cartContext";
@@ -146,11 +147,11 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
           <div className="loading-state">Loading product...</div>
         ) : !product ? (
           <div className="loading-state">
-            Product not found. <a href="/products" style={{color:"#111",textDecoration:"underline"}}>Browse all products</a>
+            Product not found. <Link href="/products" style={{color:"#111",textDecoration:"underline"}}>Browse all products</Link>
           </div>
         ) : (
           <>
-            <a href="/products" className="back-link">{cmsText(sc, "pdp_back", "← Back to Products")}</a>
+            <Link href="/products" className="back-link">{cmsText(sc, "pdp_back", "← Back to Products")}</Link>
             <div className="product-layout">
               <div className="product-img-box">
                 {product.image

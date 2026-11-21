@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
@@ -210,6 +211,7 @@ export default function BlogPage() {
   const [subscribed, setSubscribed] = useState(false);
   const [allPosts, setAllPosts] = useState<BlogListPost[]>(posts);
   const sc = useSiteContent();
+  const router = useRouter();
 
   useEffect(() => {
     fetch("/api/blog")
@@ -294,7 +296,7 @@ export default function BlogPage() {
         {/* GRID */}
         <div className="blog-grid">
           {filteredPosts.map(post => (
-            <div className="blog-card" key={post.id} style={{cursor:"pointer"}} onClick={()=>window.location.href=`/blog/${post.slug||post.id}`}>
+            <div className="blog-card" key={post.id} style={{cursor:"pointer"}} onClick={()=>router.push(`/blog/${post.slug||post.id}`)}>
               <div className="card-image">
                 {post.featured_image
                   ? <img src={post.featured_image} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy" />

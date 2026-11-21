@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 import { SITE_NAME, SITE_NAME_CAPS } from "@/lib/site";
 import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
@@ -84,17 +85,17 @@ export default function Navbar({
   };
 
   const logoEl = logo ? (
-    <a href="/" className="nav-logo nav-logo-img">
+    <Link href="/" className="nav-logo nav-logo-img">
       <img
         src={logo}
         alt={brand}
         style={{ height: 36, width: "auto", objectFit: "contain", display: "block" }}
       />
-    </a>
+    </Link>
   ) : (
-    <a href="/" className="nav-logo nav-logo-text">
+    <Link href="/" className="nav-logo nav-logo-text">
       {brand}
-    </a>
+    </Link>
   );
 
   return (
@@ -182,8 +183,8 @@ export default function Navbar({
       <nav className="site-nav">
         {logoEl}
         <ul className={`nav-links ${menuOpen ? "open" : ""}`}>
-          <li><a href="/" onClick={close}>{cmsText(sc, "nav_home", "Home")}</a></li>
-          <li><a href="/products" onClick={close}>{cmsText(sc, "nav_products", "Products")}</a></li>
+          <li><Link href="/" onClick={close}>{cmsText(sc, "nav_home", "Home")}</Link></li>
+          <li><Link href="/products" onClick={close}>{cmsText(sc, "nav_products", "Products")}</Link></li>
           {categories.length > 0 && (
             <li
               className={`nav-cats ${catsOpen ? "open" : ""}`}
@@ -209,7 +210,7 @@ export default function Navbar({
             </li>
           )}
           <li><a href="/order-tracking" onClick={close}>{cmsText(sc, "nav_track", "Track Order")}</a></li>
-          <li><a href="/blog" onClick={close}>{cmsText(sc, "nav_blog", "Blog")}</a></li>
+          <li><Link href="/blog" onClick={close}>{cmsText(sc, "nav_blog", "Blog")}</Link></li>
           <li><a href="/contact" onClick={close}>{cmsText(sc, "nav_contact", "Contact")}</a></li>
           {accountsOn && (
             <li>

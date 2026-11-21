@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import xss from "xss";
 import { fixContentLinkRels } from "@/lib/seoLinks";
 import Navbar from "@/components/Navbar";
@@ -139,16 +140,16 @@ export default function BlogPostClient({ post }: { post: Post | null }) {
       <div className="wrap">
         {!post ? (
           <div className="loading-state">
-            Post not found. <a href="/blog">← Back to Blog</a>
+            Post not found. <Link href="/blog">← Back to Blog</Link>
           </div>
         ) : (
           <>
             <div className="breadcrumb">
-              <a href="/">Home</a><span>›</span>
-              <a href="/blog">Blog</a><span>›</span>
+              <Link href="/">Home</Link><span>›</span>
+              <Link href="/blog">Blog</Link><span>›</span>
               <span style={{color:"#444444"}}>{post.title}</span>
             </div>
-            <a href="/blog" className="back">← Back to Blog</a>
+            <Link href="/blog" className="back">← Back to Blog</Link>
             {post.badgeText && <div className="post-badge">{post.badgeText}</div>}
             <h1 className="post-title">{post.title}</h1>
             <div className="post-meta">

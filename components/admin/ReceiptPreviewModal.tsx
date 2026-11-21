@@ -90,7 +90,7 @@ export default function ReceiptPreviewModal({
                 rel="noopener noreferrer"
                 style={{ color: "#5B21B6", fontSize: 13 }}
               >
-                Open PDF in new tab
+                Open receipt in new tab
               </a>
             </div>
           </div>
@@ -104,7 +104,7 @@ export default function ReceiptPreviewModal({
               rel="noopener noreferrer"
               style={{ color: "#5B21B6", fontSize: 14 }}
             >
-              Open PDF in new tab
+              Open receipt in new tab
             </a>
           </div>
         ) : null}

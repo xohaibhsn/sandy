@@ -1,6 +1,7 @@
 "use client";
 export const dynamic = 'force-dynamic';
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { formatPrice } from "@/lib/site";
 import { useContactConfig } from "@/hooks/useContactConfig";
@@ -111,7 +112,7 @@ export default function CartSuccessPage() {
             <div style={{ fontSize: 52, marginBottom: 16 }}>🛒</div>
             <h2 className="title">No order found</h2>
             <p className="subtitle">It looks like you navigated here directly.</p>
-            <a href="/products" style={{ background: '#5B21B6', color: '#fff', textDecoration: 'none', padding: '13px 32px', borderRadius: 9, fontWeight: 700, fontSize: 14, display: 'inline-block' }}>Browse Products</a>
+            <Link href="/products" style={{ background: '#5B21B6', color: '#fff', textDecoration: 'none', padding: '13px 32px', borderRadius: 9, fontWeight: 700, fontSize: 14, display: 'inline-block' }}>Browse Products</Link>
           </div>
         </div>
       </>

@@ -31,6 +31,7 @@ export default function HeroSlider({ slides, children }: HeroSliderProps) {
           <button
             key={i}
             type="button"
+            role="tab"
             className={`hero-slider-dot${i === index ? " active" : ""}`}
             aria-label={`Go to slide ${i + 1}`}
             aria-selected={i === index}
