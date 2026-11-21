@@ -12,6 +12,7 @@ import {
 } from '../../lib/adminAuth';
 import { verifyAdminStaffPassword } from '../../lib/adminStaffPassword';
 import { auditThrottle, hashAuditIp, maskEmail, recordAudit } from '../../lib/auditLog';
+import { maybePurgeStaleRows } from '../../lib/dataRetention';
 import {
   ADMIN_LOGIN_LOCK_BODY,
   ADMIN_LOGIN_GUARD_WINDOW_MS,
@@ -176,6 +177,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             detail: { username: maskLoginName(username), role },
             req,
           });
+          void maybePurgeStaleRows(pool);
           return res.status(200).json({ success: true, role, name: staff.name, staffUser: true });
         } catch {
           await auditLoginFailed(req, username, 'service_unavailable');
@@ -219,6 +221,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         detail: { username: 'admin', role: 'super_admin' },
         req,
       });
+      void maybePurgeStaleRows(pool);
       return res.status(200).json({ success: true, role: 'super_admin', name: 'Admin' });
     } catch {
       await auditLoginFailed(req, 'admin', 'service_unavailable');

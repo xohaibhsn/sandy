@@ -44,6 +44,7 @@ import {
 } from '../../lib/shipping';
 import { loadShippingAreas } from '../../lib/shippingAreas';
 import { loadActivePickupPoint, parseDeliveryOpsInput } from '../../lib/deliveryOpsInput';
+import { nextOrderId } from '../../lib/orderId';
 
 const ALLOWED_PAYMENT_METHODS = new Set(['cod', 'jazzcash', 'easypaisa', 'bank']);
 
@@ -751,7 +752,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       // First-create path only — product/coupon validation after successful claim.
-      order_id = 'ORD-' + Date.now();
+      order_id = nextOrderId();
 
       const ids = normalizedItems.items.map((item) => item.id);
       const placeholders = ids.map(() => '?').join(',');
@@ -1090,80 +1091,89 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const opsColsSql = opsInsertCols.length ? ',' + opsInsertCols.join(',') : '';
       const opsPlaceholdersSql = opsInsertCols.length ? ',' + opsInsertCols.map(() => '?').join(',') : '';
 
-      if (protectionOn) {
+      // ER_DUP_ENTRY on order_id: regenerate ORD-<ms> (strictly increasing) and retry ≤3 times.
+      let orderInserted = false;
+      for (let idAttempt = 0; idAttempt < 3 && !orderInserted; idAttempt++) {
         try {
-          await connection.query(
-            `INSERT INTO orders (
+          if (protectionOn) {
+            await connection.query(
+              `INSERT INTO orders (
               order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,
               payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status,
               customer_phone_norm,customer_email_norm,risk_score,risk_reasons,otp_verified,
               advance_amount,advance_reference,advance_receipt_path${shippingOn ? ',shipping_amount,shipping_zone' : ''}${opsColsSql}
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${shippingOn ? ',?,?' : ''}${opsPlaceholdersSql})`,
-            [
-              order_id,
-              customer_name.value,
-              customer_email.value,
-              customer_phone.value,
-              delivery_address.value,
-              city.value,
-              postcode.value,
-              notes.value,
-              payment_method,
-              safeReceiptPath,
-              total,
-              persistedCoupon,
-              discount_amount,
-              vat_amount,
-              payment_reference.value || null,
-              'pending',
-              phoneNorm,
-              emailNorm,
-              riskScore,
-              riskReasons,
-              otpVerified,
-              advanceAmount,
-              advanceReference,
-              advanceReceiptPath,
-              ...(shippingOn ? [shipping, shippingZoneName] : []),
-              ...opsInsertValues,
-            ]
-          );
+              [
+                order_id,
+                customer_name.value,
+                customer_email.value,
+                customer_phone.value,
+                delivery_address.value,
+                city.value,
+                postcode.value,
+                notes.value,
+                payment_method,
+                safeReceiptPath,
+                total,
+                persistedCoupon,
+                discount_amount,
+                vat_amount,
+                payment_reference.value || null,
+                'pending',
+                phoneNorm,
+                emailNorm,
+                riskScore,
+                riskReasons,
+                otpVerified,
+                advanceAmount,
+                advanceReference,
+                advanceReceiptPath,
+                ...(shippingOn ? [shipping, shippingZoneName] : []),
+                ...opsInsertValues,
+              ]
+            );
+          } else {
+            await connection.query(
+              'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status' +
+                (shippingOn ? ',shipping_amount,shipping_zone' : '') +
+                opsColsSql +
+                ') VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?' +
+                (shippingOn ? ',?,?' : '') +
+                opsPlaceholdersSql +
+                ')',
+              [
+                order_id,
+                customer_name.value,
+                customer_email.value,
+                customer_phone.value,
+                delivery_address.value,
+                city.value,
+                postcode.value,
+                notes.value,
+                payment_method,
+                safeReceiptPath,
+                total,
+                persistedCoupon,
+                discount_amount,
+                vat_amount,
+                payment_reference.value || null,
+                'pending',
+                ...(shippingOn ? [shipping, shippingZoneName] : []),
+                ...opsInsertValues,
+              ]
+            );
+          }
+          orderInserted = true;
         } catch (insErr) {
-          if (isMissingColumnError(insErr)) {
+          if (protectionOn && isMissingColumnError(insErr)) {
             throw new OrderHttpError(503, 'Service unavailable');
+          }
+          if (isMysqlDupEntry(insErr) && idAttempt < 2) {
+            order_id = nextOrderId();
+            continue;
           }
           throw insErr;
         }
-      } else {
-        await connection.query(
-          'INSERT INTO orders (order_id,customer_name,customer_email,customer_phone,delivery_address,city,postcode,notes,payment_method,receipt_path,total,coupon_code,discount_amount,vat_amount,payment_reference,status' +
-            (shippingOn ? ',shipping_amount,shipping_zone' : '') +
-            opsColsSql +
-            ') VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?' +
-            (shippingOn ? ',?,?' : '') +
-            opsPlaceholdersSql +
-            ')',
-          [
-            order_id,
-            customer_name.value,
-            customer_email.value,
-            customer_phone.value,
-            delivery_address.value,
-            city.value,
-            postcode.value,
-            notes.value,
-            payment_method,
-            safeReceiptPath,
-            total,
-            persistedCoupon,
-            discount_amount,
-            vat_amount,
-            payment_reference.value || null,
-            'pending',
-            ...(shippingOn ? [shipping, shippingZoneName] : []),
-            ...opsInsertValues,
-          ]
-        );
       }
 
       // Link the order to the signed-in customer (same transaction). Guests are untouched; a missing

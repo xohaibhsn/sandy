@@ -64,8 +64,8 @@ Two separate pool files exist:
 
 The app/ folder's db.ts was likely created accidentally. Pages Router cannot import from `app/lib/`, and App Router server components should not directly pool-connect in most cases.
 
-**6. `app/lib/schema.sql` — CHECKED IN (Low)**  
-The DB schema SQL file is tracked in git. While not a secret, it exposes the full database structure publicly. Should be in a docs/ folder or `.gitignore`d.
+**6. `app/lib/schema.sql` — REMOVED (HARDEN-01)**
+Unused schema copy removed; `migrations/` is the source of truth.
 
 ### ⚠️ Warnings
 
