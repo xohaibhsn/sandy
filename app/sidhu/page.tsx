@@ -15,6 +15,7 @@ import OrdersToolbar, {
 } from "../../components/admin/OrdersToolbar";
 import Pagination from "../../components/admin/Pagination";
 import OrderDetailDrawer, { type DispatchShipping } from "../../components/admin/OrderDetailDrawer";
+import ReceiptPreviewModal from "../../components/admin/ReceiptPreviewModal";
 import {
   CANCEL_COLUMN_MISSING,
   CANCEL_COLUMN_MISSING_MESSAGE,
@@ -1366,16 +1367,12 @@ export default function AdminPage() {
 
       {/* RECEIPT MODAL (url comes from the order detail endpoint, already validated server-side) */}
       {receiptModal && (
-        <div className="modal-overlay">
-          <div className="modal" onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()}>
-            <div className="modal-title">Payment Receipt — {receiptModal.id}</div>
-            <img src={receiptModal.url} alt="Receipt" style={{width:"100%",borderRadius:12,marginBottom:16,border:"1px solid rgba(139,0,255,0.3)"}} />
-            <div className="modal-actions">
-              <button className="modal-cancel" onClick={() => setReceiptModal(null)}>Close</button>
-              <button className="modal-save" onClick={() => { void updateStatus(receiptModal.id,"confirmed"); setReceiptModal(null); }}>✅ Verify & Confirm</button>
-            </div>
-          </div>
-        </div>
+        <ReceiptPreviewModal
+          orderId={receiptModal.id}
+          url={receiptModal.url}
+          onClose={() => setReceiptModal(null)}
+          onVerifyConfirm={() => { void updateStatus(receiptModal.id,"confirmed"); setReceiptModal(null); }}
+        />
       )}
 
       <AdminGlobalSearch open={searchOpen} onOpenChange={setSearchOpen} onNavigate={handleSearchNavigate} role={adminRole} />
