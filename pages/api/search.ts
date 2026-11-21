@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { RowDataPacket } from 'mysql2/promise';
 import { RL_SEARCH, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 
@@ -13,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const term = `%${q}%`;
-    const [rows]: any = await pool.query(
+    const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT id, name, price, image, category, badge,
         COALESCE(NULLIF(slug, ''), LOWER(REPLACE(REPLACE(name, ' ', '-'), '/', ''))) as slug
        FROM products
@@ -23,8 +24,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       [term, term, term]
     );
     return res.status(200).json(Array.isArray(rows) ? rows : []);
-  } catch (error: any) {
-    console.error('[api/search]', error?.message || error);
+  } catch (error: unknown) {
+    console.error('[api/search]', (error as { message?: unknown } | null | undefined)?.message || error);
     return res.status(200).json([]);
   }
 }

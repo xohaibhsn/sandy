@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { getAdminSession } from '../../lib/adminAuth';
 import { hasPermission, requirePermission } from '../../lib/adminPermissions';
@@ -44,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') {
       const { page, all } = req.query;
       let query = 'SELECT content_key,content_value,content_type,page_name,label,section_order,is_visible FROM site_content WHERE page_name=? AND content_type="json"';
-      const params: any[] = [page || 'home'];
+      const params: unknown[] = [page || 'home'];
       // Soft check only: GET never returns 401/403. `all` is honored only for sections:write sessions.
       let includeHidden = false;
       if (all) {
@@ -53,8 +54,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       if (!includeHidden) query += ' AND is_visible=1';
       query += ' ORDER BY section_order ASC';
-      const [rows]: any = await pool.query(query, params);
-      const result = (Array.isArray(rows)?rows:[]).map((r:any) => ({
+      const [rows] = await pool.query<RowDataPacket[]>(query, params);
+      const result = (Array.isArray(rows)?rows:[]).map((r: RowDataPacket) => ({
         key: r.content_key,
         label: r.label,
         page: r.page_name,
@@ -86,7 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const validated = validateSectionValue(parsed);
       const json = JSON.stringify(validated);
-      const [updateResult]: any = await pool.query('UPDATE site_content SET content_value=? WHERE content_key=?', [json, key]);
+      const [updateResult] = await pool.query<ResultSetHeader>('UPDATE site_content SET content_value=? WHERE content_key=?', [json, key]);
       if (Number(updateResult?.affectedRows ?? 1) > 0) {
         await recordAudit(pool, {
           actor: session,
@@ -105,7 +106,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { action } = req.query;
       if (action === 'visibility') {
         const { key, is_visible } = req.body;
-        const [beforeRows]: any = await pool.query('SELECT is_visible FROM site_content WHERE content_key=? LIMIT 1', [key]);
+        const [beforeRows] = await pool.query<RowDataPacket[]>('SELECT is_visible FROM site_content WHERE content_key=? LIMIT 1', [key]);
         const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
         await pool.query('UPDATE site_content SET is_visible=? WHERE content_key=?', [is_visible?1:0, key]);
         if (before) {
@@ -133,7 +134,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           entityId: 'reorder',
           summary: `Reordered ${(order||[]).length} sections`,
           detail: {
-            order: (order||[]).slice(0, 50).map((item: any) => ({ key: item?.key, section_order: item?.section_order })),
+            order: (order||[]).slice(0, 50).map((item: Record<string, unknown> | null | undefined) => ({ key: item?.key, section_order: item?.section_order })),
           },
           req,
         });
@@ -143,11 +144,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof UrlValidationError) {
       return res.status(400).json({ error: 'Invalid URL or path' });
     }
-    console.error('[api/sections] request failed', error?.code || 'unknown');
+    console.error('[api/sections] request failed', (error as { code?: unknown } | null | undefined)?.code || 'unknown');
     return res.status(500).json({ error: 'Server error' });
   }
 }

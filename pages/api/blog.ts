@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { SITE_URL } from '../../lib/site';
 import { getAdminSession } from '../../lib/adminAuth';
@@ -40,7 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') {
       const { slug, id } = req.query;
       if (slug) {
-        const [rows]: any = await pool.query(
+        const [rows] = await pool.query<RowDataPacket[]>(
           'SELECT * FROM blog_posts WHERE slug = ? AND status = "published" AND active = 1 LIMIT 1',
           [slug]
         );
@@ -53,13 +54,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const idSql = canSeeDrafts
           ? 'SELECT * FROM blog_posts WHERE id = ? LIMIT 1'
           : 'SELECT * FROM blog_posts WHERE id = ? AND active = 1 AND (status = "published" OR status IS NULL) LIMIT 1';
-        const [rows]: any = await pool.query(idSql, [id]);
+        const [rows] = await pool.query<RowDataPacket[]>(idSql, [id]);
         return res.status(200).json(rows[0] || null);
       }
       const listSql = canSeeDrafts
         ? 'SELECT * FROM blog_posts ORDER BY created_at DESC'
         : 'SELECT * FROM blog_posts WHERE active = 1 AND (status = "published" OR status IS NULL) ORDER BY created_at DESC';
-      const [rows]: any = await pool.query(listSql);
+      const [rows] = await pool.query<RowDataPacket[]>(listSql);
       return res.status(200).json(Array.isArray(rows) ? rows : []);
     }
 
@@ -72,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const safeFeaturedImage = resolveBlogFeaturedImage(featured_image);
       const finalCanonical = resolveBlogCanonical(canonical_url, slug);
       const safeContent = sanitizeRichHtml(content || '');
-      const [result]: any = await pool.query(
+      const [result] = await pool.query<ResultSetHeader>(
         'INSERT INTO blog_posts (title, slug, excerpt, content, category, emoji, badge, badgeText, featured_image, meta_title, meta_description, focus_keyword, status, featured, canonical_url, faqs, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
         [title, slug || '', excerpt || '', safeContent, category || 'Guides', emoji || '📝', badge || 'guide', badgeText || 'Guide', safeFeaturedImage, meta_title || '', meta_description || '', focus_keyword || '', status || 'published', featured ? 1 : 0, finalCanonical, faqs ? JSON.stringify(faqs) : null]
       );
@@ -100,7 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const safeFeaturedImage = resolveBlogFeaturedImage(featured_image);
       const finalCanonical = resolveBlogCanonical(canonical_url, slug);
       const safeContent = sanitizeRichHtml(content || '');
-      const [beforeRows]: any = await pool.query(
+      const [beforeRows] = await pool.query<RowDataPacket[]>(
         'SELECT title, slug, excerpt, content, category, status, featured, canonical_url, featured_image, meta_title, meta_description, focus_keyword FROM blog_posts WHERE id = ? LIMIT 1',
         [id]
       );
@@ -143,7 +144,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'DELETE') {
       const { id } = req.query;
-      const [beforeRows]: any = await pool.query('SELECT title, slug FROM blog_posts WHERE id = ? LIMIT 1', [id]);
+      const [beforeRows] = await pool.query<RowDataPacket[]>('SELECT title, slug FROM blog_posts WHERE id = ? LIMIT 1', [id]);
       const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query('DELETE FROM blog_posts WHERE id = ?', [id]);
       if (before) {
@@ -161,11 +162,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof UrlValidationError) {
       return res.status(400).json({ error: 'Invalid URL or path' });
     }
-    console.error('[api/blog] request failed', error?.code || 'unknown');
+    console.error('[api/blog] request failed', (error as { code?: unknown } | null | undefined)?.code || 'unknown');
     return res.status(500).json({ error: 'Server error' });
   }
 }

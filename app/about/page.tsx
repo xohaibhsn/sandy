@@ -160,24 +160,38 @@ const styles = `
   }
 `;
 
+interface AboutValueItem {
+  icon?: string;
+  title?: string;
+  desc?: string;
+  description?: string;
+}
+
+interface AboutSection {
+  title?: string;
+  subtitle?: string;
+  text?: string;
+  items?: AboutValueItem[];
+}
+
 export default function AboutPage() {
   const sc = useSiteContent();
-  const [sec, setSec] = useState<Record<string, any>>({});
+  const [sec, setSec] = useState<Record<string, AboutSection | undefined>>({});
 
   useEffect(() => {
     fetch("/api/sections?page=about")
       .then((r) => r.json())
       .then((d) => {
         if (!Array.isArray(d)) return;
-        const map: Record<string, any> = {};
-        d.forEach((s: any) => { map[s.key] = s.data; });
+        const map: Record<string, AboutSection | undefined> = {};
+        d.forEach((s: { key: string; data: AboutSection }) => { map[s.key] = s.data; });
         setSec(map);
       })
       .catch(() => {});
   }, []);
 
-  const hero = sec.about_hero || {};
-  const missionSec = sec.about_mission || {};
+  const hero: AboutSection = sec.about_hero || {};
+  const missionSec: AboutSection = sec.about_mission || {};
   const valuesSec = sec.about_values;
   const pageTitle = (hero.title || "").trim() || cmsText(sc, "about_title", "Your Pakistani Online Store");
   const pageSub = (hero.subtitle || "").trim();
@@ -274,7 +288,7 @@ export default function AboutPage() {
             <h2 className="section-title">{valuesSec?.title || "Our Values"}</h2>
           </div>
           <div className="values-grid">
-            {valueItems.map((v: any, i: number) => (
+            {valueItems.map((v: AboutValueItem, i: number) => (
               <div className="value-card" key={i}>
                 <span className="value-icon">{v.icon}</span>
                 <div className="value-title">{v.title}</div>

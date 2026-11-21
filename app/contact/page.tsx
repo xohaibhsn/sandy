@@ -167,7 +167,7 @@ export default function ContactPage() {
       .then((r) => r.json())
       .then((d) => {
         if (!Array.isArray(d) || d.length === 0) return;
-        setLiveFaqs(d.slice(0, 5).map((f: any) => ({ q: f.question, a: f.answer })));
+        setLiveFaqs(d.slice(0, 5).map((f: { question: string; answer: string }) => ({ q: f.question, a: f.answer })));
       })
       .catch(() => {});
   }, []);

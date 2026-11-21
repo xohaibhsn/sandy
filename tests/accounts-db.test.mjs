@@ -597,7 +597,7 @@ try {
       process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN;
       process.env.TWILIO_VERIFY_SERVICE_SID = SERVICE_SID;
       resetOtpProviderCache();
-      globalThis.fetch = async (url, init) => {
+      globalThis.fetch = async (url) => {
         const u = String(url);
         if (u === START_URL) {
           return new Response(JSON.stringify({ sid: VE_SID }), { status: 201 });

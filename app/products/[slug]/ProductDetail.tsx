@@ -40,7 +40,7 @@ interface Product {
 export default function ProductDetail({ slug, initialProduct, categorySlug = null }: { slug: string; initialProduct: Product | null; categorySlug?: string | null }) {
   const [product, setProduct] = useState<Product | null>(initialProduct);
   const [loading, setLoading] = useState(!initialProduct);
-  const [added, setAdded] = useState(false);
+  const [, setAdded] = useState(false);
   const [hovering, setHovering] = useState(false);
   const { addToCart, removeFromCart, cart } = useCart();
   const contact = useContactConfig();

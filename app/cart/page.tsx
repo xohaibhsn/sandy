@@ -1086,7 +1086,7 @@ export default function CartPage() {
                     <div className="form-group" key={f.key}>
                       <label>{f.label}</label>
                       <input type={f.type} placeholder={f.placeholder}
-                        value={(form as any)[f.key]}
+                        value={form[f.key as keyof typeof form]}
                         onChange={e => setForm({...form, [f.key]: e.target.value})} />
                     </div>
                   ))}

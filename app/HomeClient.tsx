@@ -45,6 +45,23 @@ interface Product {
   image: string | null;
 }
 
+interface SectionItem {
+  icon?: string;
+  title?: string;
+  description?: string;
+  name?: string;
+  rating?: number;
+  text?: string;
+}
+
+interface SectionBlock {
+  title?: string;
+  subtitle?: string;
+  show_count?: number | string;
+  button_text?: string;
+  items?: SectionItem[];
+}
+
 interface HomeClientProps {
   topHeroTitle?: string;
   topHeroSubtitle?: string;
@@ -76,7 +93,7 @@ export default function HomeClient({
 }: HomeClientProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [added, setAdded] = useState<number | null>(null);
+  const [, setAdded] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [hoveringId, setHoveringId] = useState<number | null>(null);
   const [slides, setSlides] = useState<string[]>([]);
@@ -124,7 +141,7 @@ export default function HomeClient({
   };
 
   // Section data from DB
-  const [sec, setSec] = useState<Record<string, any>>({
+  const [sec, setSec] = useState<Record<string, SectionBlock | undefined>>({
     home_features: { title:"Why Choose Us", items:[{icon:"⚡",title:"Fast Delivery",description:"Across Pakistan"},{icon:"🔒",title:"Authentic",description:"Quality you can trust"},{icon:"💬",title:"WhatsApp Support",description:"Always here for you"},{icon:"🚚",title:"Cash on Delivery",description:"Pay when it arrives"}] },
     home_testimonials: { title:"What Our Customers Say", items:[{name:"Ahmed Khan",rating:5,text:"Amazing service!"},{name:"Sara Ali",rating:5,text:"Fast delivery and genuine products."}] },
   });
@@ -142,9 +159,9 @@ export default function HomeClient({
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
-          const map: Record<string, any> = {};
+          const map: Record<string, SectionBlock | undefined> = {};
           const on: Record<string, boolean> = {};
-          data.forEach((s: any) => {
+          data.forEach((s: { key: string; data: SectionBlock }) => {
             map[s.key] = s.data;
             on[s.key] = true;
           });
@@ -222,7 +239,7 @@ export default function HomeClient({
   const pbHero = sectionOn.home_hero ? sec.home_hero : null;
   const mainHeroTitle = (pbHero?.title || "").trim() || heroTitle;
   const mainHeroSubtitle = (pbHero?.subtitle || "").trim() || heroSubtitle;
-  const featured = sectionOn.home_featured_products ? (sec.home_featured_products || {}) : {};
+  const featured: SectionBlock = sectionOn.home_featured_products ? (sec.home_featured_products || {}) : {};
   const featuredTitle = (featured.title || "").trim() || "Featured products";
   const featuredTag = (featured.subtitle || "").trim() || "The Collection";
   const showCount = Number(featured.show_count) > 0 ? Number(featured.show_count) : 8;
@@ -710,7 +727,7 @@ export default function HomeClient({
                         style={{background: inCart ? (hovering ? "#DC2626" : "#16A34A") : "#111111", cursor: inCart && !hovering ? "default" : "pointer"}}
                         onMouseEnter={() => inCart && setHoveringId(p.id)}
                         onMouseLeave={() => setHoveringId(null)}
-                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); inCart ? removeFromCart(p.id) : handleAddToCart(p); }}
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (inCart) { removeFromCart(p.id); } else { handleAddToCart(p); } }}
                       >
                         {inCart ? (hovering ? "Remove" : "Added") : "Add"}
                       </button>
@@ -788,7 +805,7 @@ export default function HomeClient({
             <div className="section-tag">✦ {cmsText(sc, "home_features_tag", "Why Choose Us")}</div>
             <h2 className="section-title">{sec.home_features?.title || "Why Choose Us"}</h2>
             <div className="features-grid">
-              {(sec.home_features?.items || []).map((f:any,i:number)=>(
+              {(sec.home_features?.items || []).map((f:SectionItem,i:number)=>(
                 <div className="feature-item" key={i}>
                   <span className="feature-icon">{f.icon}</span>
                   <div className="feature-title">{f.title}</div>
@@ -797,14 +814,14 @@ export default function HomeClient({
               ))}
             </div>
           </div>
-          {sectionOn.home_testimonials && sec.home_testimonials?.items?.length > 0 && (
+          {sectionOn.home_testimonials && (sec.home_testimonials?.items?.length ?? 0) > 0 && (
             <div className="features-section" style={{paddingTop:0}}>
-              <h2 className="section-title" style={{marginBottom:32}}>{sec.home_testimonials.title || "What Our Customers Say"}</h2>
+              <h2 className="section-title" style={{marginBottom:32}}>{sec.home_testimonials!.title || "What Our Customers Say"}</h2>
               <div className="features-grid">
-                {sec.home_testimonials.items.map((t:any,i:number)=>(
+                {sec.home_testimonials!.items!.map((t:SectionItem,i:number)=>(
                   <div className="feature-item" key={i}>
                     <div style={{fontSize:20,marginBottom:8}}>{"⭐".repeat(t.rating||5)}</div>
-                    <div className="feature-desc" style={{marginBottom:10}}>"{t.text}"</div>
+                    <div className="feature-desc" style={{marginBottom:10}}>{`"${t.text}"`}</div>
                     <div className="feature-title" style={{fontSize:14}}>— {t.name}</div>
                   </div>
                 ))}

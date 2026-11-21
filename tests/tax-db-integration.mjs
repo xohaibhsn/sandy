@@ -4,7 +4,6 @@
  */
 import mysql from "mysql2/promise";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -13,11 +12,6 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace
 
 // Load pure engine via node --experimental-strip-types helper
 function loadEngine() {
-  const helper = `
-    import { createRequire } from 'module';
-    const require = createRequire(import.meta.url);
-    // re-export by evaluating strip-types entry
-  `;
   const r = spawnSync(
     process.execPath,
     ["--experimental-strip-types", "--input-type=module", "-e",

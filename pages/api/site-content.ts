@@ -593,10 +593,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') {
       const { page } = req.query;
       let query = 'SELECT content_key, content_value, content_type, page_name, label FROM site_content';
-      const params: any[] = [];
+      const params: unknown[] = [];
       if (page && page !== 'all') { query += ' WHERE page_name=?'; params.push(page); }
       query += ' ORDER BY id ASC';
-      const [rows]: any = await pool.query(query, params);
+      const [rows] = await pool.query<RowDataPacket[]>(query, params);
       const result: Record<string,string> = {};
       for (const r of rows) result[r.content_key] = r.content_value || '';
       return res.status(200).json(result);
@@ -749,14 +749,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof UrlValidationError) {
       return res.status(400).json({ error: 'Invalid URL or path' });
     }
     if (error instanceof ContentValidationError) {
       return res.status(400).json({ error: error.message || 'Invalid value' });
     }
-    console.error('[api/site-content] request failed', error?.code || 'unknown');
+    console.error('[api/site-content] request failed', (error as { code?: unknown } | null | undefined)?.code || 'unknown');
     return res.status(500).json({ error: 'Server error' });
   }
 }

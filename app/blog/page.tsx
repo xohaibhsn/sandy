@@ -127,7 +127,37 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
   }
 `;
 
-const posts = [
+interface BlogListPost {
+  id: number;
+  featured?: boolean;
+  emoji: string;
+  badge: string;
+  badgeText: string;
+  title: string;
+  excerpt: string;
+  date: string;
+  readTime: string;
+  category: string;
+  slug?: string;
+  featured_image?: string;
+}
+
+interface BlogApiPost {
+  id: number;
+  status?: string;
+  emoji?: string;
+  badge?: string;
+  badgeText?: string;
+  title: string;
+  excerpt: string;
+  slug?: string;
+  featured_image?: string;
+  created_at?: string;
+  category?: string;
+  featured?: unknown;
+}
+
+const posts: BlogListPost[] = [
   {
     id: 1, featured: true, emoji: "🛒", badge: "guide", badgeText: "Guide",
     title: "How to Shop on S&Y — A Quick Guide",
@@ -178,7 +208,7 @@ export default function BlogPage() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
-  const [allPosts, setAllPosts] = useState(posts);
+  const [allPosts, setAllPosts] = useState<BlogListPost[]>(posts);
   const sc = useSiteContent();
 
   useEffect(() => {
@@ -186,8 +216,8 @@ export default function BlogPage() {
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
-          const published = data.filter((p: any) => (p.status || "published") === "published");
-          setAllPosts(published.map((p: any) => ({
+          const published = data.filter((p: BlogApiPost) => (p.status || "published") === "published");
+          setAllPosts(published.map((p: BlogApiPost) => ({
             id: p.id,
             emoji: p.emoji || "📝",
             badge: p.badge || "guide",
@@ -243,8 +273,8 @@ export default function BlogPage() {
           <div className="featured-post">
             <div className="featured-card">
               <div className="featured-image">
-                {(featuredPost as any).featured_image
-                  ? <img src={(featuredPost as any).featured_image} alt={featuredPost.title} style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy" />
+                {featuredPost.featured_image
+                  ? <img src={featuredPost.featured_image} alt={featuredPost.title} style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy" />
                   : featuredPost.emoji}
               </div>
               <div className="featured-content">
@@ -255,7 +285,7 @@ export default function BlogPage() {
                   <span>📅 {featuredPost.date}</span>
                   <span>⏱ {featuredPost.readTime}</span>
                 </div>
-                <a href={`/blog/${(featuredPost as any).slug || featuredPost.id}`} className="read-more">{cmsText(sc, "blog_read_more", "Read →")}</a>
+                <a href={`/blog/${featuredPost.slug || featuredPost.id}`} className="read-more">{cmsText(sc, "blog_read_more", "Read →")}</a>
               </div>
             </div>
           </div>
@@ -264,10 +294,10 @@ export default function BlogPage() {
         {/* GRID */}
         <div className="blog-grid">
           {filteredPosts.map(post => (
-            <div className="blog-card" key={post.id} style={{cursor:"pointer"}} onClick={()=>window.location.href=`/blog/${(post as any).slug||post.id}`}>
+            <div className="blog-card" key={post.id} style={{cursor:"pointer"}} onClick={()=>window.location.href=`/blog/${post.slug||post.id}`}>
               <div className="card-image">
-                {(post as any).featured_image
-                  ? <img src={(post as any).featured_image} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy" />
+                {post.featured_image
+                  ? <img src={post.featured_image} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy" />
                   : post.emoji}
               </div>
               <div className="card-body">
@@ -276,7 +306,7 @@ export default function BlogPage() {
                 <p className="card-excerpt">{post.excerpt}</p>
                 <div className="card-footer">
                   <div className="card-meta">📅 {post.date} · ⏱ {post.readTime}</div>
-                  <a href={`/blog/${(post as any).slug||post.id}`} className="read-more" onClick={e=>e.stopPropagation()}>{cmsText(sc, "blog_read_more", "Read →")}</a>
+                  <a href={`/blog/${post.slug||post.id}`} className="read-more" onClick={e=>e.stopPropagation()}>{cmsText(sc, "blog_read_more", "Read →")}</a>
                 </div>
               </div>
             </div>

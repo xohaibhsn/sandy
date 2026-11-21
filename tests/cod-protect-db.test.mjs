@@ -55,7 +55,6 @@ const {
   setOrderIdClockForTests,
 } = await importFromRoot("lib/orderId.ts");
 const { CUSTOMER_TEXTS } = await importFromRoot("lib/customerTexts.ts");
-const { normalisePhone, normaliseEmail } = await importFromRoot("lib/customerIdentity.ts");
 
 const ordersHandler = (await importFromRoot("pages/api/orders.ts")).default;
 const otpStartHandler = (await importFromRoot("pages/api/checkout/otp-start.ts")).default;

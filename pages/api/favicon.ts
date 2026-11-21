@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import type { RowDataPacket } from "mysql2/promise";
 import pool from "../../lib/db";
 import { SITE_URL } from "@/lib/site";
 
@@ -50,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let faviconUrl = "";
   try {
-    const [rows]: any = await pool.query(
+    const [rows] = await pool.query<RowDataPacket[]>(
       "SELECT content_value FROM site_content WHERE content_key='favicon_url' LIMIT 1"
     );
     faviconUrl = String(rows?.[0]?.content_value || "").trim().split("?")[0];

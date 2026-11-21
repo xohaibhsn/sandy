@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import pool from '../../lib/db';
 import { getAdminSession } from '../../lib/adminAuth';
 import { requirePermission } from '../../lib/adminPermissions';
@@ -34,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'POST') {
       const { question, answer, category, sort_order } = req.body;
       if (!question || !answer) return res.status(400).json({ error: 'Question and answer required' });
-      const [r]: any = await pool.query(
+      const [r] = await pool.query<ResultSetHeader>(
         'INSERT INTO faqs (question,answer,category,sort_order) VALUES (?,?,?,?)',
         [question, answer, category||'General', sort_order||0]
       );
@@ -53,7 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'PUT') {
       const { id, question, answer, category, sort_order, is_visible } = req.body;
       if (!id) return res.status(400).json({ error: 'ID required' });
-      const [beforeRows]: any = await pool.query(
+      const [beforeRows] = await pool.query<RowDataPacket[]>(
         'SELECT question,answer,category,sort_order,is_visible FROM faqs WHERE id=? LIMIT 1',
         [id]
       );
@@ -83,7 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'DELETE') {
       const { id } = req.query;
-      const [beforeRows]: any = await pool.query('SELECT question FROM faqs WHERE id=? LIMIT 1', [id]);
+      const [beforeRows] = await pool.query<RowDataPacket[]>('SELECT question FROM faqs WHERE id=? LIMIT 1', [id]);
       const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query('DELETE FROM faqs WHERE id=?', [id]);
       if (before) {
@@ -101,8 +102,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
-  } catch (error: any) {
-    console.error('[api/faqs] request failed', error?.code || 'unknown');
+  } catch (error: unknown) {
+    console.error('[api/faqs] request failed', (error as { code?: unknown } | null | undefined)?.code || 'unknown');
     return res.status(500).json({ error: 'Server error' });
   }
 }

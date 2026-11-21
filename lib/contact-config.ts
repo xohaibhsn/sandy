@@ -1,4 +1,5 @@
 import pool, { isDatabaseConfigured } from "@/lib/db";
+import type { RowDataPacket } from "mysql2/promise";
 import {
   CONTACT_EMAIL,
   PHONE_DISPLAY,
@@ -27,7 +28,7 @@ const FALLBACK: ContactConfig = {
 export async function getContactConfig(): Promise<ContactConfig> {
   if (!isDatabaseConfigured()) return { ...FALLBACK };
   try {
-    const [rows]: any = await pool.query(
+    const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT content_key, content_value
        FROM site_content
        WHERE content_key IN (

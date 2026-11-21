@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { RL_GENERAL, getClientIp } from '../../lib/rateLimit';
 import pool from '../../lib/db';
 import { formatPrice } from '../../lib/site';
@@ -31,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { code, cart_total } = req.body;
       if (!code) return res.status(400).json({ valid:false, message:"Please enter a coupon code" });
 
-      const [rows]: any = await pool.query(
+      const [rows] = await pool.query<RowDataPacket[]>(
         'SELECT * FROM coupons WHERE code=? AND is_active=1',
         [String(code).toUpperCase().trim()]
       );
@@ -62,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'POST') {
       const { code, type, value, minimum_order, usage_limit, expires_at } = req.body;
       if (!code||!type||!value) return res.status(400).json({ error:'Missing required fields' });
-      const [r]: any = await pool.query(
+      const [r] = await pool.query<ResultSetHeader>(
         'INSERT INTO coupons (code,type,value,minimum_order,usage_limit,expires_at) VALUES (?,?,?,?,?,?)',
         [String(code).toUpperCase().trim(), type, value, minimum_order||0, usage_limit||null, expires_at||null]
       );
@@ -87,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'PUT') {
       const { id, code, type, value, minimum_order, usage_limit, expires_at, is_active } = req.body;
-      const [beforeRows]: any = await pool.query(
+      const [beforeRows] = await pool.query<RowDataPacket[]>(
         'SELECT code,type,value,minimum_order,usage_limit,expires_at,is_active FROM coupons WHERE id=? LIMIT 1',
         [id]
       );
@@ -134,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'DELETE') {
       const { id } = req.query;
-      const [beforeRows]: any = await pool.query('SELECT code FROM coupons WHERE id=? LIMIT 1', [id]);
+      const [beforeRows] = await pool.query<RowDataPacket[]>('SELECT code FROM coupons WHERE id=? LIMIT 1', [id]);
       const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query('DELETE FROM coupons WHERE id=?', [id]);
       if (before) {
@@ -152,8 +153,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     return res.status(405).json({ error:'Method not allowed' });
-  } catch (error: any) {
-    console.error('[api/coupons] request failed', error?.code || 'unknown');
+  } catch (error: unknown) {
+    console.error('[api/coupons] request failed', (error as { code?: unknown } | null | undefined)?.code || 'unknown');
     return res.status(500).json({ error: 'Server error' });
   }
 }

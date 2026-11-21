@@ -14,7 +14,7 @@ async function getHomeContent(): Promise<Record<string, string>> {
   await connection();
   if (!isDatabaseConfigured()) return {};
   try {
-    const [rows]: any = await pool.query(
+    const [rows] = await pool.query(
       `SELECT content_key, content_value
        FROM site_content
        WHERE page_name = 'home'
@@ -29,7 +29,7 @@ async function getHomeContent(): Promise<Record<string, string>> {
           )`
     );
     const result: Record<string, string> = {};
-    for (const r of rows) result[r.content_key] = r.content_value || "";
+    for (const r of rows as Array<{ content_key: string; content_value: string | null }>) result[r.content_key] = r.content_value || "";
     return result;
   } catch {
     return {};

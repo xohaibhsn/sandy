@@ -16,11 +16,11 @@ interface Post {
 
 async function getPost(slug: string): Promise<Post | null> {
   try {
-    const [rows]: any = await pool.query(
+    const [rows] = await pool.query(
       'SELECT * FROM blog_posts WHERE slug = ? AND status = "published" AND active = 1 LIMIT 1',
       [slug]
     );
-    return rows[0] || null;
+    return (rows as Post[])[0] || null;
   } catch {
     return null;
   }
@@ -115,7 +115,7 @@ export default async function BlogSlugPage({ params }: { params: Promise<{ slug:
       />
       <JsonLd data={articleLd} />
       <JsonLd data={faqLd} />
-      <BlogPostClient post={post as any} />
+      <BlogPostClient post={post as Parameters<typeof BlogPostClient>[0]["post"]} />
     </>
   );
 }

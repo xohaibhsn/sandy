@@ -34,6 +34,15 @@ export interface Product {
   stock_quantity?: number | string | null;
 }
 
+interface SearchResult {
+  id: number;
+  slug?: string | null;
+  name: string;
+  image?: string | null;
+  category?: string | null;
+  price: number;
+}
+
 const STARS = Array.from({length:50}).map((_,i) => ({
   left: `${((i * 137.5) % 100).toFixed(2)}%`,
   top: `${((i * 97.3) % 100).toFixed(2)}%`,
@@ -56,7 +65,7 @@ export default function ProductsClient({
   const [products, setProducts] = useState<Product[]>(hasInitial ? initialProducts : []);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(!hasInitial);
-  const [added, setAdded] = useState<number | null>(null);
+  const [, setAdded] = useState<number | null>(null);
   const [hoveringId, setHoveringId] = useState<number | null>(null);
   const [filter, setFilter] = useState("All");
   const [sort, setSort] = useState("featured");
@@ -66,7 +75,7 @@ export default function ProductsClient({
   const sc = useSiteContent();
   // Live search
   const [searchQ, setSearchQ] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -215,7 +224,7 @@ export default function ProductsClient({
           }
           {searchOpen && searchResults.length > 0 && (
             <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:320,background:"#FFFFFF",border:"1px solid #E5E5E5",borderRadius:14,overflow:"hidden",zIndex:200,boxShadow:"0 8px 32px rgba(0,0,0,0.12)"}}>
-              {searchResults.map((r:any)=>(
+              {searchResults.map((r:SearchResult)=>(
                 <a key={r.id} href={`/products/${r.slug}`} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",textDecoration:"none",borderBottom:"1px solid #F0F0F0",transition:"background 0.15s"}} onMouseEnter={e=>(e.currentTarget.style.background="#F9F9F9")} onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
                   {r.image ? <img src={r.image} alt={r.name} style={{width:40,height:40,borderRadius:6,objectFit:"cover",border:"1px solid #E5E5E5"}} loading="lazy" /> : <div style={{width:40,height:40,borderRadius:6,background:"#F5F5F5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📦</div>}
                   <div style={{flex:1,overflow:"hidden"}}>

@@ -36,7 +36,7 @@ async function getActiveCategorySlug(categoryName: string): Promise<string | nul
 async function getProduct(slug: string): Promise<Product | null> {
   try {
     const s = slug.toLowerCase();
-    const [rows]: any = await pool.query(
+    const [rows] = await pool.query(
       `SELECT * FROM products
        WHERE (active = 1 OR active IS NULL) AND (
             slug = ?
@@ -45,7 +45,7 @@ async function getProduct(slug: string): Promise<Product | null> {
        LIMIT 1`,
       [s, s]
     );
-    return rows[0] || null;
+    return (rows as Product[])[0] || null;
   } catch {
     return null;
   }
@@ -138,7 +138,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         ]}
       />
       <JsonLd data={productLd} />
-      <ProductDetail slug={slug} initialProduct={product as any} categorySlug={categorySlug} />
+      <ProductDetail slug={slug} initialProduct={product} categorySlug={categorySlug} />
     </>
   );
 }

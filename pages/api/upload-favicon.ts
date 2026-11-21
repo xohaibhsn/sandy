@@ -62,8 +62,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     return res.status(200).json({ success: true, url: publicUrl });
-  } catch (error: any) {
-    console.error('[api/upload-favicon] request failed', error?.code || 'unknown');
+  } catch (error: unknown) {
+    console.error('[api/upload-favicon] request failed', (error as { code?: unknown } | null | undefined)?.code || 'unknown');
     return res.status(500).json({ error: 'Server error' });
   }
 }

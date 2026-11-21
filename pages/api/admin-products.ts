@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import type { RowDataPacket } from 'mysql2';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import pool from '../../lib/db';
 import { parsePrice } from '../../lib/site';
 import { requirePermission } from '../../lib/adminPermissions';
@@ -237,8 +237,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         const [rows] = await pool.query('SELECT * FROM products ORDER BY id DESC');
         return res.status(200).json(Array.isArray(rows) ? rows : []);
-      } catch (err: any) {
-        console.error('[api/admin-products] GET', err?.message || err);
+      } catch (err: unknown) {
+        console.error('[api/admin-products] GET', (err as { message?: unknown } | null | undefined)?.message || err);
         const [rows] = await pool.query('SELECT * FROM products');
         return res.status(200).json(Array.isArray(rows) ? rows : []);
       }
@@ -308,7 +308,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const safeOgImage = assertSafeImageUrl(og_image ?? '');
 
       try {
-        const [result]: any = await pool.query(
+        const [result] = await pool.query<ResultSetHeader>(
           `INSERT INTO products (name, slug, description, price, category, badge, image, stock, track_inventory, stock_quantity, active,
             short_description, full_description, seo_title, meta_description, focus_keyword, features, og_image)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
@@ -354,8 +354,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           await writeRequiresShipping(Number(result.insertId), 0);
         }
         return res.status(200).json({ success: true, id: result.insertId, slug: finalSlug });
-      } catch (err: any) {
-        if (err?.code === 'ER_DUP_ENTRY') {
+      } catch (err: unknown) {
+        if ((err as { code?: unknown } | null | undefined)?.code === 'ER_DUP_ENTRY') {
           return res.status(409).json({ error: 'Slug already exists. Choose a different URL slug.' });
         }
         throw err;
@@ -534,8 +534,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           await writeRequiresShipping(Number(id), shipInput.value);
         }
         return res.status(200).json({ success: true, slug: finalSlug });
-      } catch (err: any) {
-        if (err?.code === 'ER_DUP_ENTRY') {
+      } catch (err: unknown) {
+        if ((err as { code?: unknown } | null | undefined)?.code === 'ER_DUP_ENTRY') {
           return res.status(409).json({ error: 'Slug already exists. Choose a different URL slug.' });
         }
         throw err;
@@ -557,7 +557,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'active must be 0 or 1' });
       }
 
-      const [beforeActiveRows]: any = await pool.query(
+      const [beforeActiveRows] = await pool.query<RowDataPacket[]>(
         'SELECT name, active FROM products WHERE id = ? LIMIT 1',
         [productId]
       );
@@ -588,7 +588,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'DELETE') {
       const { id } = req.query;
-      const [beforeRows]: any = await pool.query('SELECT name, slug FROM products WHERE id = ? LIMIT 1', [id]);
+      const [beforeRows] = await pool.query<RowDataPacket[]>('SELECT name, slug FROM products WHERE id = ? LIMIT 1', [id]);
       const before = Array.isArray(beforeRows) ? beforeRows[0] : null;
       await pool.query('DELETE FROM products WHERE id = ?', [id]);
       if (before) {
@@ -606,17 +606,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof UrlValidationError) {
       return res.status(400).json({ error: 'Invalid URL or path' });
     }
-    const code = error?.code || '';
-    if (code === 'ER_ACCESS_DENIED_ERROR' || /access denied/i.test(String(error?.message || ''))) {
+    const errInfo = error as { code?: unknown; message?: unknown } | null | undefined;
+    const code = errInfo?.code || '';
+    if (code === 'ER_ACCESS_DENIED_ERROR' || /access denied/i.test(String(errInfo?.message || ''))) {
       return res.status(500).json({
         error: 'Database connection failed. On Hostinger set DB_HOST to 127.0.0.1 (not srvXXX.hstgr.io).',
       });
     }
-    console.error('[api/admin-products] request failed', error?.code || 'unknown');
+    console.error('[api/admin-products] request failed', errInfo?.code || 'unknown');
     return res.status(500).json({ error: 'Server error' });
   }
 }

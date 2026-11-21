@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { UploadApiOptions } from 'cloudinary';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -119,7 +120,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
       const cloudinary = (await import('../../lib/cloudinary')).default;
 
-      const uploadOptions: any = { folder: cloudinaryFolder };
+      const uploadOptions: UploadApiOptions = { folder: cloudinaryFolder };
 
       if (isLogo) {
         // Logo: keep transparency, limit size without square crop / webp force
@@ -169,7 +170,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!preserveImage) {
       try {
-        const sharp = require('sharp');
+        const sharp = (await import('sharp')).default;
         const inputBuffer = Buffer.from(base64Data, 'base64');
         const webpName = safeName.replace(/\.[^.]+$/, '.webp');
         await sharp(inputBuffer).resize(800, 800, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 85 }).toFile(path.join(uploadsDir, webpName));
@@ -183,8 +184,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const sub = localSub ? `${localSub}/` : '';
     return res.status(200).json({ path: `/uploads/${sub}${safeName}` });
 
-  } catch (error: any) {
-    console.error('[api/upload] request failed', error?.code || 'unknown');
+  } catch (error: unknown) {
+    console.error('[api/upload] request failed', (error as { code?: unknown } | null | undefined)?.code || 'unknown');
     return res.status(500).json({ error: 'Server error' });
   }
 }
