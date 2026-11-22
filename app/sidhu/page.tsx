@@ -26,6 +26,7 @@ import TaxSettingsPanel from "../../components/admin/TaxSettingsPanel";
 import ActivityLogPanel from "../../components/admin/ActivityLogPanel";
 import AccountSecurityPanel from "../../components/admin/AccountSecurityPanel";
 import OrderProtectionSettingsPanel from "../../components/admin/OrderProtectionSettingsPanel";
+import CustomerEmailSettingsPanel from "../../components/admin/CustomerEmailSettingsPanel";
 import ShippingSettingsPanel from "../../components/admin/ShippingSettingsPanel";
 import BlacklistPanel, { CustomerBlockButton } from "../../components/admin/BlacklistPanel";
 import DashboardCards from "../../components/admin/DashboardCards";
@@ -2627,6 +2628,7 @@ export default function AdminPage() {
           )}
 
           {tab==="settings" && adminRole==="super_admin" && <OrderProtectionSettingsPanel />}
+          {tab==="settings" && adminRole==="super_admin" && <CustomerEmailSettingsPanel />}
           {tab==="settings" && adminRole==="super_admin" && (
             <ShippingSettingsPanel onFlagChange={(on) => setSiteContent(s => ({ ...s, shipping_enabled: on ? "1" : "0" }))} />
           )}

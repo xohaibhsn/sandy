@@ -35,6 +35,11 @@ import {
   resetAccountSettingsCache,
 } from '../../lib/accountSettings';
 import {
+  isCustomerEmailSettingsContentKey,
+  validateCustomerEmailSetting,
+  resetCustomerEmailSettingsCache,
+} from '../../lib/customerEmailSettings';
+import {
   isShippingSettingsContentKey,
   validateShippingSetting,
   resetShippingSettingsCache,
@@ -122,6 +127,14 @@ function persistSiteContentValue(
 
   if (isAccountSettingsContentKey(key)) {
     const parsed = validateAccountSetting(key, value);
+    if (!parsed.ok) {
+      throw new ContentValidationError(parsed.error);
+    }
+    return parsed.value;
+  }
+
+  if (isCustomerEmailSettingsContentKey(key)) {
+    const parsed = validateCustomerEmailSetting(key, value);
     if (!parsed.ok) {
       throw new ContentValidationError(parsed.error);
     }
@@ -522,6 +535,7 @@ function isAuditSettingKey(contentKey: unknown): boolean {
     contentKey === LOW_STOCK_CONTENT_KEY ||
     isOrderProtectionContentKey(contentKey) ||
     isAccountSettingsContentKey(contentKey) ||
+    isCustomerEmailSettingsContentKey(contentKey) ||
     isShippingSettingsContentKey(contentKey)
   );
 }
@@ -634,7 +648,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return;
       }
       if (
-        requestedKeys.some((k) => k && isAccountSettingsContentKey(k)) &&
+        requestedKeys.some(
+          (k) => k && (isAccountSettingsContentKey(k) || isCustomerEmailSettingsContentKey(k))
+        ) &&
         !requireSessionPermission(session, res, 'settings:accounts')
       ) {
         return;
@@ -686,6 +702,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (prepared.some((row) => isAccountSettingsContentKey(row.contentKey))) {
           resetAccountSettingsCache();
         }
+        if (prepared.some((row) => isCustomerEmailSettingsContentKey(row.contentKey))) {
+          resetCustomerEmailSettingsCache();
+        }
         if (prepared.length > 0) {
           await auditSiteContentWrite(req, session, auditBefore, prepared, 'update');
         }
@@ -703,6 +722,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         if (isAccountSettingsContentKey(contentKey)) {
           resetAccountSettingsCache();
+        }
+        if (isCustomerEmailSettingsContentKey(contentKey)) {
+          resetCustomerEmailSettingsCache();
         }
         await auditSiteContentWrite(req, session, auditBefore, [{ contentKey, safeValue }], 'update');
       } else {
@@ -724,6 +746,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (isAccountSettingsContentKey(key)) {
         resetAccountSettingsCache();
       }
+      if (isCustomerEmailSettingsContentKey(key)) {
+        resetCustomerEmailSettingsCache();
+      }
       if (isShippingSettingsContentKey(key)) {
         resetShippingSettingsCache();
       }
@@ -738,6 +763,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await pool.query('DELETE FROM site_content WHERE content_key=?', [key]);
       if (isAccountSettingsContentKey(key)) {
         resetAccountSettingsCache();
+      }
+      if (isCustomerEmailSettingsContentKey(key)) {
+        resetCustomerEmailSettingsCache();
       }
       if (isShippingSettingsContentKey(key)) {
         resetShippingSettingsCache();

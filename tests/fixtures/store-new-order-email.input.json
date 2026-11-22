@@ -1,0 +1,29 @@
+{
+  "to": "store@example.com",
+  "order_id": "SY-20260101-ABC123",
+  "customer_name": "Ayesha <b>Khan</b>\r\nBcc: evil@example.com",
+  "customer_email": "ayesha@example.com",
+  "customer_phone": "03001234567",
+  "delivery_address": "House 5, \"Street\" & <Block>",
+  "city": "Lahore",
+  "postcode": "54000",
+  "notes": "Line one\nLine <two> & 'three'",
+  "payment_method": "jazzcash",
+  "payment_reference": "TX&123",
+  "authoritativeItems": [
+    { "product_name": "Case <script>alert(1)</script> \"x\" & more", "quantity": 2, "price": 999 },
+    { "product_name": "Cable", "quantity": 1, "price": 1500 }
+  ],
+  "shippingOn": true,
+  "shipping": 250,
+  "shippingZoneName": "Punjab <Zone>",
+  "isPickup": true,
+  "pickupPointName": "Mall & Co",
+  "areasOn": true,
+  "shippingAreaSnapshot": "Gulberg",
+  "taxLabel": "GST 17%",
+  "vat_amount": 612.5,
+  "discount_amount": 300,
+  "persistedCoupon": "SAVE<10>",
+  "total": 4060.5
+}

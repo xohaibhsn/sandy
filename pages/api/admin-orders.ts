@@ -4,6 +4,7 @@ import pool from "../../lib/db";
 import { requirePermission, type AdminPermission } from "../../lib/adminPermissions";
 import type { AdminSession } from "../../lib/adminAuth";
 import { recordAudit } from "../../lib/auditLog";
+import { sendCustomerOrderEmailForStoredOrder } from "../../lib/customerEmailDispatch";
 import {
   CANCEL_COLUMN_MISSING,
   CANCEL_COLUMN_MISSING_MESSAGE,
@@ -955,6 +956,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               req,
             });
             await connection.commit();
+            // Customer "order confirmed" email only on a real transition (flag-gated, fire-and-forget).
+            if (String(row.status) !== "confirmed" && Number(result.affectedRows) === 1) {
+              void sendCustomerOrderEmailForStoredOrder({ kind: "confirmed", orderId: trimmedId });
+            }
             return res.status(200).json({
               success: true,
               order_id: trimmedId,
@@ -1121,6 +1126,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             },
             req,
           });
+          // Customer "order confirmed" email only on a real transition (flag-gated, fire-and-forget).
+          const header = result as ResultSetHeader;
+          if (
+            status === "confirmed" &&
+            currentStatus !== "confirmed" &&
+            Number(header.affectedRows) === 1 &&
+            (header.changedRows === undefined || Number(header.changedRows) > 0)
+          ) {
+            void sendCustomerOrderEmailForStoredOrder({ kind: "confirmed", orderId: trimmedId });
+          }
         }
         return res.status(200).json({
           success: true,

@@ -1452,7 +1452,7 @@ try {
     }
     const off = await admin(adminAccountsSettingsHandler, tokens.super_admin, { url: "/api/admin-accounts-settings" });
     eq(off.statusCode, 200, JSON.stringify(off.body));
-    eq(off.body, { success: true, settings: { accounts_enabled: false }, otpProviderConfigured: true });
+    eq(off.body, { success: true, settings: { accounts_enabled: false }, otpProviderConfigured: true, customerEmails: { received: false, confirmed: false } });
     eq(off.headers["cache-control"], "no-store");
     ok(!JSON.stringify(off.body).includes("mock"), "provider name is never exposed");
     eq((await admin(adminAccountsSettingsHandler, tokens.super_admin, { method: "POST", url: "/api/admin-accounts-settings", body: { accounts_enabled: "1" } })).statusCode, 405, "read-only endpoint");

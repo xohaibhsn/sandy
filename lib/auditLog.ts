@@ -24,7 +24,9 @@ export type AuditAction =
   | "login_failed"
   | "logout"
   | "setting_change"
-  | "upload";
+  | "upload"
+  | "customer_email_sent"
+  | "customer_email_failed";
 
 export type AuditActorInput =
   | Pick<AdminSession, "staffId" | "isMaster" | "role" | "name">

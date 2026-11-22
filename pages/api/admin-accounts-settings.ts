@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requirePermission } from "../../lib/adminPermissions";
 import { loadAccountSettings } from "../../lib/accountSettings";
+import { loadCustomerEmailSettings } from "../../lib/customerEmailSettings";
 import { isOtpProviderConfigured } from "../../lib/otp/index";
 
 /**
@@ -19,10 +20,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader("Cache-Control", "no-store");
   try {
     const settings = await loadAccountSettings();
+    const customerEmails = await loadCustomerEmailSettings();
     return res.status(200).json({
       success: true,
       settings,
       otpProviderConfigured: isOtpProviderConfigured(),
+      customerEmails,
     });
   } catch (err) {
     console.error("[api/admin-accounts-settings] failed", (err as { code?: string })?.code || "unknown");
