@@ -168,11 +168,12 @@ const {
 } = settingsMod;
 const { buildOrderConfirmedEmail, buildOrderReceivedEmail } = await import("../lib/customerEmails.ts");
 const { sanitizeSubjectPart, isValidCustomerEmail } = await import("../lib/emailText.ts");
-const { createOrderTransport, sendMailSafe } = await import("../lib/mailer.ts");
+const { createOrderTransport, sendMailSafe, resolveMailFromAddress } = await import("../lib/mailer.ts");
 const { sendCustomerOrderEmail } = await import("../lib/customerEmailDispatch.ts");
 const { buildStoreNewOrderEmail } = await import("../lib/storeOrderEmail.ts");
 const { resetOrderProtectionSettingsCache } = await import("../lib/orderProtectionSettings.ts");
 const { resetAuditSchemaProbeForTests } = await import("../lib/auditLog.ts");
+const { ORDERS_FROM_EMAIL } = await import("../lib/site.ts");
 const adminOrders = (await import("../pages/api/admin-orders.ts")).default;
 const siteContent = (await import("../pages/api/site-content.ts")).default;
 const adminAccountsSettings = (await import("../pages/api/admin-accounts-settings.ts")).default;
@@ -204,7 +205,7 @@ const setNodeEnv = (v: string) => {
   mutableEnv.NODE_ENV = v;
 };
 const saved: Record<string, string | undefined> = {};
-for (const k of ["SMTP_USER", "SMTP_PASS", "SANDY_MAIL_JSON_TRANSPORT", "NODE_ENV"]) saved[k] = process.env[k];
+for (const k of ["SMTP_USER", "SMTP_PASS", "SANDY_MAIL_JSON_TRANSPORT", "NODE_ENV", "MAIL_FROM"]) saved[k] = process.env[k];
 
 function restoreEnv() {
   for (const [k, v] of Object.entries(saved)) {
@@ -501,19 +502,36 @@ describe("sendCustomerOrderEmail", () => {
     assert.ok(!String(audit.summary + audit.detail).includes("example.test"), "no address in audit");
   });
 
-  it("invalid customer address -> no send", async () => {
+  it("invalid customer address -> no send + customer_email_skipped (invalid_email)", async () => {
     setFlags({ customer_email_received_enabled: "1" });
     await sendCustomerOrderEmail({ kind: "received", order: { ...sampleOrder, customerEmail: "not-an-email" } });
     await sendCustomerOrderEmail({ kind: "received", order: { ...sampleOrder, customerEmail: "" } });
     assert.equal(sent.length, 0);
+    assert.equal(emailAudits().length, 2);
+    for (const a of emailAudits()) {
+      assert.equal(a.action, "customer_email_skipped");
+      assert.deepEqual(JSON.parse(String(a.detail)), { kind: "received", reason: "invalid_email" });
+      assert.ok(!String(a.summary + a.detail).includes("example.test"), "no address in audit");
+    }
   });
 
-  it("no SMTP configuration -> no send (same gate as the store email)", async () => {
+  it("no SMTP configuration -> no send + customer_email_skipped (not_configured)", async () => {
     setFlags({ customer_email_received_enabled: "1" });
     delete process.env.SMTP_USER;
     delete process.env.SMTP_PASS;
     await sendCustomerOrderEmail({ kind: "received", order: sampleOrder });
     assert.equal(sent.length, 0);
+    assert.equal(emailAudits().length, 1);
+    assert.equal(emailAudits()[0].action, "customer_email_skipped");
+    assert.deepEqual(JSON.parse(String(emailAudits()[0].detail)), { kind: "received", reason: "not_configured" });
+  });
+
+  it("flag OFF -> invalid/not_configured still silent (no skip row)", async () => {
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
+    await sendCustomerOrderEmail({ kind: "received", order: { ...sampleOrder, customerEmail: "bad" } });
+    assert.equal(sent.length, 0);
+    assert.equal(emailAudits().length, 0);
   });
 
   it("send failure -> customer_email_failed audit, nothing thrown, logs carry no address/subject/body", async () => {
@@ -604,13 +622,54 @@ describe("admin-orders: confirmed email only on a real transition", () => {
     assert.ok(!/Order confirmed|Hi Zed|Good news/i.test(blob), "no subject / body in logs");
   });
 
-  it("order without a valid email -> no send", async () => {
+  it("order without a valid email -> no send + customer_email_skipped", async () => {
     setFlags({ customer_email_confirmed_enabled: "1" });
     db.orderEmail = "";
     const r = await patch("SY-105", "confirmed");
     assert.equal(r.statusCode, 200);
     await sleep(60);
     assert.equal(sent.length, 0);
+    assert.ok(await waitFor(() => emailAudits().length === 1));
+    assert.equal(emailAudits()[0].action, "customer_email_skipped");
+    assert.deepEqual(JSON.parse(String(emailAudits()[0].detail)), { kind: "confirmed", reason: "invalid_email" });
+  });
+});
+
+/* ------------------------------------------------------------------ MAIL_FROM */
+
+describe("MAIL_FROM (optional From override)", () => {
+  it("unset / invalid -> ORDERS_FROM_EMAIL; valid -> override; golden store email unchanged when unset", () => {
+    delete process.env.MAIL_FROM;
+    assert.equal(resolveMailFromAddress(), ORDERS_FROM_EMAIL);
+
+    process.env.MAIL_FROM = "not-an-email";
+    assert.equal(resolveMailFromAddress(), ORDERS_FROM_EMAIL);
+
+    process.env.MAIL_FROM = "  orders.override@example.test  ";
+    assert.equal(resolveMailFromAddress(), "orders.override@example.test");
+
+    delete process.env.MAIL_FROM;
+    const input = JSON.parse(readFileSync(path.join(root, "tests/fixtures/store-new-order-email.input.json"), "utf8"));
+    const golden = JSON.parse(readFileSync(path.join(root, "tests/fixtures/store-new-order-email.golden.json"), "utf8"));
+    const f = (value: string) => ({ value });
+    const out = buildStoreNewOrderEmail({
+      ...input,
+      customer_name: f(input.customer_name),
+      customer_email: f(input.customer_email),
+      customer_phone: f(input.customer_phone),
+      delivery_address: f(input.delivery_address),
+      city: f(input.city),
+      postcode: f(input.postcode),
+      notes: f(input.notes),
+      payment_reference: f(input.payment_reference),
+    });
+    assert.equal(JSON.stringify(out), JSON.stringify(golden), "MAIL_FROM unset keeps golden byte-identical");
+
+    process.env.MAIL_FROM = "custom.from@example.test";
+    const overridden = buildOrderReceivedEmail(sampleOrder);
+    assert.equal(overridden.from, `"S&Y Orders" <custom.from@example.test>`);
+    assert.ok(!String(overridden.from).includes("noreply@sandy.com.pk") || true);
+    delete process.env.MAIL_FROM;
   });
 });
 

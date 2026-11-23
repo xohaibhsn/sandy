@@ -55,7 +55,9 @@ const { resetCustomerEmailSettingsCache, CUSTOMER_EMAIL_SETTINGS_KEYS } = await 
 const { resetOrderProtectionSettingsCache } = await importFromRoot("lib/orderProtectionSettings.ts");
 const { resetAuditSchemaProbeForTests } = await importFromRoot("lib/auditLog.ts");
 const { CONTACT_EMAIL } = await importFromRoot("lib/site.ts");
-const ordersHandler = (await importFromRoot("pages/api/orders.ts")).default;
+const ordersMod = await importFromRoot("pages/api/orders.ts");
+const ordersHandler = ordersMod.default;
+const { __resetStoreEmailSkipThrottleForTests } = ordersMod;
 const adminOrdersHandler = (await importFromRoot("pages/api/admin-orders.ts")).default;
 const siteContentHandler = (await importFromRoot("pages/api/site-content.ts")).default;
 const adminAccountsSettingsHandler = (await importFromRoot("pages/api/admin-accounts-settings.ts")).default;
@@ -141,7 +143,9 @@ async function resetAll() {
   failSend = false;
   process.env.SMTP_USER = "mock-user";
   process.env.SMTP_PASS = "mock-pass";
+  delete process.env.MAIL_FROM;
   resetAuditSchemaProbeForTests();
+  __resetStoreEmailSkipThrottleForTests();
   await setFlags({});
   installMockTransport();
   clear();
@@ -170,6 +174,9 @@ async function placeOrder(overrides = {}) {
 
 const emailAudits = () =>
   pool.query("SELECT action, actor_type, entity_id, summary, detail_json FROM admin_audit_log WHERE action LIKE 'customer_email_%' ORDER BY id ASC").then(([r]) => r);
+
+const storeAudits = () =>
+  pool.query("SELECT action, actor_type, entity_id, summary, detail_json FROM admin_audit_log WHERE action LIKE 'store_email_%' ORDER BY id ASC").then(([r]) => r);
 
 async function mintToken(role) {
   ensureTestMasterLoginEnv();
@@ -226,10 +233,13 @@ try {
   await section("1. flags OFF: store email only; confirm sends nothing; no customer audit", async () => {
     const res = await placeOrder();
     eq(res.statusCode, 200, JSON.stringify(res.body));
-    await sleep(150);
-    eq(sent.length, 1, "only the store email");
+    ok(await waitFor(async () => sent.length === 1 && (await storeAudits()).length === 1));
     eq(sent[0].to, CONTACT_EMAIL, "store email goes to the contact address");
     ok(String(sent[0].subject).startsWith("🛍️ New Order "), "store subject unchanged");
+    eq((await storeAudits())[0].action, "store_email_sent");
+    eq((await storeAudits())[0].entity_id, res.body.order_id);
+    eq(JSON.parse((await storeAudits())[0].detail_json || "{}"), {});
+    ok(!String((await storeAudits())[0].summary + ((await storeAudits())[0].detail_json || "")).includes("@"), "no address in store audit");
 
     const token = await mintToken("super_admin");
     const orderId = await insertOrder();
@@ -353,11 +363,13 @@ try {
     await sleep(150);
     eq(sent.length, 1);
 
-    // invalid / missing customer address -> no email
+    // invalid / missing customer address -> no email + skipped audit
     const noMail = await insertOrder({ email: "" });
     eq((await patchStatus(token, noMail, "confirmed")).statusCode, 200);
-    await sleep(150);
+    ok(await waitFor(async () => (await emailAudits()).length === 2));
     eq(sent.length, 1, "no valid address, no send");
+    eq((await emailAudits())[1].action, "customer_email_skipped");
+    eq(JSON.parse((await emailAudits())[1].detail_json), { kind: "confirmed", reason: "invalid_email" });
   });
 
   /* 5 ------------------------------------------------------------ */
@@ -403,6 +415,57 @@ try {
   });
 
   /* 6 ------------------------------------------------------------ */
+  await section("6b. store email audit: failed + skipped throttle + MAIL_FROM", async () => {
+    // failed
+    failSend = true;
+    const failRes = await placeOrder({ customer_email: "buyer.fail@example.test" });
+    eq(failRes.statusCode, 200, JSON.stringify(failRes.body));
+    ok(await waitFor(async () => (await storeAudits()).length === 1));
+    eq((await storeAudits())[0].action, "store_email_failed");
+    // REDACT rules unchanged: key name "code" is redacted; detail still carries only that key (no address/subject/body).
+    eq(JSON.parse((await storeAudits())[0].detail_json), { code: "[redacted]" });
+    ok(!String((await storeAudits())[0].summary + (await storeAudits())[0].detail_json).includes("example.test"));
+
+    // skipped (not configured) + throttle
+    failSend = false;
+    sent.length = 0;
+    await pool.query("DELETE FROM admin_audit_log");
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
+    __resetStoreEmailSkipThrottleForTests();
+    const skip1 = await placeOrder({ customer_email: "buyer.skip1@example.test" });
+    eq(skip1.statusCode, 200);
+    ok(await waitFor(async () => (await storeAudits()).length === 1));
+    eq((await storeAudits())[0].action, "store_email_skipped");
+    eq(JSON.parse((await storeAudits())[0].detail_json), { reason: "not_configured" });
+    const skip2 = await placeOrder({ customer_email: "buyer.skip2@example.test" });
+    eq(skip2.statusCode, 200);
+    await sleep(250);
+    eq((await storeAudits()).length, 1, "store_email_skipped throttled within 10 minutes");
+    eq(sent.length, 0);
+
+    // customer skip when received ON + not configured
+    await setFlags({ customer_email_received_enabled: "1" });
+    const custSkip = await placeOrder({ customer_email: "buyer.custskip@example.test" });
+    eq(custSkip.statusCode, 200);
+    ok(await waitFor(async () => (await emailAudits()).length === 1));
+    eq((await emailAudits())[0].action, "customer_email_skipped");
+    eq(JSON.parse((await emailAudits())[0].detail_json), { kind: "received", reason: "not_configured" });
+
+    // MAIL_FROM valid on store send
+    process.env.SMTP_USER = "mock-user";
+    process.env.SMTP_PASS = "mock-pass";
+    process.env.MAIL_FROM = "override.from@example.test";
+    await setFlags({});
+    await pool.query("DELETE FROM admin_audit_log");
+    sent.length = 0;
+    const mailFromRes = await placeOrder({ customer_email: "buyer.mf@example.test" });
+    eq(mailFromRes.statusCode, 200);
+    ok(await waitFor(async () => sent.length === 1 && (await storeAudits()).length === 1));
+    eq(sent[0].from, `"S&Y Orders" <override.from@example.test>`);
+    delete process.env.MAIL_FROM;
+  });
+
   await section("6. RBAC: new keys need settings:accounts; admin-accounts-settings is additive", async () => {
     const tokens = {
       writer: await mintToken("writer"),

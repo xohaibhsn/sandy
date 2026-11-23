@@ -6,6 +6,7 @@ import pool from '../../lib/db';
 import { isMailConfigured, sendMailSafe } from '../../lib/mailer';
 import { buildStoreNewOrderEmail } from '../../lib/storeOrderEmail';
 import { sendCustomerOrderEmail } from '../../lib/customerEmailDispatch';
+import { recordAudit } from '../../lib/auditLog';
 import { getContactConfig } from '../../lib/contact-config';
 import {
   TAX_CONFIG_UNAVAILABLE_MESSAGE,
@@ -48,6 +49,22 @@ import { loadActivePickupPoint, parseDeliveryOpsInput } from '../../lib/delivery
 import { nextOrderId } from '../../lib/orderId';
 
 const ALLOWED_PAYMENT_METHODS = new Set(['cod', 'jazzcash', 'easypaisa', 'bank']);
+
+/** In-process throttle: at most one store_email_skipped audit per 10 minutes. */
+const STORE_EMAIL_SKIP_THROTTLE_MS = 10 * 60 * 1000;
+let lastStoreEmailSkippedAt = 0;
+
+function shouldAuditStoreEmailSkipped(): boolean {
+  const now = Date.now();
+  if (now - lastStoreEmailSkippedAt < STORE_EMAIL_SKIP_THROTTLE_MS) return false;
+  lastStoreEmailSkippedAt = now;
+  return true;
+}
+
+/** Test-only: reset the store_email_skipped throttle clock. */
+export function __resetStoreEmailSkipThrottleForTests(): void {
+  lastStoreEmailSkippedAt = 0;
+}
 
 const FIELD_MAX = {
   customer_name: 255,
@@ -1267,8 +1284,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Fire-and-forget email AFTER commit — only for newly created orders.
     if (createdNewOrder) {
-      try {
-        if (isMailConfigured()) {
+      // Store "New Order" email + audit (sent/failed/skipped). Never alters the response.
+      void (async () => {
+        try {
+          if (!isMailConfigured()) {
+            if (shouldAuditStoreEmailSkipped()) {
+              await recordAudit(pool, {
+                actor: { actorType: 'system' },
+                action: 'store_email_skipped',
+                entityType: 'order',
+                entityId: order_id,
+                summary: `Store email skipped for order ${order_id}`,
+                detail: { reason: 'not_configured' },
+              });
+            }
+            return;
+          }
           const storeMail = buildStoreNewOrderEmail({
             to: contact.email,
             order_id,
@@ -1295,11 +1326,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             persistedCoupon,
             total,
           });
-          void sendMailSafe(storeMail, { kind: 'store_new_order', orderId: order_id });
+          const result = await sendMailSafe(storeMail, { kind: 'store_new_order', orderId: order_id });
+          await recordAudit(pool, {
+            actor: { actorType: 'system' },
+            action: result.ok ? 'store_email_sent' : 'store_email_failed',
+            entityType: 'order',
+            entityId: order_id,
+            summary: result.ok
+              ? `Store email sent for order ${order_id}`
+              : `Store email failed for order ${order_id}`,
+            detail: result.ok ? {} : { code: result.code },
+          });
+        } catch {
+          console.error('[orders] Email notification setup failed');
         }
-      } catch (emailErr) {
-        console.error('[orders] Email notification setup failed:', emailErr);
-      }
+      })();
 
       // Customer "order received" email: flag-gated (default OFF), fire-and-forget, never alters the response.
       void sendCustomerOrderEmail({

@@ -17,6 +17,22 @@ import { CONTACT_EMAIL } from "./site";
 
 export type CustomerEmailKind = "received" | "confirmed";
 
+async function auditCustomerSkipped(
+  db: Pool | PoolConnection,
+  kind: CustomerEmailKind,
+  orderId: string,
+  reason: "not_configured" | "invalid_email"
+): Promise<void> {
+  await recordAudit(db, {
+    actor: { actorType: "system" },
+    action: "customer_email_skipped",
+    entityType: "order",
+    entityId: orderId,
+    summary: `Customer ${kind} email skipped for order ${orderId}`,
+    detail: { kind, reason },
+  });
+}
+
 export async function sendCustomerOrderEmail(opts: {
   kind: CustomerEmailKind;
   order: CustomerEmailOrder;
@@ -25,15 +41,23 @@ export async function sendCustomerOrderEmail(opts: {
 }): Promise<void> {
   try {
     const { kind, order } = opts;
+    const db = opts.db ?? pool;
     const settings = await loadCustomerEmailSettings();
     if (kind === "received" ? !settings.received : !settings.confirmed) return;
-    if (!isValidCustomerEmail(order.customerEmail)) return;
-    if (!opts.transport && !isMailConfigured()) return;
+
+    if (!isValidCustomerEmail(order.customerEmail)) {
+      await auditCustomerSkipped(db, kind, order.orderId, "invalid_email");
+      return;
+    }
+    if (!opts.transport && !isMailConfigured()) {
+      await auditCustomerSkipped(db, kind, order.orderId, "not_configured");
+      return;
+    }
 
     const msg = kind === "received" ? buildOrderReceivedEmail(order) : buildOrderConfirmedEmail(order);
     const result = await sendMailSafe(msg, { kind: `customer_${kind}`, orderId: order.orderId }, opts.transport);
 
-    await recordAudit(opts.db ?? pool, {
+    await recordAudit(db, {
       actor: { actorType: "system" },
       action: result.ok ? "customer_email_sent" : "customer_email_failed",
       entityType: "order",
@@ -105,7 +129,6 @@ export async function sendCustomerOrderEmailForStoredOrder(opts: {
     }
     const row = rows[0];
     if (!row) return;
-    if (!isValidCustomerEmail(String(row.customer_email ?? ""))) return;
 
     const [itemRows] = await db.query<RowDataPacket[]>(
       `SELECT product_name, price, quantity FROM order_items WHERE order_id = ? ORDER BY id ASC`,

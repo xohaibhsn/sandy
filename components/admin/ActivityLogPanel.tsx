@@ -37,6 +37,19 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
 };
 
+const ACTION_LABELS: Record<string, string> = {
+  customer_email_sent: "Customer email sent",
+  customer_email_failed: "Customer email failed",
+  customer_email_skipped: "Customer email skipped",
+  store_email_sent: "Store email sent",
+  store_email_failed: "Store email failed",
+  store_email_skipped: "Store email skipped",
+};
+
+function actionLabel(action: string): string {
+  return ACTION_LABELS[action] || action;
+}
+
 function fmtWhen(v: string): string {
   const d = new Date(v);
   return Number.isFinite(d.getTime())
@@ -269,7 +282,7 @@ export default function ActivityLogPanel() {
                   {r.actor_name || r.actor_type}
                   {r.actor_role ? ` (${r.actor_role})` : ""}
                 </td>
-                <td style={{ padding: "8px 10px" }}>{r.action}</td>
+                <td style={{ padding: "8px 10px" }}>{actionLabel(r.action)}</td>
                 <td style={{ padding: "8px 10px" }}>
                   {r.entity_type}
                   {r.entity_id != null && r.entity_id !== "" ? ` #${r.entity_id}` : ""}
@@ -342,7 +355,7 @@ export default function ActivityLogPanel() {
             <div style={{ fontSize: 13, lineHeight: 1.5, color: "#333" }}>
               <div><strong>When:</strong> {fmtWhen(String(drawer.created_at))}</div>
               <div><strong>Actor:</strong> {drawer.actor_name || drawer.actor_type} ({drawer.actor_type}{drawer.actor_role ? ` / ${drawer.actor_role}` : ""})</div>
-              <div><strong>Action:</strong> {drawer.action}</div>
+              <div><strong>Action:</strong> {actionLabel(drawer.action)}</div>
               <div><strong>Entity:</strong> {drawer.entity_type}{drawer.entity_id != null ? ` #${drawer.entity_id}` : ""}</div>
               <div style={{ marginTop: 8 }}><strong>Summary:</strong> {drawer.summary}</div>
             </div>

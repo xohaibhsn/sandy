@@ -2,8 +2,9 @@
  * Pure builders for customer-facing order emails (received / confirmed).
  * No I/O. Every dynamic value is HTML-escaped; subjects are single-line; no phone or address is included.
  */
-import { ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL, formatPrice } from './site';
+import { SITE_NAME, SITE_URL, formatPrice } from './site';
 import { escapeHtml, isValidCustomerEmail, sanitizeSubjectPart } from './emailText';
+import { resolveMailFromAddress } from './mailer';
 
 export { sanitizeSubjectPart, isValidCustomerEmail };
 
@@ -177,7 +178,7 @@ function build(kind: Kind, order: CustomerEmailOrder): CustomerEmailMessage {
     order.contactEmail && isValidCustomerEmail(order.contactEmail) ? order.contactEmail.trim() : undefined;
 
   return {
-    from: `"${SITE_NAME} Orders" <${ORDERS_FROM_EMAIL}>`,
+    from: `"${SITE_NAME} Orders" <${resolveMailFromAddress()}>`,
     to: String(order.customerEmail ?? '').trim(),
     ...(replyTo ? { replyTo } : {}),
     subject,

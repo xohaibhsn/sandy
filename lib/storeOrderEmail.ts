@@ -3,8 +3,9 @@
  * (SANDY-BATCH-48). The template literal contents are byte-identical to the previous inline code;
  * tests/customer-emails.test.ts pins the output against a golden fixture.
  */
-import { ORDERS_FROM_EMAIL, SITE_NAME, SITE_URL, formatPrice } from './site';
+import { SITE_NAME, SITE_URL, formatPrice } from './site';
 import { escapeHtml, escapeHtmlMultiline, sanitizeSubjectPart, SUBJECT_NAME_MAX } from './emailText';
+import { resolveMailFromAddress } from './mailer';
 
 type Field = { value: string };
 
@@ -140,7 +141,7 @@ export function buildStoreNewOrderEmail(input: StoreNewOrderEmailInput): {
 </div></body></html>`;
 
   return {
-    from: `"${SITE_NAME} Orders" <${ORDERS_FROM_EMAIL}>`,
+    from: `"${SITE_NAME} Orders" <${resolveMailFromAddress()}>`,
     to,
     subject: `🛍️ New Order ${sanitizeSubjectPart(order_id, 64)} — ${sanitizeSubjectPart(customer_name.value, SUBJECT_NAME_MAX)}`,
     html,

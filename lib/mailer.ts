@@ -3,6 +3,8 @@
  * Logs failures with kind / order id / error code only — never recipient, subject or body.
  */
 import nodemailer from "nodemailer";
+import { ORDERS_FROM_EMAIL } from "./site";
+import { isValidCustomerEmail } from "./emailText";
 
 export type MailMessage = {
   from: string;
@@ -21,6 +23,16 @@ export type MailResult = { ok: true } | { ok: false; code: string };
 export type MailTransport = {
   sendMail: (message: MailMessage) => Promise<unknown>;
 };
+
+/**
+ * From address for store + customer order emails.
+ * Optional MAIL_FROM (validated) overrides ORDERS_FROM_EMAIL; invalid/empty is ignored.
+ */
+export function resolveMailFromAddress(): string {
+  const raw = typeof process.env.MAIL_FROM === "string" ? process.env.MAIL_FROM.trim() : "";
+  if (raw && isValidCustomerEmail(raw)) return raw;
+  return ORDERS_FROM_EMAIL;
+}
 
 /**
  * Test-only JSON transport: SANDY_MAIL_JSON_TRANSPORT=1 and NODE_ENV !== "production".
