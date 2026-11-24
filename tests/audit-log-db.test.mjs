@@ -478,8 +478,10 @@ await section("viewer filters / pagination / CSV + RBAC", async () => {
   const wr = await mintRole("writer");
   const m = await admin(auditHandler, "GET", "/api/admin-audit-log", undefined, {}, mgr);
   eq(m.statusCode, 403);
+  eq(JSON.stringify(m.body), JSON.stringify({ error: "Forbidden" }));
   const w = await admin(auditHandler, "GET", "/api/admin-audit-log", undefined, {}, wr);
   eq(w.statusCode, 403);
+  eq(JSON.stringify(w.body), JSON.stringify({ error: "Forbidden" }));
   clear();
   const unauth = await invoke(auditHandler, {
     method: "GET",
@@ -487,6 +489,226 @@ await section("viewer filters / pagination / CSV + RBAC", async () => {
     headers: { origin: "http://orders.test" },
   });
   eq(unauth.statusCode, 401);
+});
+
+await section("access_denied: requirePermission denial + throttle + 401/allow", async () => {
+  clear();
+  resetAuditThrottleForTests();
+  await pool.query("DELETE FROM admin_audit_log WHERE action = 'access_denied'");
+
+  // Real writer staff (staff_id set) so throttle key is staff-scoped
+  const hashPw = crypto.createHash("sha256").update(SECRET_PASSWORD).digest("hex");
+  const [ins] = await pool.query(
+    `INSERT INTO admin_staff (name, email, password_hash, role, active)
+     VALUES ('Access Denied Writer', ?, ?, 'writer', 1)`,
+    [`ad-writer-${crypto.randomBytes(3).toString("hex")}@example.test`, hashPw]
+  );
+  const staffId = Number(ins.insertId);
+  const raw = crypto.randomBytes(32).toString("hex");
+  const th = crypto.createHash("sha256").update(raw).digest("hex");
+  const expires = new Date(Date.now() + 3600 * 1000).toISOString().slice(0, 19).replace("T", " ");
+  await pool.query(
+    "INSERT INTO admin_sessions (token_hash, staff_id, is_master, role, name, expires_at) VALUES (?,?,0,'writer',?,?)",
+    [th, staffId, "Access Denied Writer", expires]
+  );
+
+  const before = await count(
+    pool,
+    "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied'"
+  );
+
+  // Denied: writer lacks audit:view — with query string that must NOT appear in detail.route
+  const leakMarker = ["should", "-", "not", "-", "appear"].join("");
+  const r1 = await invoke(auditHandler, {
+    method: "GET",
+    url: `/api/admin-audit-log?page=1&marker=${leakMarker}`,
+    query: { page: "1", marker: leakMarker },
+    ...adminReq(raw),
+  });
+  eq(r1.statusCode, 403);
+  eq(JSON.stringify(r1.body), JSON.stringify({ error: "Forbidden" }));
+
+  // Allow void recordAudit to settle
+  let row = null;
+  for (let i = 0; i < 40; i++) {
+    row = await one(
+      pool,
+      "SELECT * FROM admin_audit_log WHERE action = 'access_denied' ORDER BY id DESC LIMIT 1"
+    );
+    if (row) break;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  ok(row, "access_denied row written");
+  eq(row.entity_type, "permission");
+  eq(row.entity_id, "audit:view");
+  eq(Number(row.actor_staff_id), staffId);
+  const detail = JSON.parse(row.detail_json || "{}");
+  eq(detail.permission, "audit:view");
+  eq(detail.method, "GET");
+  eq(detail.route, "/api/admin-audit-log");
+  ok(!String(row.detail_json).includes(leakMarker), "no query string in detail");
+  ok(!String(row.detail_json).includes("marker="), "no query leak");
+  const blob = JSON.stringify(row);
+  ok(!blob.toLowerCase().includes("cookie"), "no cookies in access_denied row");
+  assertNoLeak(row, "access_denied");
+
+  // Second denial same permission within 10 min → no new row (throttle)
+  const mid = await count(
+    pool,
+    "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied' AND actor_staff_id = ?",
+    [staffId]
+  );
+  const r2 = await invoke(auditHandler, {
+    method: "GET",
+    url: "/api/admin-audit-log",
+    ...adminReq(raw),
+  });
+  eq(r2.statusCode, 403);
+  eq(JSON.stringify(r2.body), JSON.stringify({ error: "Forbidden" }));
+  await new Promise((r) => setTimeout(r, 100));
+  eq(
+    await count(
+      pool,
+      "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied' AND actor_staff_id = ?",
+      [staffId]
+    ),
+    mid,
+    "throttled: no second access_denied for same permission"
+  );
+
+  // Different permission → new row
+  const taxBefore = await count(
+    pool,
+    "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied' AND entity_id = 'tax:manage'"
+  );
+  const rTax = await invoke(taxHandler, {
+    method: "GET",
+    url: "/api/admin-tax",
+    ...adminReq(raw),
+  });
+  eq(rTax.statusCode, 403);
+  for (let i = 0; i < 40; i++) {
+    const n = await count(
+      pool,
+      "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied' AND entity_id = 'tax:manage'"
+    );
+    if (n > taxBefore) break;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  ok(
+    (await count(
+      pool,
+      "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied' AND entity_id = 'tax:manage'"
+    )) > taxBefore,
+    "different permission gets a new access_denied row"
+  );
+
+  // 401: no session → no access_denied
+  const before401 = await count(
+    pool,
+    "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied'"
+  );
+  clear();
+  const unauth2 = await invoke(auditHandler, {
+    method: "GET",
+    url: "/api/admin-audit-log",
+    headers: { origin: "http://orders.test" },
+  });
+  eq(unauth2.statusCode, 401);
+  await new Promise((r) => setTimeout(r, 100));
+  eq(
+    await count(pool, "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied'"),
+    before401,
+    "401 does not write access_denied"
+  );
+
+  // Allowed: writer blog:write → no access_denied for that call
+  const beforeOk = await count(
+    pool,
+    "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied'"
+  );
+  clear();
+  const okBlog = await invoke(blogHandler, {
+    method: "POST",
+    url: "/api/blog",
+    body: {
+      title: "AD Allowed",
+      slug: `ad-allowed-${crypto.randomBytes(2).toString("hex")}`,
+      content: "ok",
+      status: "draft",
+    },
+    ...adminReq(raw),
+  });
+  ok(okBlog.statusCode === 200 || okBlog.statusCode === 201, `allowed blog ${okBlog.statusCode}`);
+  await new Promise((r) => setTimeout(r, 100));
+  eq(
+    await count(pool, "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied'"),
+    beforeOk,
+    "allowed request does not write access_denied"
+  );
+  void before;
+});
+
+await section("access_denied: requireSessionPermission denial", async () => {
+  clear();
+  resetAuditThrottleForTests();
+
+  const hashPw = crypto.createHash("sha256").update(SECRET_PASSWORD).digest("hex");
+  const [ins] = await pool.query(
+    `INSERT INTO admin_staff (name, email, password_hash, role, active)
+     VALUES ('AD Manager', ?, ?, 'manager', 1)`,
+    [`ad-mgr-${crypto.randomBytes(3).toString("hex")}@example.test`, hashPw]
+  );
+  const staffId = Number(ins.insertId);
+  const raw = crypto.randomBytes(32).toString("hex");
+  const th = crypto.createHash("sha256").update(raw).digest("hex");
+  const expires = new Date(Date.now() + 3600 * 1000).toISOString().slice(0, 19).replace("T", " ");
+  await pool.query(
+    "INSERT INTO admin_sessions (token_hash, staff_id, is_master, role, name, expires_at) VALUES (?,?,0,'manager',?,?)",
+    [th, staffId, "AD Manager", expires]
+  );
+
+  const before = await count(
+    pool,
+    "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied' AND entity_id = 'site_content:write_branding' AND actor_staff_id = ?",
+    [staffId]
+  );
+
+  // Manager lacks site_content:write_branding — second-stage requireSessionPermission
+  const r = await invoke(siteContentHandler, {
+    method: "POST",
+    url: "/api/site-content",
+    body: { key: "site_title", value: "Nope" },
+    ...adminReq(raw),
+  });
+  eq(r.statusCode, 403);
+  eq(JSON.stringify(r.body), JSON.stringify({ error: "Forbidden" }));
+
+  let row = null;
+  for (let i = 0; i < 40; i++) {
+    row = await one(
+      pool,
+      `SELECT * FROM admin_audit_log
+       WHERE action = 'access_denied' AND entity_id = 'site_content:write_branding' AND actor_staff_id = ?
+       ORDER BY id DESC LIMIT 1`,
+      [staffId]
+    );
+    if (row) break;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  ok(row, "requireSessionPermission access_denied row");
+  eq(row.entity_type, "permission");
+  const detail = JSON.parse(row.detail_json || "{}");
+  eq(detail.permission, "site_content:write_branding");
+  ok(!("route" in detail), "requireSessionPermission detail has no route");
+  ok(!("method" in detail), "requireSessionPermission detail has no method");
+  ok(
+    (await count(
+      pool,
+      "SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'access_denied' AND entity_id = 'site_content:write_branding' AND actor_staff_id = ?",
+      [staffId]
+    )) === before + 1
+  );
 });
 
 await section("table missing: business action still succeeds", async () => {

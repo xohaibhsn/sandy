@@ -122,7 +122,71 @@ try {
     const detail = JSON.parse(audit.detail_json);
     eq(detail.checkout_attempts, 1);
     eq(detail.otp_challenges, 1);
-    eq(Object.keys(detail).sort().join(","), "checkout_attempts,otp_challenges");
+    eq(detail.audit_log, 0);
+    eq(
+      Object.keys(detail).sort().join(","),
+      "audit_log,checkout_attempts,otp_challenges"
+    );
+  });
+
+  await section("D62: audit_log rows older than 365 days purged; newer kept", async () => {
+    resetDataRetentionThrottleForTests();
+    resetAuditSchemaProbeForTests();
+    await pool.query("DELETE FROM order_checkout_attempts");
+    await pool.query("DELETE FROM otp_challenges");
+    await pool.query("DELETE FROM admin_audit_log");
+
+    await pool.query(
+      `INSERT INTO admin_audit_log
+        (actor_type, actor_staff_id, actor_name, actor_role, action, entity_type, entity_id,
+         summary, detail_json, created_at)
+       VALUES
+         ('system', NULL, 'old', NULL, 'update', 'product', '1', 'old row', NULL, NOW() - INTERVAL 400 DAY),
+         ('system', NULL, 'fresh', NULL, 'update', 'product', '2', 'fresh row', NULL, NOW() - INTERVAL 10 DAY)`
+    );
+    eq(await count("SELECT COUNT(*) AS c FROM admin_audit_log"), 2);
+
+    await maybePurgeStaleRows(pool, Date.now());
+
+    eq(
+      await count("SELECT COUNT(*) AS c FROM admin_audit_log WHERE summary = 'old row'"),
+      0,
+      "old audit row purged"
+    );
+    eq(
+      await count("SELECT COUNT(*) AS c FROM admin_audit_log WHERE summary = 'fresh row'"),
+      1,
+      "fresh audit row kept"
+    );
+    const purge = await one(
+      "SELECT detail_json FROM admin_audit_log WHERE action = 'data_purge' ORDER BY id DESC LIMIT 1"
+    );
+    ok(purge, "data_purge written when audit_log deleted");
+    const d = JSON.parse(purge.detail_json);
+    eq(d.audit_log, 1);
+    eq(d.checkout_attempts, 0);
+    eq(d.otp_challenges, 0);
+  });
+
+  await section("D62: no data_purge row when nothing deleted (incl. audit)", async () => {
+    resetDataRetentionThrottleForTests();
+    resetAuditSchemaProbeForTests();
+    await pool.query("DELETE FROM order_checkout_attempts");
+    await pool.query("DELETE FROM otp_challenges");
+    await pool.query("DELETE FROM admin_audit_log");
+    await pool.query(
+      `INSERT INTO admin_audit_log
+        (actor_type, actor_staff_id, actor_name, actor_role, action, entity_type, entity_id,
+         summary, detail_json, created_at)
+       VALUES ('system', NULL, 'fresh2', NULL, 'update', 'product', '3', 'keep', NULL, NOW() - INTERVAL 1 DAY)`
+    );
+    await maybePurgeStaleRows(pool, Date.now());
+    eq(
+      await count("SELECT COUNT(*) AS c FROM admin_audit_log WHERE action = 'data_purge'"),
+      0,
+      "no data_purge when nothing deleted"
+    );
+    eq(await count("SELECT COUNT(*) AS c FROM admin_audit_log"), 1);
   });
 
   await section("second purge within throttle does nothing", async () => {

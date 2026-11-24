@@ -11,6 +11,7 @@ const {
   maybePurgeStaleRows,
   resetDataRetentionThrottleForTests,
   RETENTION_DAYS,
+  AUDIT_RETENTION_DAYS,
 } = await import("../lib/dataRetention.ts");
 const { resetAuditSchemaProbeForTests } = await import("../lib/auditLog.ts");
 
@@ -19,9 +20,11 @@ type SqlCall = { sql: string; params?: unknown };
 function makeFakePool(opts: {
   failCheckout?: boolean;
   failOtp?: boolean;
+  failAuditLog?: boolean;
   failAudit?: boolean;
   checkoutAffected?: number;
   otpAffected?: number;
+  auditAffected?: number;
 }) {
   const calls: SqlCall[] = [];
   const audits: unknown[] = [];
@@ -37,12 +40,16 @@ function makeFakePool(opts: {
         if (opts.failOtp) throw new Error("otp delete boom");
         return [{ affectedRows: opts.otpAffected ?? 0 }];
       }
-      if (s.includes("INSERT INTO admin_audit_log") || s.includes("admin_audit_log")) {
+      if (s.includes("DELETE FROM admin_audit_log")) {
+        if (opts.failAuditLog) throw new Error("audit_log delete boom");
+        return [{ affectedRows: opts.auditAffected ?? 0 }];
+      }
+      if (s.includes("INSERT INTO admin_audit_log")) {
         if (opts.failAudit) throw new Error("audit boom");
         audits.push(params);
         return [{ affectedRows: 1 }];
       }
-      if (s.includes("INFORMATION_SCHEMA") || s.includes("admin_audit_log")) {
+      if (s.includes("INFORMATION_SCHEMA") && s.includes("admin_audit_log")) {
         return [[{ TABLE_NAME: "admin_audit_log" }]];
       }
       return [[]];
@@ -67,30 +74,47 @@ describe("maybePurgeStaleRows", () => {
     assert.equal(calls.length, afterFirst, "throttled call must not run SQL");
   });
 
-  it("SQL uses NOW() - INTERVAL 30 DAY and LIMIT 500", async () => {
+  it("SQL uses retention intervals and LIMIT 500 (incl. audit_log 365d)", async () => {
     const { pool, calls } = makeFakePool({});
     await maybePurgeStaleRows(pool as never, Date.now());
     const deletes = calls.filter((c) => c.sql.includes("DELETE FROM"));
-    assert.equal(deletes.length, 2);
+    assert.equal(deletes.length, 3);
     for (const d of deletes) {
-      assert.ok(d.sql.includes(`NOW() - INTERVAL ${RETENTION_DAYS} DAY`));
       assert.ok(d.sql.includes("LIMIT 500"));
     }
     assert.ok(
       deletes.some((d) => d.sql.includes("order_checkout_attempts"))
     );
     assert.ok(deletes.some((d) => d.sql.includes("otp_challenges")));
+    const auditDel = deletes.find((d) =>
+      d.sql.includes("DELETE FROM admin_audit_log")
+    );
+    assert.ok(auditDel);
+    assert.ok(
+      auditDel!.sql.includes(`NOW() - INTERVAL ${AUDIT_RETENTION_DAYS} DAY`)
+    );
+    assert.equal(AUDIT_RETENTION_DAYS, 365);
+    for (const d of deletes.filter(
+      (x) =>
+        x.sql.includes("order_checkout_attempts") ||
+        x.sql.includes("otp_challenges")
+    )) {
+      assert.ok(d.sql.includes(`NOW() - INTERVAL ${RETENTION_DAYS} DAY`));
+    }
   });
 
   it("swallows errors and does not throw", async () => {
-    const { pool } = makeFakePool({ failCheckout: true, failOtp: true });
+    const { pool } = makeFakePool({
+      failCheckout: true,
+      failOtp: true,
+      failAuditLog: true,
+    });
     await assert.doesNotReject(() =>
       maybePurgeStaleRows(pool as never, Date.now())
     );
   });
 
-  it("writes audit only when n>0 with only the two counts", async () => {
-    // recordAudit probes schema then inserts — stub via real module by mocking query broadly
+  it("writes audit only when n>0 including audit_log count", async () => {
     const calls: SqlCall[] = [];
     let auditDetail: unknown = null;
     const pool = {
@@ -103,11 +127,13 @@ describe("maybePurgeStaleRows", () => {
         if (s.includes("DELETE FROM otp_challenges")) {
           return [{ affectedRows: 2 }];
         }
+        if (s.includes("DELETE FROM admin_audit_log")) {
+          return [{ affectedRows: 4 }];
+        }
         if (s.includes("INFORMATION_SCHEMA") && s.includes("admin_audit_log")) {
           return [[{ c: 1 }]];
         }
         if (s.includes("INSERT INTO admin_audit_log")) {
-          // detail_json is a positional arg — find object-like JSON
           const arr = params as unknown[];
           const detailRaw = arr.find(
             (p) => typeof p === "string" && p.includes("checkout_attempts")
@@ -122,11 +148,13 @@ describe("maybePurgeStaleRows", () => {
     assert.ok(auditDetail);
     const d = auditDetail as Record<string, unknown>;
     assert.deepEqual(Object.keys(d).sort(), [
+      "audit_log",
       "checkout_attempts",
       "otp_challenges",
     ]);
     assert.equal(d.checkout_attempts, 3);
     assert.equal(d.otp_challenges, 2);
+    assert.equal(d.audit_log, 4);
 
     resetDataRetentionThrottleForTests();
     auditDetail = null;

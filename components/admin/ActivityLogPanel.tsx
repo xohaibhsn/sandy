@@ -44,6 +44,7 @@ const ACTION_LABELS: Record<string, string> = {
   store_email_sent: "Store email sent",
   store_email_failed: "Store email failed",
   store_email_skipped: "Store email skipped",
+  access_denied: "Access denied",
 };
 
 function actionLabel(action: string): string {

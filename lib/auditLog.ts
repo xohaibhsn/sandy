@@ -30,7 +30,9 @@ export type AuditAction =
   | "customer_email_skipped"
   | "store_email_sent"
   | "store_email_failed"
-  | "store_email_skipped";
+  | "store_email_skipped"
+  | "access_denied"
+  | "data_purge";
 
 export type AuditActorInput =
   | Pick<AdminSession, "staffId" | "isMaster" | "role" | "name">

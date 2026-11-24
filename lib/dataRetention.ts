@@ -8,6 +8,9 @@ import { recordAudit } from "./auditLog";
 /** PROPOSED D58, owner may change */
 export const RETENTION_DAYS = 30;
 
+/** D62: admin_audit_log retention (Activity Log). Orders/customers/products never purged. */
+export const AUDIT_RETENTION_DAYS = 365;
+
 const THROTTLE_MS = 6 * 60 * 60 * 1000;
 const DELETE_LIMIT = 500;
 
@@ -35,6 +38,7 @@ export async function maybePurgeStaleRows(
 
     let checkoutAttempts = 0;
     let otpChallenges = 0;
+    let auditLog = 0;
 
     try {
       const [r] = await pool.query(
@@ -54,7 +58,16 @@ export async function maybePurgeStaleRows(
       /* best-effort */
     }
 
-    if (checkoutAttempts > 0 || otpChallenges > 0) {
+    try {
+      const [r] = await pool.query(
+        `DELETE FROM admin_audit_log WHERE created_at < NOW() - INTERVAL ${AUDIT_RETENTION_DAYS} DAY LIMIT ${DELETE_LIMIT}`
+      );
+      auditLog = affected(r);
+    } catch {
+      /* best-effort */
+    }
+
+    if (checkoutAttempts > 0 || otpChallenges > 0 || auditLog > 0) {
       await recordAudit(pool as Pool, {
         actor: { actorType: "system", name: "system" },
         action: "data_purge",
@@ -64,6 +77,7 @@ export async function maybePurgeStaleRows(
         detail: {
           checkout_attempts: checkoutAttempts,
           otp_challenges: otpChallenges,
+          audit_log: auditLog,
         },
       });
     }

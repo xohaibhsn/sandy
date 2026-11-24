@@ -12,6 +12,8 @@
  */
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAdmin, type AdminRole, type AdminSession } from "./adminAuth";
+import { auditThrottle, recordAudit } from "./auditLog";
+import pool from "./db";
 
 export type { AdminRole };
 
@@ -152,6 +154,53 @@ function sendForbidden(res: NextApiResponse): void {
   res.status(403).json({ error: "Forbidden" });
 }
 
+/** At most one access_denied audit row per (staff, permission) per 10 minutes per process. */
+const ACCESS_DENIED_WINDOW_MS = 10 * 60 * 1000;
+
+function routePathOnly(req: NextApiRequest): string {
+  const raw = typeof req.url === "string" ? req.url : "";
+  const q = raw.indexOf("?");
+  return q === -1 ? raw : raw.slice(0, q);
+}
+
+/**
+ * Fire-and-forget access_denied audit after a VALID session was denied (403).
+ * Never awaited by callers — 403 body/timing stay unchanged. No row for 401/503.
+ */
+function fireAccessDeniedAudit(
+  session: AdminSession,
+  permission: AdminPermission,
+  req?: NextApiRequest
+): void {
+  const staffKey =
+    session.staffId == null
+      ? session.isMaster
+        ? "master"
+        : "none"
+      : String(session.staffId);
+  const { record } = auditThrottle(
+    `access_denied:${staffKey}:${permission}`,
+    ACCESS_DENIED_WINDOW_MS
+  );
+  if (!record) return;
+
+  const detail: Record<string, unknown> = { permission };
+  if (req) {
+    detail.method = typeof req.method === "string" ? req.method : null;
+    detail.route = routePathOnly(req);
+  }
+
+  void recordAudit(pool, {
+    actor: session,
+    action: "access_denied",
+    entityType: "permission",
+    entityId: permission,
+    summary: "Access denied",
+    detail,
+    req: req ?? null,
+  });
+}
+
 /**
  * Authenticate (requireAdmin) and authorize in one call.
  * Returns the session when allowed; otherwise has already sent 401/403/503 and returns null.
@@ -165,6 +214,7 @@ export async function requirePermission(
   if (!session) return null;
   if (!hasPermission(session.role, permission)) {
     sendForbidden(res);
+    fireAccessDeniedAudit(session, permission, req);
     return null;
   }
   return session;
@@ -181,6 +231,7 @@ export function requireSessionPermission(
 ): boolean {
   if (hasPermission(session.role, permission)) return true;
   sendForbidden(res);
+  fireAccessDeniedAudit(session, permission);
   return false;
 }
 
