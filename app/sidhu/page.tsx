@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import dynamic from "next/dynamic";
 import { toEditorHtml } from "@/lib/contentHtml";
+import { LEGAL_DEFAULT_HTML } from "@/lib/legalContent";
 import { CLOUDINARY_FOLDER, SITE_NAME, SITE_NAME_CAPS, SITE_URL, formatPrice, parsePrice } from "@/lib/site";
 import { adminFetchList, adminRequest } from "@/lib/adminRequest";
 import AdminBanner from "../../components/admin/AdminBanner";
@@ -3229,6 +3230,7 @@ export default function AdminPage() {
                     <CmsField label="Total" k="cart_total" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Checkout Button" k="cart_checkout_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Place Order Button" k="cart_place_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Policy Note (before links)" k="cart_policy_prefix" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Placing Label" k="cart_placing" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Details Heading" k="cart_details_heading" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Payment Heading" k="cart_pay_heading" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
@@ -3249,7 +3251,7 @@ export default function AdminPage() {
                   <CmsField label="Success Subtitle" k="order_success_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
                   <CmsField label="Success WhatsApp CTA" k="order_success_wa" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Success WhatsApp Note" k="order_success_wa_note" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["cart_tag","cart_title","checkout_tag","checkout_title","cart_empty_title","cart_empty_sub","cart_empty_btn","cart_empty_link","cart_summary","cart_subtotal","cart_shipping","cart_shipping_free","cart_total","cart_checkout_btn","cart_place_btn","cart_placing","cart_details_heading","cart_pay_heading","cart_pay_cod_label","cart_pay_cod_sub","cart_pay_jazz_label","cart_pay_jazz_sub","cart_pay_easy_label","cart_pay_easy_sub","cart_pay_bank_label","cart_pay_bank_sub","cart_delivery_note","cart_prepaid_help","order_success_title","order_success_sub","order_success_wa","order_success_wa_note","order_success_track","order_success_track_link"])}>{contentSaving?"Saving...":"💾 Save Cart Copy"}</button>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["cart_tag","cart_title","checkout_tag","checkout_title","cart_empty_title","cart_empty_sub","cart_empty_btn","cart_empty_link","cart_summary","cart_subtotal","cart_shipping","cart_shipping_free","cart_total","cart_checkout_btn","cart_place_btn","cart_policy_prefix","cart_placing","cart_details_heading","cart_pay_heading","cart_pay_cod_label","cart_pay_cod_sub","cart_pay_jazz_label","cart_pay_jazz_sub","cart_pay_easy_label","cart_pay_easy_sub","cart_pay_bank_label","cart_pay_bank_sub","cart_delivery_note","cart_prepaid_help","order_success_title","order_success_sub","order_success_wa","order_success_wa_note","order_success_track","order_success_track_link"])}>{contentSaving?"Saving...":"💾 Save Cart Copy"}</button>
                 </div>
               )}
 
@@ -3334,16 +3336,16 @@ export default function AdminPage() {
               {activePage==="legal" && (
                 <div className="section-card" style={{padding:24}}>
                   <div className="section-header" style={{marginBottom:20}}><div className="section-title">⚖️ Legal Pages</div></div>
-                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>Leave a body empty to keep the default structured policy on the public site. Fill it to replace the whole policy body.</p>
+                  <p style={{fontSize:12,color:"#888",marginBottom:16}}>These bodies are editable. Headings (H2) become the page contents list automatically. {"{{contact_email}}"} and {"{{contact_phone}}"} are replaced with the store contact details. Clearing a body restores the default text.</p>
                   <div className="modal-field"><label>Privacy Title</label><input style={{width:"100%"}} value={siteContent.privacy_title||""} onChange={e=>setSiteContent(s=>({...s,privacy_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Privacy Last Updated</label><input style={{width:"100%"}} value={siteContent.privacy_updated||""} onChange={e=>setSiteContent(s=>({...s,privacy_updated:e.target.value}))} /></div>
-                  <div className="modal-field"><label>Privacy Body</label><TipTapEditor content={toEditorHtml(siteContent.privacy_content || "")} onChange={(html)=>setSiteContent(s=>({...s,privacy_content:html}))} placeholder="Leave empty to use the default privacy policy..." /></div>
+                  <div className="modal-field"><label>Privacy Body</label><TipTapEditor content={toEditorHtml(siteContent.privacy_content || LEGAL_DEFAULT_HTML.privacy)} onChange={(html)=>setSiteContent(s=>({...s,privacy_content:html}))} placeholder="Leave empty to use the default privacy policy..." /></div>
                   <div className="modal-field"><label>Terms Title</label><input style={{width:"100%"}} value={siteContent.terms_title||""} onChange={e=>setSiteContent(s=>({...s,terms_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Terms Last Updated</label><input style={{width:"100%"}} value={siteContent.terms_updated||""} onChange={e=>setSiteContent(s=>({...s,terms_updated:e.target.value}))} /></div>
-                  <div className="modal-field"><label>Terms Body</label><TipTapEditor content={toEditorHtml(siteContent.terms_content || "")} onChange={(html)=>setSiteContent(s=>({...s,terms_content:html}))} placeholder="Leave empty to use the default terms..." /></div>
+                  <div className="modal-field"><label>Terms Body</label><TipTapEditor content={toEditorHtml(siteContent.terms_content || LEGAL_DEFAULT_HTML.terms)} onChange={(html)=>setSiteContent(s=>({...s,terms_content:html}))} placeholder="Leave empty to use the default terms..." /></div>
                   <div className="modal-field"><label>Refund Title</label><input style={{width:"100%"}} value={siteContent.refund_title||""} onChange={e=>setSiteContent(s=>({...s,refund_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Refund Last Updated</label><input style={{width:"100%"}} value={siteContent.refund_updated||""} onChange={e=>setSiteContent(s=>({...s,refund_updated:e.target.value}))} /></div>
-                  <div className="modal-field"><label>Refund Body</label><TipTapEditor content={toEditorHtml(siteContent.refund_content || "")} onChange={(html)=>setSiteContent(s=>({...s,refund_content:html}))} placeholder="Leave empty to use the default refund policy..." /></div>
+                  <div className="modal-field"><label>Refund Body</label><TipTapEditor content={toEditorHtml(siteContent.refund_content || LEGAL_DEFAULT_HTML.refund)} onChange={(html)=>setSiteContent(s=>({...s,refund_content:html}))} placeholder="Leave empty to use the default refund policy..." /></div>
                   <CmsField label="Legal Tag" k="legal_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>REFUND SUMMARY CARDS</div>
                   {[1,2,3,4].map(n=>(

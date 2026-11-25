@@ -3,7 +3,7 @@ import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
-import xss from "xss";
+import { LEGAL_DEFAULT_HTML, renderLegalBody } from "@/lib/legalContent";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -43,6 +43,13 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
   .policy-section ul { padding-left:20px; margin-bottom:14px; }
   .policy-section ul li { font-size:14px; color:#333333; line-height:1.9; margin-bottom:6px; }
   .policy-section ul li::marker { color:#5B21B6; }
+  .policy-section ol { padding-left:20px; margin-bottom:14px; }
+  .policy-section ol li { font-size:14px; color:#333333; line-height:1.9; margin-bottom:6px; }
+  .policy-section ol li::marker { color:#5B21B6; }
+  .policy-section li p { margin:0; }
+  .policy-section blockquote { background:#EDE9FE; border:1px solid rgba(91,33,182,0.25); border-radius:12px; padding:18px 20px; margin:0 0 16px; }
+  .policy-section blockquote p { margin-bottom:0; color:#444444; }
+  .policy-section a { color:#5B21B6; }
   .highlight-box { background:#EDE9FE; border:1px solid rgba(91,33,182,0.25); border-radius:12px; padding:18px 20px; margin-bottom:16px; }
   .highlight-box p { margin-bottom:0; color:#444444; }
   footer { position:relative; z-index:1; padding:40px 60px; border-top:1px solid rgba(139,0,255,0.15); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
@@ -59,7 +66,11 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
 export default function TermsPage() {
   const contact = useContactConfig();
   const sc = useSiteContent();
-  const cmsBody = cmsText(sc, "terms_content", "");
+  const legal = renderLegalBody(
+    cmsText(sc, "terms_content", ""),
+    LEGAL_DEFAULT_HTML.terms,
+    { email: contact.email, phone: contact.phone },
+  );
 
   return (
     <>
@@ -70,128 +81,20 @@ export default function TermsPage() {
         <div className="page-header">
           <div className="section-tag">✦ {cmsText(sc, "legal_tag", "Legal")}</div>
           <h1 className="page-title">{cmsText(sc, "terms_title", "Terms & Conditions")}</h1>
-          <p className="last-updated">{cmsText(sc, "terms_updated", "Last updated: 30 May 2026")}</p>
+          <p className="last-updated">{cmsText(sc, "terms_updated", "Last updated: 25 November 2026")}</p>
         </div>
 
         <div className="content-layout">
           <aside className="toc">
             <div className="toc-title">Contents</div>
             <ul className="toc-list">
-              <li><a href="#agreement">1. Agreement</a></li>
-              <li><a href="#products">2. Products</a></li>
-              <li><a href="#orders">3. Orders</a></li>
-              <li><a href="#payment">4. Payment</a></li>
-              <li><a href="#delivery">5. Delivery</a></li>
-              <li><a href="#returns">6. Returns</a></li>
-              <li><a href="#intellectual">7. Intellectual Property</a></li>
-              <li><a href="#liability">8. Liability</a></li>
-              <li><a href="#governing">9. Governing Law</a></li>
-              <li><a href="#contact">10. Contact</a></li>
+              {legal.toc.map((item) => (
+                <li key={item.id}><a href={"#" + item.id}>{item.label}</a></li>
+              ))}
             </ul>
           </aside>
 
-          {cmsBody ? (
-            <div className="policy-content cms-legal" dangerouslySetInnerHTML={{ __html: xss(cmsBody) }} />
-          ) : (
-          <div className="policy-content">
-            <div className="policy-section" id="agreement">
-              <h2>1. Agreement to Terms</h2>
-              <div className="highlight-box">
-                <p>By accessing or placing an order on sandy.com.pk, you agree to be bound by these Terms & Conditions. Please read them carefully before making a purchase.</p>
-              </div>
-              <p>These terms apply to all visitors, users, and customers of S&Y. We reserve the right to update these terms at any time. Continued use of our website after changes constitutes acceptance of the new terms.</p>
-            </div>
-
-            <div className="policy-section" id="products">
-              <h2>2. Products & Services</h2>
-              <p>S&Y sells accessories, gadgets and general products for customers in Pakistan. All products are subject to availability.</p>
-              <ul>
-                <li>Product descriptions and images are for illustrative purposes. Actual products may vary slightly.</li>
-                <li>We reserve the right to modify or discontinue any product without prior notice.</li>
-                <li>Prices are shown in Pakistani Rupees (PKR) and include GST where applicable at checkout.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="orders">
-              <h2>3. Orders</h2>
-              <p>When you place an order, you are making an offer to purchase. We reserve the right to accept or decline any order at our discretion.</p>
-              <ul>
-                <li>You must provide accurate and complete information when placing an order.</li>
-                <li>An order is confirmed only after payment has been verified by our team.</li>
-                <li>We will notify you of order confirmation via email or WhatsApp.</li>
-                <li>Orders cannot be modified once payment has been verified and fulfilment has begun.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="payment">
-              <h2>4. Payment</h2>
-              <p>We accept Cash on Delivery, JazzCash, Easypaisa and bank transfer.</p>
-              <ul>
-                <li><strong>Cash on Delivery:</strong> Payment is due upon delivery. Available across Pakistan.</li>
-                <li><strong>JazzCash / Easypaisa / Bank Transfer:</strong> Account details are shared after you place the order. You may upload a receipt and payment reference at checkout.</li>
-                <li>Prepaid orders are fulfilled after payment is verified.</li>
-                <li>COD orders are dispatched and collected on delivery.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="delivery">
-              <h2>5. Delivery</h2>
-              <ul>
-                <li>Physical products are delivered within 2–5 working days across Pakistan, depending on your city.</li>
-                <li>Delivery times are estimates and not guaranteed. We are not liable for delays caused by couriers or circumstances beyond our control.</li>
-                <li>Risk of loss passes to you upon delivery.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="returns">
-              <h2>6. Returns & Refunds</h2>
-              <p>Please refer to our <a href="/refund-policy" style={{color:"#5B21B6"}}>Refund Policy</a> for full details on returns and refunds.</p>
-              <ul>
-                <li>Physical products may be returned within 14 days of delivery if unused and in original packaging.</li>
-                <li>No free trials are offered. Subscription plans include a 7-day money back guarantee on 1 Year plans and above only.</li>
-                <li>Each subscription includes one connection at a time. For simultaneous use on 2 devices, you need 2 separate subscriptions.</li>
-                <li>Faulty items will be replaced or refunded at no additional cost.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="intellectual">
-              <h2>7. Intellectual Property</h2>
-              <p>All content on sandy.com.pk — including text, images, logos, and design — is the property of S&Y and is protected by applicable copyright law.</p>
-              <ul>
-                <li>You may not reproduce, distribute, or use our content without prior written permission.</li>
-                <li>Our brand name and logo may not be used without explicit consent.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="liability">
-              <h2>8. Limitation of Liability</h2>
-              <p>To the fullest extent permitted by law, S&Y shall not be liable for:</p>
-              <ul>
-                <li>Any indirect, incidental, or consequential damages arising from use of our products or website.</li>
-                <li>Loss of data, revenue, or profits.</li>
-                <li>Streaming performance issues caused by ISP blocking, regional restrictions, device setup, or third-party network conditions. If your ISP affects performance, please try a VPN or mobile hotspot.</li>
-                <li>Delays or failures caused by circumstances beyond our reasonable control (including courier delays, technical outages, or force majeure events).</li>
-              </ul>
-              <p>Our total liability shall not exceed the value of the order in question.</p>
-            </div>
-
-            <div className="policy-section" id="governing">
-              <h2>9. Governing Law</h2>
-              <p>These Terms & Conditions are governed by and construed in accordance with the laws of England and Wales. Any disputes shall be subject to the exclusive jurisdiction of the courts of England and Wales.</p>
-            </div>
-
-            <div className="policy-section" id="contact">
-              <h2>10. Contact Us</h2>
-              <p>If you have any questions about these Terms & Conditions, please contact us:</p>
-              <div className="highlight-box">
-                <p>📧 Email: {contact.email}<br />
-                💬 WhatsApp: {contact.phone}<br />
-                {contact.telegram ? <>✈️ Telegram: {contact.telegram}<br /></> : null}
-                🌐 Website: sandy.com.pk</p>
-              </div>
-            </div>
-          </div>
-          )}
+          <div className="policy-content cms-legal" dangerouslySetInnerHTML={{ __html: legal.html }} />
         </div>
 
         <SiteFooter />

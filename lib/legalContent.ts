@@ -1,0 +1,96 @@
+import xss from "xss";
+import { escapeHtml } from "./contentHtml.ts";
+
+export const LEGAL_DEFAULT_HTML = {
+  terms: "<h2>1. Agreement to Terms</h2>\n<blockquote><p>By using sandy.com.pk or placing an order with us, you agree to these Terms &amp; Conditions. Please read them carefully before you buy.</p></blockquote>\n<p>These terms apply to every visitor and customer of S&amp;Y. We may update them from time to time, and the date at the top of this page shows the latest version. The version in force when you place an order applies to that order.</p>\n<h2>2. About Us</h2>\n<p>sandy.com.pk is an online store operated by S&amp;Y, based in Lahore, Pakistan. We sell products to customers within Pakistan. You can reach us using the details in the Contact Us section below.</p>\n<h2>3. Products &amp; Prices</h2>\n<ul>\n<li>We try to describe and photograph every product accurately. Colours and small details may look slightly different on your screen.</li>\n<li>All products are subject to availability. If an item becomes unavailable after you order, we will contact you and offer an alternative or a full refund of any amount you paid.</li>\n<li>Prices are shown in Pakistani Rupees (PKR). General Sales Tax (GST) at the applicable rate and any delivery charge are added at checkout and shown in your order summary before you place the order.</li>\n<li>If a product is listed at a clearly wrong price because of an error, we may cancel the order and refund any amount paid. We will inform you before doing so.</li>\n<li>Discount coupons are subject to their own conditions, cannot be exchanged for cash, and may be changed or withdrawn at any time.</li>\n</ul>\n<h2>4. Orders &amp; Confirmation</h2>\n<p>Placing an order is an offer to buy. A contract is formed only when we confirm your order.</p>\n<ul>\n<li>Please give your correct name, phone number, email address and full delivery address. Orders with incomplete or false details may be cancelled.</li>\n<li>After you place an order, you receive an order number. We may contact you about your order by phone, WhatsApp or email.</li>\n<li>Cash on Delivery orders are confirmed by our team, usually by a phone call or WhatsApp message, before dispatch. If we cannot reach you, the order may be held or cancelled.</li>\n<li>Advance payment orders (JazzCash, Easypaisa or bank transfer) are confirmed after we verify your payment.</li>\n<li>We may decline or cancel an order, for example in case of suspected fraud, repeated refused deliveries, or an address outside our delivery coverage. Any amount you paid for a cancelled order is refunded in full.</li>\n</ul>\n<h2>5. Payment</h2>\n<p>We currently accept the following payment methods:</p>\n<ul>\n<li><strong>Cash on Delivery (COD):</strong> pay the rider or courier in cash when your order arrives. COD may be limited by order value or order history. In such cases only advance payment options are shown at checkout.</li>\n<li><strong>JazzCash / Easypaisa / Bank Transfer:</strong> payment details are shown when you choose the method. Please enter your payment reference and upload a clear receipt at checkout so that we can verify your payment.</li>\n<li>Only pay into the accounts shown on our website or confirmed through our official contact channels. We will never ask for your card PIN, OTP code or wallet password.</li>\n<li>We do not collect or store debit or credit card details on this website.</li>\n</ul>\n<h2>6. Shipping &amp; Delivery</h2>\n<ul>\n<li>We deliver within Pakistan through our own riders or courier partners.</li>\n<li>The delivery charge (if any), any free delivery offer and the estimated delivery time for your city are shown at checkout before you place your order.</li>\n<li>Delivery times are estimates and are not guaranteed. Delays can happen because of courier operations, public holidays, weather or other events outside our control.</li>\n<li>After dispatch, you can check your order status on our Order Tracking page.</li>\n<li>Please check the outer packaging when your parcel arrives. If it looks damaged or opened, tell the rider and contact us within 48 hours.</li>\n<li>If a delivery fails because of a wrong address or phone number, or because nobody accepts the parcel, re-delivery may cost extra. Refused Cash on Delivery parcels may mean that future orders need advance payment.</li>\n<li>Ownership and risk of the products pass to you on delivery.</li>\n</ul>\n<h2>7. Cancellations</h2>\n<ul>\n<li>To cancel an order, contact us with your order number before it is dispatched. A dispatched order cannot be cancelled, but you may be able to return it under our Refund Policy.</li>\n<li>If a cancelled order was paid in advance, we refund the full amount you paid, as described in our Refund Policy.</li>\n</ul>\n<h2>8. Returns &amp; Refunds</h2>\n<p>Returns, replacements and refunds are covered by our <a href=\"/refund-policy\">Refund Policy</a>. In short:</p>\n<ul>\n<li>Unused items in their original packaging can be returned within 14 days of delivery, unless the product page marks the item as non-returnable.</li>\n<li>Damaged, faulty or wrong items must be reported within 48 hours of delivery. We will replace or refund them at no extra cost to you.</li>\n</ul>\n<h2>9. Using Our Website</h2>\n<ul>\n<li>Please do not misuse our website. This includes false or fraudulent orders, attempts to access restricted areas, and any action that harms the website or other customers.</li>\n<li>We may refuse service, cancel orders or block access where we reasonably suspect misuse or fraud.</li>\n</ul>\n<h2>10. Intellectual Property</h2>\n<p>All content on sandy.com.pk, including text, images, logos and design, belongs to S&amp;Y or is used with permission, and is protected by applicable law.</p>\n<ul>\n<li>You may not copy, reproduce or distribute our content without our written permission.</li>\n<li>Our brand name and logo may not be used without our written consent.</li>\n</ul>\n<h2>11. Limitation of Liability</h2>\n<p>To the extent permitted by law, S&amp;Y is not liable for:</p>\n<ul>\n<li>indirect or consequential loss, including loss of profit, data or business;</li>\n<li>delays or failures caused by events outside our reasonable control, such as courier delays, network outages, strikes, natural events or government action.</li>\n</ul>\n<p>Our total liability for any order is limited to the amount you paid for that order. Nothing in these terms limits any right you have under the consumer protection laws of Pakistan.</p>\n<h2>12. Governing Law &amp; Disputes</h2>\n<p>These Terms &amp; Conditions are governed by the laws of Pakistan. If you have a complaint, please contact us first so that we can try to resolve it quickly. If a dispute cannot be resolved, the courts at Lahore will have jurisdiction. This does not affect any right you have to approach a consumer court under the consumer protection law of your province.</p>\n<h2>13. Contact Us</h2>\n<p>If you have any questions about these Terms &amp; Conditions, please contact us:</p>\n<blockquote><p>📧 Email: {{contact_email}}<br>💬 WhatsApp: {{contact_phone}}<br>🌐 Website: sandy.com.pk</p></blockquote>",
+  privacy: "<h2>1. Overview</h2>\n<blockquote><p>S&amp;Y (\"we\", \"us\", \"our\") respects your privacy. This policy explains what personal information we collect when you use sandy.com.pk or place an order, why we collect it, and how we protect it.</p></blockquote>\n<p>By using our website or placing an order, you agree to the use of your information as described in this policy. We handle personal information in line with the laws of Pakistan.</p>\n<h2>2. Information We Collect</h2>\n<p>When you place an order or contact us, we may collect:</p>\n<ul>\n<li>your name, email address and phone or WhatsApp number;</li>\n<li>your delivery address (address, area, city, province and postal code);</li>\n<li>your order details, such as products, prices, coupons, payment method and order history;</li>\n<li>for advance payments, the payment reference you enter and the receipt image or file you upload;</li>\n<li>messages you send us through WhatsApp, email or our website.</li>\n</ul>\n<p>We also process limited technical information needed to run and protect the website, such as your IP address and browser type, for example to prevent fraud and abuse. We do not collect or store debit or credit card details.</p>\n<h2>3. How We Use Your Information</h2>\n<ul>\n<li>to process, confirm, deliver and support your orders;</li>\n<li>to verify advance payments;</li>\n<li>to contact you about your order by phone, WhatsApp or email;</li>\n<li>to prevent fraud and misuse, for example repeated refused Cash on Delivery orders;</li>\n<li>to keep the records we need for accounting, tax and legal purposes;</li>\n<li>to improve our website and service.</li>\n</ul>\n<p>We do not send you marketing messages without your consent.</p>\n<h2>4. Sharing Your Information</h2>\n<p>We do not sell, rent or trade your personal information. We share it only where needed:</p>\n<ul>\n<li><strong>Delivery partners:</strong> your name, phone number, address and the amount to collect (for Cash on Delivery) are shared with our riders or courier company to deliver your order.</li>\n<li><strong>Service providers:</strong> companies that host our website and email and store payment receipt files for us. They process your information only to provide their service to us.</li>\n<li><strong>Legal reasons:</strong> where required by law, a court order or a government authority, or to protect our rights and prevent fraud.</li>\n<li><strong>Business transfer:</strong> if our business is sold or merged, customer records may pass to the new owner under this policy.</li>\n</ul>\n<h2>5. Cookies and Local Browser Storage</h2>\n<p>Our storefront does not currently use optional analytics or advertising cookies (such as Google Analytics).</p>\n<p>Shopping-cart information is stored locally in your browser so your cart can persist between pages. Essential session cookies or storage may be used for restricted administrative login. These technologies support site functionality and are not used for visitor profiling or advertising.</p>\n<p>You can clear locally stored site data through your browser controls. Clearing this data may affect cart or admin-login continuity.</p>\n<h2>6. Data Security</h2>\n<p>We use reasonable technical and organisational measures to protect your information, including HTTPS encryption, restricted staff access, and private storage of payment receipts that only authorised staff can view.</p>\n<p>No method of transmission or storage over the internet is completely secure, so we cannot guarantee absolute security.</p>\n<h2>7. Data Retention</h2>\n<ul>\n<li>Order records are kept for as long as needed for delivery, customer support, accounting, tax and legal purposes.</li>\n<li>Temporary checkout and verification records are deleted automatically after about 30 days.</li>\n<li>Internal staff activity logs are kept for up to 365 days.</li>\n<li>You may ask us to delete your information. We will do so unless we must keep it for legal, tax or fraud prevention reasons.</li>\n</ul>\n<h2>8. Your Requests</h2>\n<p>You can contact us to:</p>\n<ul>\n<li>ask what personal information we hold about you;</li>\n<li>correct information that is wrong;</li>\n<li>ask us to delete your information, subject to the record keeping needs above;</li>\n<li>stop receiving messages from us that are not about your orders.</li>\n</ul>\n<p>To make a request, contact us at {{contact_email}}. We may ask you to confirm your identity first.</p>\n<h2>9. Children</h2>\n<p>Orders on our website should be placed by adults aged 18 or over. If you believe a child has given us personal information, please contact us and we will delete it where appropriate.</p>\n<h2>10. Changes to This Policy</h2>\n<p>We may update this policy from time to time. The date at the top of this page shows the latest version.</p>\n<h2>11. Contact Us</h2>\n<p>If you have any questions about this Privacy Policy or how we handle your data, please contact us:</p>\n<blockquote><p>📧 Email: {{contact_email}}<br>💬 WhatsApp: {{contact_phone}}<br>🌐 Website: sandy.com.pk</p></blockquote>\n<p>If you believe your data has been mishandled, please contact us and we will look into it.</p>\n",
+  refund: "<h2>1. Overview</h2>\n<blockquote><p>Received a damaged, faulty or wrong item? We will replace it or refund you. Unused items in their original condition can also be returned within 14 days of delivery.</p></blockquote>\n<p>This Refund Policy applies to all purchases made on sandy.com.pk and forms part of our Terms &amp; Conditions.</p>\n<h2>2. Returning an Item</h2>\n<ul>\n<li>Request a return within <strong>14 days</strong> of the delivery date.</li>\n<li>The item must be <strong>unused</strong>, undamaged and in its <strong>original packaging</strong>, with all accessories, tags, manuals and free gifts.</li>\n<li>Items that show signs of use, damage or tampering cannot be accepted.</li>\n<li>For change of mind returns, you pay the cost of sending the item back, and the original delivery charge is not refunded.</li>\n</ul>\n<h2>3. Non-returnable Items</h2>\n<p>Some items cannot be returned for change of mind, for example opened personal care or hygiene products. Such items are marked as non-returnable on the product page. They can still be reported if they arrive damaged, faulty or wrong.</p>\n<h2>4. Damaged, Faulty or Wrong Items</h2>\n<p>If your item arrives damaged, faulty, incomplete or different from what you ordered, contact us within <strong>48 hours</strong> of delivery with:</p>\n<ul>\n<li>your order number;</li>\n<li>a short description of the problem;</li>\n<li>clear photos or a video of the item and its packaging.</li>\n</ul>\n<p>After we review your request, we will offer one of the following at no extra cost to you:</p>\n<ul>\n<li><strong>Replacement:</strong> we send you the same item again.</li>\n<li><strong>Full refund:</strong> including any delivery charge you paid.</li>\n</ul>\n<p>We cover the return delivery cost for damaged, faulty or wrong items. For problems that appear after normal use, a brand or seller warranty may apply if it is stated on the product page.</p>\n<h2>5. How to Return an Item</h2>\n<ol>\n<li>Contact us on WhatsApp ({{contact_phone}}) or by email ({{contact_email}}) with your order number and the reason for the return.</li>\n<li>Wait for our team to approve your request and share return instructions.</li>\n<li>Pack the item securely in its original packaging.</li>\n<li>Send or hand over the item as instructed, and share the tracking number if you use a courier.</li>\n</ol>\n<p>Please do not send items back without contacting us first. Returns we have not approved may not be accepted.</p>\n<h2>6. Refunds</h2>\n<ul>\n<li>We inspect returned items when they reach us. If the return is approved, we process your refund within <strong>5–7 working days</strong>.</li>\n<li>Advance payment orders (JazzCash, Easypaisa or bank transfer) are refunded to the same account or wallet where possible.</li>\n<li>Cash on Delivery orders are refunded by bank transfer, JazzCash or Easypaisa to an account in your name that you share with us.</li>\n<li>Your bank or wallet provider may take extra time to show the refund. We will let you know once we have sent it.</li>\n</ul>\n<h2>7. Cancelled and Refused Orders</h2>\n<ul>\n<li>If you cancel an advance payment order before dispatch, or if we cancel your order, we refund the full amount you paid.</li>\n<li>If a Cash on Delivery parcel is refused without a valid reason, future orders may require advance payment.</li>\n</ul>\n<h2>8. Exceptions</h2>\n<p>The following are not eligible for a return or refund:</p>\n<ul>\n<li>items marked as non-returnable on the product page, unless they arrive damaged, faulty or wrong;</li>\n<li>return requests made more than 14 days after delivery;</li>\n<li>items that were used, damaged after delivery, or returned without their original packaging or accessories;</li>\n<li>problems caused by wrong delivery details given at checkout;</li>\n<li>damage caused by misuse, accidents or incompatible third-party products.</li>\n</ul>\n<h2>9. Contact Us</h2>\n<p>If you have any questions about this Refund Policy or want to start a return, please get in touch:</p>\n<blockquote><p>📧 Email: {{contact_email}}<br>💬 WhatsApp: {{contact_phone}}<br>🌐 Website: sandy.com.pk</p></blockquote>\n<p>We aim to reply to refund and return enquiries as quickly as possible during business hours.</p>\n",
+} as const;
+
+export function isEffectivelyEmptyHtml(raw: string): boolean {
+  const s = raw || "";
+  if (/<img\b/i.test(s)) return false;
+  const text = s
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, "")
+    .replace(/\u00a0/g, "")
+    .replace(/\s+/g, "");
+  return text.length === 0;
+}
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+}
+
+function stripTags(html: string): string {
+  return decodeEntities((html || "").replace(/<[^>]*>/g, "")).trim();
+}
+
+function slugifyHeading(label: string, used: Map<string, number>, sectionIndex: number): string {
+  let base = label.replace(/^\d+\.\s*/, "");
+  base = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/g, "");
+  if (!base) base = "section-" + sectionIndex;
+  const count = used.get(base) || 0;
+  used.set(base, count + 1);
+  if (count === 0) return base;
+  return base + "-" + (count + 1);
+}
+
+export type LegalTocItem = { id: string; label: string };
+
+export function renderLegalBody(
+  raw: string,
+  fallbackHtml: string,
+  contact: { email: string; phone: string },
+): { html: string; toc: LegalTocItem[]; source: "cms" | "default" } {
+  const useDefault = isEffectivelyEmptyHtml(raw);
+  let body = useDefault ? fallbackHtml : raw;
+  const source: "cms" | "default" = useDefault ? "default" : "cms";
+
+  body = body
+    .replace(/\{\{contact_email\}\}/g, escapeHtml(contact.email || ""))
+    .replace(/\{\{contact_phone\}\}/g, escapeHtml(contact.phone || ""));
+
+  const sanitised = xss(body);
+
+  const parts = sanitised.split(/(<h2\b[^>]*>[\s\S]*?<\/h2>)/i);
+  const toc: LegalTocItem[] = [];
+  const used = new Map<string, number>();
+  let sectionIndex = 0;
+  let out = "";
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
+    const isH2 = /^<h2\b/i.test(part);
+    if (isH2) {
+      sectionIndex += 1;
+      const label = stripTags(part);
+      const id = slugifyHeading(label, used, sectionIndex);
+      toc.push({ id, label });
+      let sectionBody = "";
+      if (i + 1 < parts.length && !/^<h2\b/i.test(parts[i + 1] || "")) {
+        sectionBody = parts[i + 1] || "";
+        i += 1;
+      }
+      out += '<div class="policy-section" id="' + id + '">' + part + sectionBody + "</div>";
+    } else {
+      out += part;
+    }
+  }
+
+  return { html: out, toc, source };
+}

@@ -3,7 +3,7 @@ import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
-import xss from "xss";
+import { LEGAL_DEFAULT_HTML, renderLegalBody } from "@/lib/legalContent";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -59,6 +59,13 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
   .policy-section ul { padding-left:20px; margin-bottom:14px; }
   .policy-section ul li { font-size:14px; color:#333333; line-height:1.9; margin-bottom:6px; }
   .policy-section ul li::marker { color:#5B21B6; }
+  .policy-section ol { padding-left:20px; margin-bottom:14px; }
+  .policy-section ol li { font-size:14px; color:#333333; line-height:1.9; margin-bottom:6px; }
+  .policy-section ol li::marker { color:#5B21B6; }
+  .policy-section li p { margin:0; }
+  .policy-section blockquote { background:#EDE9FE; border:1px solid rgba(91,33,182,0.25); border-radius:12px; padding:18px 20px; margin:0 0 16px; }
+  .policy-section blockquote p { margin-bottom:0; color:#444444; }
+  .policy-section a { color:#5B21B6; }
   .cms-legal h2 { font-family:var(--font-display); font-size:20px; font-weight:700; color:#111111; margin:24px 0 12px; }
   .cms-legal p { font-size:14px; color:#333; line-height:1.9; margin-bottom:14px; }
   .cms-legal ul { padding-left:20px; margin-bottom:14px; }
@@ -91,7 +98,11 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
 export default function PrivacyPolicyPage() {
   const contact = useContactConfig();
   const sc = useSiteContent();
-  const cmsBody = cmsText(sc, "privacy_content", "");
+  const legal = renderLegalBody(
+    cmsText(sc, "privacy_content", ""),
+    LEGAL_DEFAULT_HTML.privacy,
+    { email: contact.email, phone: contact.phone },
+  );
 
   return (
     <>
@@ -103,125 +114,20 @@ export default function PrivacyPolicyPage() {
         <div className="page-header">
           <div className="section-tag">✦ {cmsText(sc, "legal_tag", "Legal")}</div>
           <h1 className="page-title">{cmsText(sc, "privacy_title", "Privacy Policy")}</h1>
-          <p className="last-updated">{cmsText(sc, "privacy_updated", "Last updated: 30 May 2026")}</p>
+          <p className="last-updated">{cmsText(sc, "privacy_updated", "Last updated: 25 November 2026")}</p>
         </div>
 
         <div className="content-layout">
-          {/* SIDEBAR */}
           <aside className="toc">
             <div className="toc-title">Contents</div>
             <ul className="toc-list">
-              <li><a href="#overview">1. Overview</a></li>
-              <li><a href="#data-collect">2. Data We Collect</a></li>
-              <li><a href="#how-use">3. How We Use Your Data</a></li>
-              <li><a href="#sharing">4. Data Sharing</a></li>
-              <li><a href="#cookies">5. Cookies</a></li>
-              <li><a href="#security">6. Data Security</a></li>
-              <li><a href="#rights">7. Your Rights</a></li>
-              <li><a href="#retention">8. Data Retention</a></li>
-              <li><a href="#contact">9. Contact Us</a></li>
+              {legal.toc.map((item) => (
+                <li key={item.id}><a href={"#" + item.id}>{item.label}</a></li>
+              ))}
             </ul>
           </aside>
 
-          {/* CONTENT */}
-          {cmsBody ? (
-            <div
-              className="policy-content cms-legal"
-              dangerouslySetInnerHTML={{ __html: xss(cmsBody) }}
-            />
-          ) : (
-          <div className="policy-content">
-            <div className="policy-section" id="overview">
-              <h2>1. Overview</h2>
-              <div className="highlight-box">
-                <p>S&Y (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard information when you use our website sandy.com.pk.</p>
-              </div>
-              <p>By placing an order or using our website, you agree to the collection and use of information as described in this policy. We handle personal data in line with applicable Pakistani law.</p>
-            </div>
-
-            <div className="policy-section" id="data-collect">
-              <h2>2. Data We Collect</h2>
-              <p>When you place an order or contact us, we may collect the following information:</p>
-              <ul>
-                <li>Full name</li>
-                <li>Email address</li>
-                <li>Phone number / WhatsApp number</li>
-                <li>Delivery address (house, area, city, province, postal code)</li>
-                <li>Order details and payment receipts</li>
-                <li>Any messages or communications you send us</li>
-              </ul>
-              <p>We do not collect or store credit/debit card details. Payments are made via bank transfer, and we only receive a receipt image uploaded by the customer.</p>
-            </div>
-
-            <div className="policy-section" id="how-use">
-              <h2>3. How We Use Your Data</h2>
-              <p>We use your personal data for the following purposes:</p>
-              <ul>
-                <li>Processing and fulfilling your orders</li>
-                <li>Verifying bank transfer payments</li>
-                <li>Sending order confirmations and status updates</li>
-                <li>Providing customer support via WhatsApp or email</li>
-                <li>Improving our website and services</li>
-                <li>Complying with legal obligations</li>
-              </ul>
-              <p>We will not use your data for unsolicited marketing without your consent.</p>
-            </div>
-
-            <div className="policy-section" id="sharing">
-              <h2>4. Data Sharing</h2>
-              <p>We do not sell, trade, or rent your personal data to third parties. We may share your information only in the following circumstances:</p>
-              <ul>
-                <li><strong>Delivery partners</strong> — your name and address may be shared with our courier service to fulfil your order.</li>
-                <li><strong>Legal requirements</strong> — we may disclose your data if required by law or in response to a valid legal request.</li>
-                <li><strong>Business transfers</strong> — in the event of a merger or acquisition, your data may be transferred to the new owner.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="cookies">
-              <h2>5. Cookies and Local Browser Storage</h2>
-              <p>Our storefront does not currently use optional analytics or advertising cookies (such as Google Analytics).</p>
-              <p>Shopping-cart information is stored locally in your browser so your cart can persist between pages. Essential session cookies or storage may be used for restricted administrative login. These technologies support site functionality and are not used for visitor profiling or advertising.</p>
-              <p>You can clear locally stored site data through your browser controls. Clearing this data may affect cart or admin-login continuity.</p>
-            </div>
-
-            <div className="policy-section" id="security">
-              <h2>6. Data Security</h2>
-              <p>We take reasonable technical and organisational measures to protect your personal data from unauthorised access, loss, or misuse. Our website uses HTTPS encryption to secure data in transit.</p>
-              <p>However, no method of transmission over the internet is 100% secure. While we strive to protect your data, we cannot guarantee absolute security.</p>
-            </div>
-
-            <div className="policy-section" id="rights">
-              <h2>7. Your Rights</h2>
-              <p>You have the following rights regarding your personal data:</p>
-              <ul>
-                <li><strong>Right to access</strong> — request a copy of the data we hold about you.</li>
-                <li><strong>Right to rectification</strong> — request correction of inaccurate data.</li>
-                <li><strong>Right to erasure</strong> — request deletion of your data (&quot;right to be forgotten&quot;).</li>
-                <li><strong>Right to restrict processing</strong> — request we limit how we use your data.</li>
-                <li><strong>Right to data portability</strong> — request your data in a machine-readable format.</li>
-                <li><strong>Right to object</strong> — object to processing of your data in certain circumstances.</li>
-              </ul>
-              <p>To exercise any of these rights, please contact us at {contact.email}.</p>
-            </div>
-
-            <div className="policy-section" id="retention">
-              <h2>8. Data Retention</h2>
-              <p>We retain your personal data for as long as necessary to fulfil the purposes outlined in this policy. You may request deletion of your data at any time, subject to legal obligations.</p>
-            </div>
-
-            <div className="policy-section" id="contact">
-              <h2>9. Contact Us</h2>
-              <p>If you have any questions about this Privacy Policy or how we handle your data, please contact us:</p>
-              <div className="highlight-box">
-                <p>📧 Email: {contact.email}<br />
-                💬 WhatsApp: {contact.phone}<br />
-                {contact.telegram ? <>✈️ Telegram: {contact.telegram}<br /></> : null}
-                🌐 Website: sandy.com.pk</p>
-              </div>
-              <p>If you believe your data has been mishandled, please contact us and we will look into it.</p>
-            </div>
-          </div>
-          )}
+          <div className="policy-content cms-legal" dangerouslySetInnerHTML={{ __html: legal.html }} />
         </div>
 
         <SiteFooter />

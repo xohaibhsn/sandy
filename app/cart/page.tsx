@@ -1277,6 +1277,12 @@ export default function CartPage() {
                     onClick={handleOrder}>
                     {placing ? cmsText(sc, "cart_placing", "Placing Order...") : cmsText(sc, "cart_place_btn", "Place Order →")}
                   </button>
+                  <p style={{fontSize:12,color:"#666",marginTop:10,lineHeight:1.5,textAlign:"center"}}>
+                    {cmsText(sc, "cart_policy_prefix", "By placing your order, you agree to our")}{" "}
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" style={{color:"#5B21B6"}}>{cmsText(sc, "terms_title", "Terms & Conditions")}</a>
+                    {" "}and{" "}
+                    <a href="/refund-policy" target="_blank" rel="noopener noreferrer" style={{color:"#5B21B6"}}>{cmsText(sc, "refund_title", "Refund Policy")}</a>.
+                  </p>
                   {orderError && (
                     <div style={{marginTop:"14px",background:"rgba(255,68,68,0.1)",border:"1px solid rgba(255,68,68,0.3)",borderRadius:"12px",padding:"14px 16px"}}>
                       <p style={{color:"#ff8888",fontSize:"13px",marginBottom:"10px"}}>⚠️ {orderError}</p>

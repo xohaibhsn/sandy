@@ -3,7 +3,7 @@ import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
-import xss from "xss";
+import { LEGAL_DEFAULT_HTML, renderLegalBody } from "@/lib/legalContent";
 
 const styles = `
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -53,6 +53,13 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
   .policy-section ul { padding-left:20px; margin-bottom:14px; }
   .policy-section ul li { font-size:14px; color:#333333; line-height:1.9; margin-bottom:6px; }
   .policy-section ul li::marker { color:#5B21B6; }
+  .policy-section ol { padding-left:20px; margin-bottom:14px; }
+  .policy-section ol li { font-size:14px; color:#333333; line-height:1.9; margin-bottom:6px; }
+  .policy-section ol li::marker { color:#5B21B6; }
+  .policy-section li p { margin:0; }
+  .policy-section blockquote { background:#EDE9FE; border:1px solid rgba(91,33,182,0.25); border-radius:12px; padding:18px 20px; margin:0 0 16px; }
+  .policy-section blockquote p { margin-bottom:0; color:#444444; }
+  .policy-section a { color:#5B21B6; }
   .highlight-box { background:#EDE9FE; border:1px solid rgba(91,33,182,0.25); border-radius:12px; padding:18px 20px; margin-bottom:16px; }
   .highlight-box p { margin-bottom:0; color:#444444; }
   .warning-box { background:#FEF3C7; border:1px solid rgba(234,179,8,0.3); border-radius:12px; padding:18px 20px; margin-bottom:16px; }
@@ -84,7 +91,11 @@ body { background:#FFFFFF; color:#111111; font-family:var(--font-body); overflow
 export default function RefundPolicyPage() {
   const contact = useContactConfig();
   const sc = useSiteContent();
-  const cmsBody = cmsText(sc, "refund_content", "");
+  const legal = renderLegalBody(
+    cmsText(sc, "refund_content", ""),
+    LEGAL_DEFAULT_HTML.refund,
+    { email: contact.email, phone: contact.phone },
+  );
 
   return (
     <>
@@ -95,7 +106,7 @@ export default function RefundPolicyPage() {
         <div className="page-header">
           <div className="section-tag">✦ {cmsText(sc, "legal_tag", "Legal")}</div>
           <h1 className="page-title">{cmsText(sc, "refund_title", "Refund Policy")}</h1>
-          <p className="last-updated">{cmsText(sc, "refund_updated", "Last updated: 30 May 2026")}</p>
+          <p className="last-updated">{cmsText(sc, "refund_updated", "Last updated: 25 November 2026")}</p>
         </div>
 
         {/* SUMMARY CARDS */}
@@ -118,110 +129,13 @@ export default function RefundPolicyPage() {
           <aside className="toc">
             <div className="toc-title">Contents</div>
             <ul className="toc-list">
-              <li><a href="#overview">1. Overview</a></li>
-              <li><a href="#physical">2. Physical Products</a></li>
-              <li><a href="#subscriptions">3. Subscriptions</a></li>
-              <li><a href="#faulty">4. Faulty Items</a></li>
-              <li><a href="#process">5. Return Process</a></li>
-              <li><a href="#refund-timing">6. Refund Timing</a></li>
-              <li><a href="#exceptions">7. Exceptions</a></li>
-              <li><a href="#contact">8. Contact Us</a></li>
+              {legal.toc.map((item) => (
+                <li key={item.id}><a href={"#" + item.id}>{item.label}</a></li>
+              ))}
             </ul>
           </aside>
 
-          {cmsBody ? (
-            <div className="policy-content cms-legal" dangerouslySetInnerHTML={{ __html: xss(cmsBody) }} />
-          ) : (
-          <div className="policy-content">
-            <div className="policy-section" id="overview">
-              <h2>1. Overview</h2>
-              <div className="highlight-box">
-                <p>Faulty items are replaced or refunded. Unused items in original condition may be returned as described below.</p>
-              </div>
-              <p>This Refund Policy applies to all purchases made on sandy.com.pk. By placing an order, you agree to the terms set out in this policy.</p>
-            </div>
-
-            <div className="policy-section" id="physical">
-              <h2>2. Physical Products</h2>
-              <p>We accept returns on physical products under the following conditions:</p>
-              <ul>
-                <li>Return request must be made within <strong>14 days</strong> of the delivery date.</li>
-                <li>The item must be <strong>unused</strong> and in its <strong>original packaging</strong>.</li>
-                <li>All accessories and documentation originally included must be returned.</li>
-                <li>Items showing signs of use, damage, or tampering will not be accepted for return.</li>
-              </ul>
-              <p>Once we receive and inspect the returned item, we will process your refund within 5-7 working days to your original payment method or via bank transfer.</p>
-            </div>
-
-            <div className="policy-section" id="subscriptions">
-              <h2>3. Digital / Non-returnable items</h2>
-              <p>Some items may be marked as non-returnable (for example opened hygiene products or digital goods). These will be stated on the product page.</p>
-            </div>
-
-            <div className="policy-section" id="faulty">
-              <h2>4. Faulty or Damaged Items</h2>
-              <p>If you receive a faulty or damaged item, please contact us immediately (within 48 hours of delivery) with:</p>
-              <ul>
-                <li>Your Order ID</li>
-                <li>A clear description of the fault or damage</li>
-                <li>Photos or video evidence of the issue</li>
-              </ul>
-              <p>We will offer one of the following resolutions at no additional cost to you:</p>
-              <ul>
-                <li><strong>Replacement</strong> — we will send a replacement item.</li>
-                <li><strong>Full refund</strong> — a complete refund including any delivery charges paid.</li>
-              </ul>
-              <p>We will cover return postage costs for faulty or damaged items.</p>
-            </div>
-
-            <div className="policy-section" id="process">
-              <h2>5. How to Return an Item</h2>
-              <p>To initiate a return, please follow these steps:</p>
-              <ul>
-                <li>Contact us via WhatsApp ({contact.phone}) or email ({contact.email}) with your Order ID and reason for return.</li>
-                <li>Wait for our team to confirm your return request and provide return instructions.</li>
-                <li>Package the item securely in its original packaging.</li>
-                <li>Send the item to the address provided by our team.</li>
-                <li>Share your tracking number with us once posted.</li>
-              </ul>
-              <p>Please do not send items back without contacting us first — unrequested returns cannot be processed.</p>
-            </div>
-
-            <div className="policy-section" id="refund-timing">
-              <h2>6. Refund Timing</h2>
-              <p>Once your return has been received and approved:</p>
-              <ul>
-                <li>Refunds are processed within <strong>5-7 working days</strong>.</li>
-                <li>Refunds will be made via the original payment method or a Pakistani bank / wallet transfer.</li>
-                <li>We will notify you by email or WhatsApp once the refund has been processed.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="exceptions">
-              <h2>7. Exceptions</h2>
-              <p>The following items and situations are not eligible for a refund:</p>
-              <ul>
-                <li>Items marked as non-returnable on the product page.</li>
-                <li>Physical products returned after the 14-day window.</li>
-                <li>Items that have been used, damaged by the customer, or returned without original packaging.</li>
-                <li>Orders where the customer provided incorrect delivery details.</li>
-                <li>Issues caused by incompatible third-party software or misuse of the product.</li>
-              </ul>
-            </div>
-
-            <div className="policy-section" id="contact">
-              <h2>8. Contact Us</h2>
-              <p>If you have any questions about our refund policy or wish to initiate a return, please get in touch:</p>
-              <div className="highlight-box">
-                <p>📧 Email: {contact.email}<br />
-                💬 WhatsApp: {contact.phone}<br />
-                {contact.telegram ? <>✈️ Telegram: {contact.telegram}<br /></> : null}
-                🌐 Website: sandy.com.pk</p>
-              </div>
-              <p>We aim to respond to all refund and return enquiries within 24 hours during business hours.</p>
-            </div>
-          </div>
-          )}
+          <div className="policy-content cms-legal" dangerouslySetInnerHTML={{ __html: legal.html }} />
         </div>
 
         {/* CTA */}
