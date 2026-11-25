@@ -216,6 +216,7 @@ export function checkoutBody(overrides = {}) {
     customer_phone: "03331234567",
     delivery_address: "House 1, Street 2",
     city: "Lahore",
+    province: "Punjab",
     postcode: "54000",
     notes: "",
     payment_method: "cod",

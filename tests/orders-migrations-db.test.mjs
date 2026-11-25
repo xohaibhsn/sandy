@@ -5,7 +5,7 @@
  * in-process against sandy_mig_orders (127.0.0.1:3307). The schema comes from migrations/0001 + 0002 + the
  * tax SQL; the application no longer creates or alters shop tables, so any missing table/column would fail.
  *
- * Covers: Rs.999 + WELCOME10 (discount 99.90, taxable 899.10, tax 162, total 1061.10), no coupon
+ * Covers: Rs.999 + WELCOME10 (discount 100 whole-rupee, taxable 899, tax 162, total 1061), no coupon
  * (tax 180, total 1179), idempotency replay / mismatch, stock decrement, failed checkout leaves nothing behind,
  * tax snapshot written in the same transaction, cancel restores stock + coupon use, and an empty products table
  * stays EMPTY (no seed) after checkout attempts and admin reads.
@@ -128,23 +128,23 @@ try {
   const couponKey = checkoutBody().idempotency_key;
   const couponBody = checkoutBody({ items, coupon_code: "welcome10", idempotency_key: couponKey });
 
-  await section("Rs.999 + WELCOME10: discount 99.90, taxable 899.10, tax 162, total 1061.10", async () => {
+  await section("Rs.999 + WELCOME10: discount 100, taxable 899, tax 162, total 1061", async () => {
     const res = await checkout(couponBody);
     eq(res.statusCode, 200, JSON.stringify(res.body));
     eq(money(res.body.subtotal), 999);
-    eq(money(res.body.discount_amount), 99.9);
+    eq(money(res.body.discount_amount), 100);
     eq(money(res.body.vat_amount), 162);
-    eq(money(res.body.total), 1061.1);
+    eq(money(res.body.total), 1061);
     eq(res.body.coupon_code, "WELCOME10");
     eq(res.body.tax_lines.length, 1);
-    eq(money(res.body.tax_lines[0].taxable_amount), 899.1);
+    eq(money(res.body.tax_lines[0].taxable_amount), 899);
     eq(money(res.body.tax_lines[0].tax_amount), 162);
     eq(money(res.body.tax_lines[0].rate_percent), 18);
     couponOrderId = res.body.order_id;
 
     const row = await one(pool, "SELECT * FROM orders WHERE order_id = ?", [couponOrderId]);
-    eq(money(row.total), 1061.1);
-    eq(money(row.discount_amount), 99.9);
+    eq(money(row.total), 1061);
+    eq(money(row.discount_amount), 100);
     eq(money(row.vat_amount), 162);
     eq(row.coupon_code, "WELCOME10");
     eq(row.status, "pending");
@@ -189,9 +189,9 @@ try {
     const replay = await checkout(couponBody);
     eq(replay.statusCode, 200, JSON.stringify(replay.body));
     eq(replay.body.order_id, couponOrderId);
-    eq(money(replay.body.total), 1061.1);
+    eq(money(replay.body.total), 1061);
     eq(money(replay.body.vat_amount), 162);
-    eq(money(replay.body.discount_amount), 99.9);
+    eq(money(replay.body.discount_amount), 100);
     eq(await count(pool, "SELECT COUNT(*) AS c FROM orders"), ordersBefore, "no second order");
     eq(await stockOf(), 9, "stock not decremented twice");
     eq(await couponUses(), 1, "coupon not counted twice");

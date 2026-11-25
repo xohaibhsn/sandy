@@ -83,13 +83,6 @@ export async function generateMetadata(): Promise<Metadata> {
   // EACH KEY SEPARATE — never reuse across roles
   const faviconUrl = (settings.favicon_url || "").trim();
   const ogImageUrl = (settings.og_default_image || "").trim();
-  const logoUrl = (settings.site_logo_url || "").trim();
-  const whatsappIconUrl = (settings.whatsapp_icon_url || "").trim();
-
-  console.log("[site-assets] favicon:", faviconUrl || "(empty)");
-  console.log("[site-assets] og:", ogImageUrl || "(empty)");
-  console.log("[site-assets] logo:", logoUrl || "(empty)");
-  console.log("[site-assets] whatsapp:", whatsappIconUrl || "(empty)");
 
   const icon32 = faviconUrl ? faviconSizeUrl(faviconUrl, 32) : "/api/favicon";
   const icon48 = faviconUrl ? faviconSizeUrl(faviconUrl, 48) : "/api/favicon";

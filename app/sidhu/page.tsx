@@ -1446,7 +1446,7 @@ export default function AdminPage() {
                     .toLowerCase()
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/(^-|-$)/g, "") })}
-                placeholder="e.g. b1g-1-month-plan"
+                placeholder="e.g. phone-case"
               />
               <small style={{display:"block",marginTop:4,fontSize:11,color:"rgba(255,255,255,0.35)"}}>
                 URL: {SITE_URL.replace(/^https?:\/\//, "")}/products/{editProduct.slug || "product-slug"}
@@ -2981,11 +2981,11 @@ export default function AdminPage() {
 
                   <div style={{margin:"20px 0 12px",paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.08)",fontSize:13,fontWeight:700,color:"#5B21B6"}}>TOP HERO / SLIDER (title + subtitle above products)</div>
                   <div className="modal-field"><label>Top Hero Title</label><input style={{width:"100%"}} value={siteContent.home_top_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_title:e.target.value}))} placeholder="S&Y — Quality products, delivered across Pakistan" /></div>
-                  <div className="modal-field"><label>Top Hero Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.home_top_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_subtitle:e.target.value}))} placeholder="Premium Streaming Solutions for the UK" /></div>
+                  <div className="modal-field"><label>Top Hero Subtitle</label><textarea rows={2} style={{width:"100%",resize:"vertical"}} value={siteContent.home_top_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_top_hero_subtitle:e.target.value}))} placeholder="Quality products, delivered across Pakistan" /></div>
 
                   <div style={{margin:"20px 0 12px",paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.08)",fontSize:13,fontWeight:700,color:"#5B21B6"}}>MAIN HERO (below products — title, buttons, features, stats)</div>
                   <div className="modal-field"><label>Main Hero Tag (small label above title)</label><input style={{width:"100%"}} value={siteContent.home_hero_tag||""} onChange={e=>setSiteContent(s=>({...s,home_hero_tag:e.target.value}))} placeholder="S&Y · Pakistan" /></div>
-                  <div className="modal-field"><label>Main Hero Title</label><input style={{width:"100%"}} value={siteContent.home_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_hero_title:e.target.value}))} placeholder="Premium UK Streaming Service" /></div>
+                  <div className="modal-field"><label>Main Hero Title</label><input style={{width:"100%"}} value={siteContent.home_hero_title||""} onChange={e=>setSiteContent(s=>({...s,home_hero_title:e.target.value}))} placeholder="Your Pakistani Online Store" /></div>
                   <div className="modal-field"><label>Main Hero Subtitle</label><textarea rows={3} style={{width:"100%",resize:"vertical"}} value={siteContent.home_hero_subtitle||""} onChange={e=>setSiteContent(s=>({...s,home_hero_subtitle:e.target.value}))} placeholder="S&Y is your Pakistani online store for accessories, gadgets and everyday essentials." /></div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                     <div className="modal-field"><label>Primary Button Text</label><input style={{width:"100%"}} value={siteContent.home_hero_btn_text||""} onChange={e=>setSiteContent(s=>({...s,home_hero_btn_text:e.target.value}))} placeholder="Shop Now" /></div>
@@ -3251,7 +3251,14 @@ export default function AdminPage() {
                   <CmsField label="Success Subtitle" k="order_success_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
                   <CmsField label="Success WhatsApp CTA" k="order_success_wa" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Success WhatsApp Note" k="order_success_wa_note" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["cart_tag","cart_title","checkout_tag","checkout_title","cart_empty_title","cart_empty_sub","cart_empty_btn","cart_empty_link","cart_summary","cart_subtotal","cart_shipping","cart_shipping_free","cart_total","cart_checkout_btn","cart_place_btn","cart_policy_prefix","cart_placing","cart_details_heading","cart_pay_heading","cart_pay_cod_label","cart_pay_cod_sub","cart_pay_jazz_label","cart_pay_jazz_sub","cart_pay_easy_label","cart_pay_easy_sub","cart_pay_bank_label","cart_pay_bank_sub","cart_delivery_note","cart_prepaid_help","order_success_title","order_success_sub","order_success_wa","order_success_wa_note","order_success_track","order_success_track_link"])}>{contentSaving?"Saving...":"💾 Save Cart Copy"}</button>
+                  <CmsField label="Error: required field" k="cart_err_required" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Error: phone" k="cart_err_phone" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Error: email" k="cart_err_email" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Error: province" k="cart_err_province" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Free-delivery progress bar (1 = on, 0 = off)" k="cart_freeship_bar_enabled" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Free-delivery progress text ({amount} = remaining amount)" k="cart_freeship_progress" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Free-delivery unlocked text" k="cart_freeship_unlocked" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["cart_tag","cart_title","checkout_tag","checkout_title","cart_empty_title","cart_empty_sub","cart_empty_btn","cart_empty_link","cart_summary","cart_subtotal","cart_shipping","cart_shipping_free","cart_total","cart_checkout_btn","cart_place_btn","cart_policy_prefix","cart_placing","cart_details_heading","cart_pay_heading","cart_pay_cod_label","cart_pay_cod_sub","cart_pay_jazz_label","cart_pay_jazz_sub","cart_pay_easy_label","cart_pay_easy_sub","cart_pay_bank_label","cart_pay_bank_sub","cart_delivery_note","cart_prepaid_help","order_success_title","order_success_sub","order_success_wa","order_success_wa_note","order_success_track","order_success_track_link","cart_err_required","cart_err_phone","cart_err_email","cart_err_province","cart_freeship_bar_enabled","cart_freeship_progress","cart_freeship_unlocked"])}>{contentSaving?"Saving...":"💾 Save Cart Copy"}</button>
                 </div>
               )}
 
@@ -3329,7 +3336,8 @@ export default function AdminPage() {
                   <CmsField label="Post CTA Button" k="blog_post_cta_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Post CTA Link" k="blog_post_cta_link" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Post FAQ Heading" k="blog_post_faq_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["blog_title","blog_subtitle","blog_newsletter_title","blog_newsletter_sub","blog_tag","blog_read_more","blog_featured_label","blog_newsletter_btn","blog_newsletter_placeholder","blog_newsletter_thanks","blog_post_cta_title","blog_post_cta_sub","blog_post_cta_btn","blog_post_cta_link","blog_post_faq_title"])}>{contentSaving?"Saving...":"💾 Save Blog Copy"}</button>
+                  <CmsField label="Empty state" k="blog_empty" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["blog_title","blog_subtitle","blog_newsletter_title","blog_newsletter_sub","blog_tag","blog_read_more","blog_featured_label","blog_newsletter_btn","blog_newsletter_placeholder","blog_newsletter_thanks","blog_post_cta_title","blog_post_cta_sub","blog_post_cta_btn","blog_post_cta_link","blog_post_faq_title","blog_empty"])}>{contentSaving?"Saving...":"💾 Save Blog Copy"}</button>
                 </div>
               )}
 

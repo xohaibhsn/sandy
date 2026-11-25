@@ -181,7 +181,8 @@ export function calculateCouponDiscount(
 
   let raw: number;
   if (type === "percentage") {
-    raw = (baseAmount * value) / 100;
+    // D65: percentage coupons round to whole rupees (half-up) before the base cap.
+    raw = Math.round((baseAmount * value) / 100);
   } else {
     raw = value;
   }

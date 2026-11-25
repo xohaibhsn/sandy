@@ -23,6 +23,7 @@ import {
   loadShippingZones,
   loadZoneDeliveryMethods,
   quoteShippingFromLines,
+  shippableSubtotalAfterDiscount,
   type QuoteLine,
   type ShippingArea,
 } from '../../lib/shipping';
@@ -214,6 +215,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let shippingEstimate: string | null = null;
     let shippingArea: string | null = null;
     let deliverable = true;
+    let freeMin: number | null = null;
+    let freeShipBase: number | null = null;
     const goodsSubtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
     let discount = 0;
     let persistedCoupon: string | null = null;
@@ -289,6 +292,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       shippingArea = quote.shippingAreaSnapshot ?? null;
       // Restrict-to-zones refusal is a soft answer (shipping 0) so the cart can show the message.
       deliverable = quote.deliverable !== false;
+      // F-3 additive: expose free_min + shippable-after-discount base for the progress bar.
+      freeShipBase = shippableSubtotalAfterDiscount({
+        lines,
+        discountAmount: discount,
+        goodsSubtotal,
+      });
+      if (quote.zoneId != null) {
+        const matched = zones.find((z) => z.id === quote.zoneId);
+        freeMin =
+          matched && matched.free_min !== null && matched.free_min !== undefined
+            ? Number(matched.free_min)
+            : null;
+      }
     }
 
     const result = computeOrderTaxTotals({
@@ -327,7 +343,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       vat_amount: t.vat_amount,
       total: t.total,
       ...(shippingOn
-        ? { shipping_zone: shippingZone, shipping_estimate: shippingEstimate }
+        ? {
+            shipping_zone: shippingZone,
+            shipping_estimate: shippingEstimate,
+            free_min: freeMin,
+            free_ship_base: freeShipBase,
+          }
         : {}),
       ...(areasOn ? { shipping_areas_enabled: true, shipping_area: shippingArea } : {}),
       ...(pickupOn ? { pickup_enabled: true } : {}),

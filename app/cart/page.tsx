@@ -18,6 +18,11 @@ import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
 import { normaliseEmail, normalisePhone } from "@/lib/customerIdentity";
 import { normaliseText } from "@/lib/shippingNormalise";
 import { PK_CITIES } from "@/lib/pkLocations";
+import {
+  checkoutErrorMessage,
+  validateCheckoutContact,
+  type CheckoutContactField,
+} from "@/lib/checkoutValidation";
 
 type PaymentMethod = "cod" | "jazzcash" | "easypaisa" | "bank";
 
@@ -103,6 +108,10 @@ type TaxQuote = {
   /** Present only when shipping_enabled = 1 on the server (tax-quote adds the keys). */
   shipping_flag_on: boolean;
   shipping_estimate: string;
+  shipping_zone: string;
+  /** Additive F-3 fields from tax-quote (shippable after-discount base vs free_min). */
+  free_min: number | null;
+  free_ship_base: number | null;
   /** Delivery ops (BATCH-17): false only when restrict-to-zones refused the destination. */
   deliverable: boolean;
   deliverable_reason: string;
@@ -363,6 +372,7 @@ export default function CartPage() {
   const [form, setForm] = useState({
     name: "", email: "", phone: "", address: "", area: "", city: "", postcode: "", province: "", notes: ""
   });
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<CheckoutContactField, string>>>({});
   const accountsOn = sc?.accounts_enabled === "1";
   const [addressPrefillDone, setAddressPrefillDone] = useState(false);
 
@@ -642,6 +652,8 @@ export default function CartPage() {
           res.ok && data.success === true && label &&
           subtotalQ !== null && shippingQ !== null && discountQ !== null && vatQ !== null && totalQ !== null
         ) {
+          const freeMinRaw = Number(data.free_min);
+          const freeBaseRaw = Number(data.free_ship_base);
           setQuote({
             key: resultKey,
             subtotal: subtotalQ,
@@ -653,6 +665,9 @@ export default function CartPage() {
             prices_include_tax: data.prices_include_tax === true,
             shipping_flag_on: flagOn,
             shipping_estimate: estimateQ,
+            shipping_zone: flagOn && typeof data.shipping_zone === "string" ? data.shipping_zone.trim() : "",
+            free_min: flagOn && Number.isFinite(freeMinRaw) ? freeMinRaw : null,
+            free_ship_base: flagOn && Number.isFinite(freeBaseRaw) ? freeBaseRaw : null,
             deliverable: data.deliverable !== false,
             deliverable_reason:
               typeof data.shipping_unavailable_reason === "string" ? data.shipping_unavailable_reason.trim() : "",
@@ -745,6 +760,26 @@ export default function CartPage() {
   const taxAmountDisplay = quoteReady ? formatPrice(quote.vat_amount) : "—";
   const grandTotalDisplay = quoteReady ? formatPrice(quote.total) : "—";
   const isPrepaid = paymentMethod !== "cod";
+  // F-3 free-delivery progress bar (CMS on/off; needs zone + free_min > 0 + city chosen).
+  const freeshipBarOn = cmsText(sc, "cart_freeship_bar_enabled", "1") === "1";
+  const freeMinQ = quoteReady ? quote.free_min : null;
+  const freeBaseQ = quoteReady ? quote.free_ship_base : null;
+  const cityChosen = form.city.trim().length > 0;
+  const showFreeshipBar =
+    freeshipBarOn &&
+    shippingFlagOn &&
+    quoteReady &&
+    !!quote.shipping_zone &&
+    cityChosen &&
+    freeMinQ !== null &&
+    freeMinQ > 0 &&
+    freeBaseQ !== null;
+  const freeshipUnlocked = showFreeshipBar && freeBaseQ! >= freeMinQ!;
+  const freeshipRemaining = showFreeshipBar && !freeshipUnlocked ? Math.max(0, freeMinQ! - freeBaseQ!) : 0;
+  const freeshipProgressPct =
+    showFreeshipBar && freeMinQ! > 0
+      ? Math.min(100, Math.max(0, Math.round((freeBaseQ! / freeMinQ!) * 100)))
+      : 0;
 
   const applyCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -761,6 +796,29 @@ export default function CartPage() {
       setOrderError(codOtpActive && !otpToken ? CUSTOMER_TEXTS.COD_OTP_REQUIRED : CUSTOMER_TEXTS.ADVANCE_DELIVERY_HINT);
       return;
     }
+    // D66 client-side: field messages, no network call when invalid.
+    const contactCheck = validateCheckoutContact({
+      name: form.name,
+      phone: form.phone,
+      email: form.email,
+      address: isPickupSel ? "—" : form.address,
+      city: isPickupSel ? "—" : form.city,
+      province: !shippingFlagOn || isPickupSel ? "Punjab" : form.province,
+    });
+    if (!contactCheck.ok) {
+      const msg =
+        contactCheck.code === "invalid_phone"
+          ? cmsText(sc, "cart_err_phone", checkoutErrorMessage(contactCheck.code))
+          : contactCheck.code === "invalid_email"
+            ? cmsText(sc, "cart_err_email", checkoutErrorMessage(contactCheck.code))
+            : contactCheck.code === "invalid_province" || (contactCheck.field === "province" && contactCheck.code === "required")
+              ? cmsText(sc, "cart_err_province", checkoutErrorMessage(contactCheck.code === "required" ? "invalid_province" : contactCheck.code))
+              : cmsText(sc, "cart_err_required", checkoutErrorMessage(contactCheck.code));
+      setFieldErrors({ [contactCheck.field]: msg });
+      setOrderError("");
+      return;
+    }
+    setFieldErrors({});
     setPlacing(true);
     setOrderError("");
 
@@ -1031,6 +1089,18 @@ export default function CartPage() {
                 <div className="summary-row"><span>{cmsText(sc, "cart_subtotal", "Subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                 <div className="summary-row"><span>{cmsText(sc, "cart_shipping", "Shipping")}</span><span>{shipping === 0 ? cmsText(sc, "cart_shipping_free", "Free") : formatPrice(shipping)}</span></div>
                 {shippingEstimate && <div className="summary-row" data-shipping-estimate="1" style={{fontSize:12,opacity:0.7,marginTop:-4}}><span>{shippingEstimate}</span></div>}
+                {showFreeshipBar && (
+                  <div data-freeship-bar="1" style={{margin:"10px 0 4px"}}>
+                    <div style={{fontSize:12,color:freeshipUnlocked?"#16A34A":"#444",marginBottom:6}}>
+                      {freeshipUnlocked
+                        ? cmsText(sc, "cart_freeship_unlocked", "You have unlocked FREE delivery!")
+                        : cmsText(sc, "cart_freeship_progress", "Add {amount} more for FREE delivery").replace("{amount}", formatPrice(freeshipRemaining))}
+                    </div>
+                    <div style={{height:4,background:"rgba(91,33,182,0.15)",borderRadius:2,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${freeshipProgressPct}%`,background:"#5B21B6",transition:"width 0.25s ease"}} />
+                    </div>
+                  </div>
+                )}
                 <div className="summary-row"><span>{taxLabelDisplay}</span><span>{taxAmountDisplay}</span></div>
                 {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                 <hr className="summary-divider" />
@@ -1087,7 +1157,14 @@ export default function CartPage() {
                       <label>{f.label}</label>
                       <input type={f.type} placeholder={f.placeholder}
                         value={form[f.key as keyof typeof form]}
-                        onChange={e => setForm({...form, [f.key]: e.target.value})} />
+                        onChange={e => {
+                          setForm({...form, [f.key]: e.target.value});
+                          const fk = f.key as CheckoutContactField;
+                          if (fieldErrors[fk]) setFieldErrors((prev) => ({ ...prev, [fk]: undefined }));
+                        }} />
+                      {fieldErrors[f.key as CheckoutContactField] && (
+                        <div style={{color:"#DC2626",fontSize:12,marginTop:6}} role="alert">{fieldErrors[f.key as CheckoutContactField]}</div>
+                      )}
                     </div>
                   ))}
                   {isPickupSel ? (
@@ -1117,12 +1194,18 @@ export default function CartPage() {
                     <>
                   <div className="form-group">
                     <label>Province</label>
-                    <select value={form.province} onChange={e => setForm({...form, province: e.target.value})}>
+                    <select value={form.province} onChange={e => {
+                      setForm({...form, province: e.target.value});
+                      if (fieldErrors.province) setFieldErrors((prev) => ({ ...prev, province: undefined }));
+                    }}>
                       <option value="">Select province</option>
                       {PAKISTAN_PROVINCES.map((p) => (
                         <option key={p} value={p}>{p}</option>
                       ))}
                     </select>
+                    {fieldErrors.province && (
+                      <div style={{color:"#DC2626",fontSize:12,marginTop:6}} role="alert">{fieldErrors.province}</div>
+                    )}
                   </div>
                   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px"}}>
                     <div className="form-group">
@@ -1135,8 +1218,12 @@ export default function CartPage() {
                         onChange={e => {
                           setForm({...form, city: e.target.value});
                           if (areasFlagOn) { setAreaId(null); setOtherArea(false); }
+                          if (fieldErrors.city) setFieldErrors((prev) => ({ ...prev, city: undefined }));
                         }}
                       />
+                      {fieldErrors.city && (
+                        <div style={{color:"#DC2626",fontSize:12,marginTop:6}} role="alert">{fieldErrors.city}</div>
+                      )}
                       {areasFlagOn && (
                         <datalist id="cart-city-options">
                           {cityOptions.map((name) => (<option key={name} value={name} />))}
@@ -1262,6 +1349,18 @@ export default function CartPage() {
                     <div className="summary-row"><span>{cmsText(sc, "cart_subtotal", "Subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                     <div className="summary-row"><span>{cmsText(sc, "cart_shipping", "Shipping")}</span><span>{shipping === 0 ? cmsText(sc, "cart_shipping_free", "Free") : formatPrice(shipping)}</span></div>
                 {shippingEstimate && <div className="summary-row" data-shipping-estimate="1" style={{fontSize:12,opacity:0.7,marginTop:-4}}><span>{shippingEstimate}</span></div>}
+                    {showFreeshipBar && (
+                      <div data-freeship-bar="1" style={{margin:"10px 0 4px"}}>
+                        <div style={{fontSize:12,color:freeshipUnlocked?"#16A34A":"#444",marginBottom:6}}>
+                          {freeshipUnlocked
+                            ? cmsText(sc, "cart_freeship_unlocked", "You have unlocked FREE delivery!")
+                            : cmsText(sc, "cart_freeship_progress", "Add {amount} more for FREE delivery").replace("{amount}", formatPrice(freeshipRemaining))}
+                        </div>
+                        <div style={{height:4,background:"rgba(91,33,182,0.15)",borderRadius:2,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${freeshipProgressPct}%`,background:"#5B21B6",transition:"width 0.25s ease"}} />
+                        </div>
+                      </div>
+                    )}
                     <div className="summary-row"><span>{taxLabelDisplay}</span><span>{taxAmountDisplay}</span></div>
                     {couponApplied && <div className="summary-row" style={{color:"#00c864"}}><span>Discount ({couponApplied.code})</span><span>-{formatPrice(discountAmount)}</span></div>}
                     <hr className="summary-divider" />

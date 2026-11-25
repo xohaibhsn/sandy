@@ -27,6 +27,10 @@ import {
 import { assertSafeReceiptUrl, UrlValidationError } from '../../lib/urlValidation';
 import { evaluateCheckoutProtection } from '../../lib/codProtection';
 import { CUSTOMER_TEXTS } from '../../lib/customerTexts';
+import {
+  checkoutErrorMessage,
+  validateCheckoutContact,
+} from '../../lib/checkoutValidation';
 import { consumeVerificationToken } from '../../lib/otp';
 import { loadOrderProtectionSettings } from '../../lib/orderProtectionSettings';
 import { loadAccountSettings } from '../../lib/accountSettings';
@@ -562,6 +566,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'Invalid request' });
       }
       shippingProvince = provinceRaw.value;
+    }
+
+    // D66: PK mobile + email (+ address/city/province for delivery) before any order write.
+    {
+      const contactCheck = validateCheckoutContact({
+        name: customer_name.value,
+        phone: customer_phone.value,
+        email: customer_email.value,
+        address: isPickup ? '—' : delivery_address.value,
+        city: isPickup ? '—' : city.value,
+        province: !shippingOn || isPickup ? 'Punjab' : shippingProvince,
+      });
+      if (!contactCheck.ok) {
+        return res.status(400).json({
+          error: checkoutErrorMessage(contactCheck.code),
+          field: contactCheck.field,
+          code: contactCheck.code,
+        });
+      }
     }
 
     const verificationToken =

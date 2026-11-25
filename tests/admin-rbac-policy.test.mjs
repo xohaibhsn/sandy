@@ -218,6 +218,7 @@ check("admin routes call requirePermission; public-only routes never do", () => 
     "/api/blog",
     "/api/faqs",
     "/api/sections",
+    "/api/site-content",
   ]);
 });
 

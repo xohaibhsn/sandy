@@ -158,58 +158,14 @@ interface BlogApiPost {
   featured?: unknown;
 }
 
-const posts: BlogListPost[] = [
-  {
-    id: 1, featured: true, emoji: "🛒", badge: "guide", badgeText: "Guide",
-    title: "How to Shop on S&Y — A Quick Guide",
-    excerpt: "New to S&Y? This step-by-step guide walks you through browsing products, adding them to your cart, and placing an order for delivery across Pakistan.",
-    date: "28 May 2026", readTime: "5 min read", category: "Guides",
-  },
-  {
-    id: 2, emoji: "📦", badge: "tips", badgeText: "Tips",
-    title: "COD, JazzCash or Bank Transfer — How to Pay",
-    excerpt: "Not sure which payment method to choose? We explain Cash on Delivery, JazzCash, Easypaisa and bank transfer so checkout is simple.",
-    date: "25 May 2026", readTime: "4 min read", category: "Guides",
-  },
-  {
-    id: 3, emoji: "💡", badge: "tips", badgeText: "Tips",
-    title: "5 Tips for Buying Accessories Online in Pakistan",
-    excerpt: "From checking product photos to confirming your city and area, these simple tips help you order with confidence.",
-    date: "22 May 2026", readTime: "3 min read", category: "Tips",
-  },
-  {
-    id: 4, emoji: "🔒", badge: "guide", badgeText: "Guide",
-    title: "How to Track Your S&Y Order",
-    excerpt: "Once you have your Order ID, tracking is easy. Here is how to check status from confirmation through to delivery.",
-    date: "18 May 2026", readTime: "4 min read", category: "Guides",
-  },
-  {
-    id: 5, emoji: "🚚", badge: "tips", badgeText: "Tips",
-    title: "Delivery Across Pakistan — What to Expect",
-    excerpt: "Most orders arrive within 2–5 working days depending on your city. Here is how shipping currently works at S&Y.",
-    date: "14 May 2026", readTime: "5 min read", category: "Tips",
-  },
-  {
-    id: 6, emoji: "📺", badge: "news", badgeText: "News",
-    title: "What's New at S&Y — May 2026 Update",
-    excerpt: "We've added new products, improved our order tracking system, and launched our brand new website. Here's everything that's changed this month.",
-    date: "10 May 2026", readTime: "2 min read", category: "News",
-  },
-  {
-    id: 7, emoji: "🛒", badge: "guide", badgeText: "Guide",
-    title: "How to Place an Order on S&Y",
-    excerpt: "New to our store? This quick guide walks you through exactly how to browse products, add them to your cart, and complete your order in minutes.",
-    date: "5 May 2026", readTime: "3 min read", category: "Guides",
-  },
-];
-
 const categories = ["All", "Guides", "Tips", "News"];
 
 export default function BlogPage() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
-  const [allPosts, setAllPosts] = useState<BlogListPost[]>(posts);
+  const [allPosts, setAllPosts] = useState<BlogListPost[]>([]);
+  const [loading, setLoading] = useState(true);
   const sc = useSiteContent();
   const router = useRouter();
 
@@ -219,23 +175,30 @@ export default function BlogPage() {
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
           const published = data.filter((p: BlogApiPost) => (p.status || "published") === "published");
-          setAllPosts(published.map((p: BlogApiPost) => ({
-            id: p.id,
-            emoji: p.emoji || "📝",
-            badge: p.badge || "guide",
-            badgeText: p.badgeText || "Guide",
-            title: p.title,
-            excerpt: p.excerpt,
-            slug: p.slug || String(p.id),
-            featured_image: p.featured_image || "",
-            date: p.created_at ? new Date(p.created_at).toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}) : "",
-            readTime: "3 min read",
-            category: p.category || "Guides",
-            featured: !!p.featured,
-          })));
+          setAllPosts(
+            published
+              .filter((p: BlogApiPost) => typeof p.slug === "string" && p.slug.trim().length > 0)
+              .map((p: BlogApiPost) => ({
+                id: p.id,
+                emoji: p.emoji || "📝",
+                badge: p.badge || "guide",
+                badgeText: p.badgeText || "Guide",
+                title: p.title,
+                excerpt: p.excerpt,
+                slug: String(p.slug).trim(),
+                featured_image: p.featured_image || "",
+                date: p.created_at ? new Date(p.created_at).toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}) : "",
+                readTime: "3 min read",
+                category: p.category || "Guides",
+                featured: !!p.featured,
+              }))
+          );
+        } else {
+          setAllPosts([]);
         }
       })
-      .catch(() => {});
+      .catch(() => { setAllPosts([]); })
+      .finally(() => { setLoading(false); });
   }, []);
 
   const featuredPost = allPosts.find(p => p.featured);
@@ -270,8 +233,16 @@ export default function BlogPage() {
           ))}
         </div>
 
+        {loading ? (
+          <p style={{ textAlign: "center", color: "#666", margin: "40px 0" }}>Loading…</p>
+        ) : allPosts.length === 0 ? (
+          <p style={{ textAlign: "center", color: "#666", margin: "40px 0" }}>
+            {cmsText(sc, "blog_empty", "New articles are coming soon.")}
+          </p>
+        ) : (
+          <>
         {/* FEATURED */}
-        {featuredPost && (activeCategory === "All" || activeCategory === featuredPost.category) && (
+        {featuredPost && (activeCategory === "All" || activeCategory === featuredPost.category) && featuredPost.slug && (
           <div className="featured-post">
             <div className="featured-card">
               <div className="featured-image">
@@ -287,7 +258,7 @@ export default function BlogPage() {
                   <span>📅 {featuredPost.date}</span>
                   <span>⏱ {featuredPost.readTime}</span>
                 </div>
-                <a href={`/blog/${featuredPost.slug || featuredPost.id}`} className="read-more">{cmsText(sc, "blog_read_more", "Read →")}</a>
+                <a href={`/blog/${featuredPost.slug}`} className="read-more">{cmsText(sc, "blog_read_more", "Read →")}</a>
               </div>
             </div>
           </div>
@@ -295,8 +266,8 @@ export default function BlogPage() {
 
         {/* GRID */}
         <div className="blog-grid">
-          {filteredPosts.map(post => (
-            <div className="blog-card" key={post.id} style={{cursor:"pointer"}} onClick={()=>router.push(`/blog/${post.slug||post.id}`)}>
+          {filteredPosts.filter((p) => !!p.slug).map(post => (
+            <div className="blog-card" key={post.id} style={{cursor:"pointer"}} onClick={()=>router.push(`/blog/${post.slug}`)}>
               <div className="card-image">
                 {post.featured_image
                   ? <img src={post.featured_image} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}} loading="lazy" />
@@ -308,12 +279,14 @@ export default function BlogPage() {
                 <p className="card-excerpt">{post.excerpt}</p>
                 <div className="card-footer">
                   <div className="card-meta">📅 {post.date} · ⏱ {post.readTime}</div>
-                  <a href={`/blog/${post.slug||post.id}`} className="read-more" onClick={e=>e.stopPropagation()}>{cmsText(sc, "blog_read_more", "Read →")}</a>
+                  <a href={`/blog/${post.slug}`} className="read-more" onClick={e=>e.stopPropagation()}>{cmsText(sc, "blog_read_more", "Read →")}</a>
                 </div>
               </div>
             </div>
           ))}
         </div>
+          </>
+        )}
 
         {/* NEWSLETTER */}
         <div className="newsletter">

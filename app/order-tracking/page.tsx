@@ -280,7 +280,7 @@ export default function OrderTrackingPage() {
             <input
               className="search-input"
               type="text"
-              placeholder={cmsText(sc, "tracking_placeholder", "e.g. FK44-62305")}
+              placeholder={cmsText(sc, "tracking_placeholder", "e.g. ORD-1791236751347")}
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}

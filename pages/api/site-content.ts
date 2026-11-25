@@ -62,6 +62,8 @@ import { hasDeliveryOpsSchema, hasShippingSchema } from '../../lib/shippingSchem
 import type { RowDataPacket } from 'mysql2/promise';
 import crypto from 'crypto';
 import type { AdminSession } from '../../lib/adminAuth';
+import { getAdminSession } from '../../lib/adminAuth';
+import { filterSiteContentForPublic } from '../../lib/siteContentVisibility';
 import { auditFieldDiff, recordAudit } from '../../lib/auditLog';
 
 export class ContentValidationError extends Error {
@@ -613,7 +615,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const [rows] = await pool.query<RowDataPacket[]>(query, params);
       const result: Record<string,string> = {};
       for (const r of rows) result[r.content_key] = r.content_value || '';
-      return res.status(200).json(result);
+      // D67: anonymous callers must not receive internal settings keys; staff sessions get everything.
+      const { session } = await getAdminSession(req);
+      const filtered = filterSiteContentForPublic(result, { isStaff: !!session });
+      return res.status(200).json(filtered);
     }
 
     // Central RBAC (P3b): POST = content/manager keys; PUT/DELETE (arbitrary key upsert/removal,

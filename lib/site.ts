@@ -39,8 +39,17 @@ export function parsePrice(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** D65: whole PKR → no decimals; any fractional amount → exactly 2 decimals. */
 export function formatPrice(amount: number | string): string {
-  return `Rs. ${parsePrice(amount).toLocaleString("en-PK")}`;
+  const n = parsePrice(amount);
+  const whole = Number.isInteger(n) || Math.abs(n - Math.round(n)) < 1e-9;
+  if (whole) {
+    return `Rs. ${Math.round(n).toLocaleString("en-PK")}`;
+  }
+  return `Rs. ${n.toLocaleString("en-PK", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function absoluteUrl(path = ""): string {

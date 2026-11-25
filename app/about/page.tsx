@@ -6,6 +6,7 @@ import { looksLikeHtml } from "@/lib/contentHtml";
 import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
+import { resolveAboutMissionText } from "@/lib/aboutContent";
 
 const richXss = {
   whiteList: {
@@ -254,7 +255,7 @@ export default function AboutPage() {
             <div
               className="story-para"
               dangerouslySetInnerHTML={renderRichOrPlain(
-                sc.about_mission || missionSec.text || "",
+                resolveAboutMissionText(sc.about_mission) || missionSec.text || "",
                 "S&Y was founded to make everyday shopping easier across Pakistan — authentic products, fair prices, and real human support."
             )}
             />
