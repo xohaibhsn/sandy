@@ -145,11 +145,10 @@ export default function HomeClient({
   // Section data from DB
   const [sec, setSec] = useState<Record<string, SectionBlock | undefined>>({
     home_features: { title:"Why Choose Us", items:[{icon:"⚡",title:"Fast Delivery",description:"Across Pakistan"},{icon:"🔒",title:"Authentic",description:"Quality you can trust"},{icon:"💬",title:"WhatsApp Support",description:"Always here for you"},{icon:"🚚",title:"Cash on Delivery",description:"Pay when it arrives"}] },
-    home_testimonials: { title:"What Our Customers Say", items:[{name:"Ahmed Khan",rating:5,text:"Amazing service!"},{name:"Sara Ali",rating:5,text:"Fast delivery and genuine products."}] },
   });
   const [sectionOn, setSectionOn] = useState<Record<string, boolean>>({
     home_features: true,
-    home_testimonials: true,
+    home_testimonials: false,
   });
 
   useEffect(() => {

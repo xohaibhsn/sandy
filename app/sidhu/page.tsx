@@ -212,12 +212,6 @@ const styles = `
   }
 `;
 
-// DEMO DATA
-const demoCustomers = [
-  { name:"Ahmed Khan", email:"ahmed@example.com", phone:"+923334800181", orders:3, spent: formatPrice(7497), joined:"Jan 2026", blocked:false },
-  { name:"Sara Ali", email:"sara@example.com", phone:"+923001112223", orders:1, spent: formatPrice(4999), joined:"Feb 2026", blocked:false },
-];
-
 type Tab = "dashboard"|"orders"|"products"|"categories"|"customers"|"blog"|"settings"|"pages"|"redirects"|"coupons"|"builder"|"faqadmin"|"staff"|"tax"|"activity"|"security";
 type StoreCategory = { id:number; name:string; slug:string; description:string; image:string; parent_id:number|null; active:number; sort_order:number; };
 type AdminRole = "super_admin"|"manager"|"writer";
@@ -371,8 +365,8 @@ export default function AdminPage() {
   const [categoriesError, setCategoriesError] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
   const [heroImgUploading, setHeroImgUploading] = useState(false);
-  const [customers, setCustomers] = useState(demoCustomers);
-  const [customersTotal, setCustomersTotal] = useState(demoCustomers.length);
+  const [customers, setCustomers] = useState([] as { name:string; email:string; phone:string; orders:number; spent:string; joined:string; blocked:boolean }[]);
+  const [customersTotal, setCustomersTotal] = useState(0);
   const [customersPage, setCustomersPage] = useState(1);
   const [customersTotalPages, setCustomersTotalPages] = useState(1);
   const [customersError, setCustomersError] = useState("");
