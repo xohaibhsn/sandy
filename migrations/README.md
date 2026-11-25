@@ -2,7 +2,7 @@
 
 These `.sql` files are for **owner review and a manual run in phpMyAdmin only**.
 
-**The application never executes them.** Nothing under `app/`, `pages/`, `lib/` or `scripts/` reads or runs this folder, and runtime code must not create or alter tables (see `scripts/qa/check-runtime-ddl.mjs`; its allowlist is now empty).
+**The application never executes them.** Nothing under `app/`, `pages/` or `lib/` reads or runs this folder. The local-only QA helper `scripts/qa/local-db-bootstrap.mjs` may apply these files against a guarded `sandy_local*` database on `127.0.0.1:3307` only. Runtime code must not create or alter tables (see `scripts/qa/check-runtime-ddl.mjs`; its allowlist is now empty).
 
 ## Before running any file
 
@@ -25,8 +25,10 @@ These `.sql` files are for **owner review and a manual run in phpMyAdmin only**.
 | `0008-customer-accounts.sql` | Creates `customer_addresses` and `customer_wishlist`, and adds nullable `orders.customer_id` (+ index). Guarded / idempotent. No data rows, no backfill. Requires `customers` from 0006 and `orders` from 0002. |
 | `0009-shipping-courier.sql` | SANDY-BATCH-12. Creates `shipping_zones` and `couriers` (no seed rows), adds `products.requires_shipping` (`TINYINT(1) NOT NULL DEFAULT 1`) and nullable `orders` columns `shipping_amount`, `shipping_zone`, `courier_id`, `tracking_number`, `shipped_at`, `delivered_at`, `rto`, `rto_at`, plus index `idx_orders_rto_phone (rto, customer_phone_norm)`. Guarded / idempotent (INFORMATION_SCHEMA + PREPARE). No backfill. Run after 0007 (the index uses `customer_phone_norm`). Harmless while `site_content.shipping_enabled` is `0` / absent. |
 | `0010-delivery-ops.sql` | SANDY-BATCH-17. Creates `shipping_areas`, `riders` and `pickup_points` (no seed rows) plus index `idx_shipping_areas_city_parent (city, parent_id, active)` and unique key `uq_riders_phone`, adds `shipping_zones.delivery_method` (`VARCHAR(20) NOT NULL DEFAULT 'courier'`) and `shipping_zones.same_day_cutoff` (`TIME NULL`), and nullable `orders` columns `fulfilment`, `shipping_area`, `rider_id`, `pickup_point_id`, `pickup_point_name`. Guarded / idempotent (INFORMATION_SCHEMA + PREPARE). No backfill: existing zones read `courier`, existing orders keep NULL. Run after 0009. Harmless while `site_content.shipping_areas_enabled`, `shipping_restrict_to_zones` and `pickup_enabled` are `0` / absent. Owner steps: `owner/HOWTO-0010.md`. |
+| `0011-admin-audit-log.sql` | SANDY-BATCH-20. Creates `admin_audit_log` (append-only admin activity log). Idempotent `CREATE TABLE IF NOT EXISTS` + guarded indexes. No data rows. |
+| `0012-tax-schema.sql` | SANDY-BATCH-53. Creates `tax_classes`, `tax_rates`, `tax_rules`, `order_tax_snapshots` and adds guarded `products.tax_class_id`. Already applied on production on 2026-11-17 via `01-tax-config-migrate.sql` — running it there is a no-op; for fresh databases only. Seeds tax CLASS rows only (no rate rows). Run after 0002. |
 
-Order: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010 (0001 and 0002 are independent of 0003; 0005–0007 depend on 0002; 0006 and 0007 are independent of each other; 0008 needs 0006 + 0002; 0009 needs 0002 + 0007; 0010 needs 0009).
+Order: 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012 (0001 and 0002 are independent of 0003; 0005–0007 depend on 0002; 0006 and 0007 are independent of each other; 0008 needs 0006 + 0002; 0009 needs 0002 + 0007; 0010 needs 0009; 0011 needs 0003 conceptually; 0012 needs 0002).
 
 ## Intentionally NOT ported from the removed runtime code (owner decision later)
 

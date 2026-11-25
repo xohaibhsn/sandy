@@ -123,6 +123,35 @@ The **owner** performs the admin login and the edit. These scripts **never** log
 
 ---
 
+## `check-schema-coverage.mjs`
+
+Static gate: every table name used in `pages/`, `lib/`, `app/` SQL strings (`FROM` / `INTO` / `UPDATE` / `JOIN` / `DELETE FROM`) must be created by a `CREATE TABLE` in `migrations/*.sql`.
+
+```bash
+node scripts/qa/check-schema-coverage.mjs
+node scripts/qa/check-schema-coverage.mjs --self-test
+```
+
+Allowlist: `scripts/qa/schema-coverage-allowlist.json` (JSON array of table names; keep empty). False positives (SQL keywords, aliases, PascalCase tokens, `ENV_LIKE` names) are filtered before the missing-table report. Exit **0** when reportable missing is empty, **1** when any remain, **2** on usage/allowlist errors.
+
+---
+
+## `local-db-bootstrap.mjs`
+
+Builds a complete **local** test database from migrations `0001`→`0012`, `owner/seed-delivery-ops.sql`, and `scripts/qa/fixtures/local-fixture.sql` (synthetic ZZ data only). Uses the repo's existing `mysql2` / `bcryptjs` dependencies (no new packages).
+
+```bash
+node scripts/qa/local-db-bootstrap.mjs --env-file <local-only.env> --database sandy_local_b53 --admin-password <pw>
+node scripts/qa/local-db-bootstrap.mjs --host 127.0.0.1 --port 3307 --user sandy_test --password <pw> --database sandy_local_b53
+node scripts/qa/local-db-bootstrap.mjs --self-test
+```
+
+**LOCAL ONLY — never point it at production.** Hard guards refuse unless host is exactly `127.0.0.1` or `localhost`, port is `3307`, and the database name starts with `sandy_local`. Guards run before the MySQL driver is loaded. Passwords are never printed. Connection settings come only from CLI flags or an explicit `--env-file` path (never from ambient discovery).
+
+The fixture seeds: tax rules + 18% rates, one ZZ category, product Phone Case (id 1), shipping ON with Rest of Pakistan / Lahore zones, one ZZ blog post, and (via bootstrap) staff `zz-local-admin@example.invalid` with a bcrypt hash from `--admin-password`.
+
+---
+
 ## `check-runtime-ddl.mjs`
 
 Static guard against schema changes (DDL) in runtime code. It never connects to a database and never reads the network.
