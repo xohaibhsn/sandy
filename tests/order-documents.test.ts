@@ -186,3 +186,37 @@ describe("OrderDetailDrawer WhatsApp links", () => {
     assert.ok(waAnchors.length >= 0);
   });
 });
+
+describe("site-content GET expectSuccess:false (BATCH-60)", () => {
+  it("OrderToolsSettingsPanel has no bare adminRequest GET /api/site-content", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/admin/OrderToolsSettingsPanel.tsx"),
+      "utf8"
+    );
+    // Every adminRequest(..."/api/site-content") GET must pass expectSuccess:false.
+    // Reject the bare two-arg / one-arg GET form.
+    assert.doesNotMatch(
+      src,
+      /adminRequest<Record<string,\s*string>>\(\s*"\/api\/site-content"\s*\)/
+    );
+    assert.match(
+      src,
+      /adminRequest<Record<string,\s*string>>\(\s*"\/api\/site-content"\s*,\s*undefined\s*,\s*\{\s*expectSuccess:\s*false/
+    );
+  });
+
+  it("OrderDetailDrawer has no bare adminRequest GET /api/site-content", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/admin/OrderDetailDrawer.tsx"),
+      "utf8"
+    );
+    assert.doesNotMatch(
+      src,
+      /adminRequest<Record<string,\s*string>>\(\s*"\/api\/site-content"\s*\)/
+    );
+    assert.match(
+      src,
+      /adminRequest<Record<string,\s*string>>\(\s*"\/api\/site-content"\s*,\s*undefined\s*,\s*\{\s*expectSuccess:\s*false/
+    );
+  });
+});

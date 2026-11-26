@@ -238,7 +238,9 @@ export default function OrderDetailDrawer({
     if (!active || !orderId) return;
     let cancelled = false;
     (async () => {
-      const res = await adminRequest<Record<string, string>>("/api/site-content");
+      const res = await adminRequest<Record<string, string>>("/api/site-content", undefined, {
+        expectSuccess: false,
+      });
       if (cancelled || !res.ok || !res.data || typeof res.data !== "object") return;
       const next: OrderDocSettings = { ...ORDER_TOOLS_DEFAULTS };
       for (const k of Object.keys(ORDER_TOOLS_DEFAULTS) as (keyof OrderDocSettings)[]) {

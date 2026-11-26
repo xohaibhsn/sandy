@@ -86,7 +86,9 @@ export default function OrderToolsSettingsPanel() {
 
   const load = useCallback(async () => {
     setLoadError("");
-    const res = await adminRequest<Record<string, string>>("/api/site-content");
+    const res = await adminRequest<Record<string, string>>("/api/site-content", undefined, {
+      expectSuccess: false,
+    });
     if (!res.ok || !res.data || typeof res.data !== "object") {
       setLoadError(res.errorMessage || "Could not load order tools settings.");
       return;
@@ -97,7 +99,9 @@ export default function OrderToolsSettingsPanel() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const res = await adminRequest<Record<string, string>>("/api/site-content");
+      const res = await adminRequest<Record<string, string>>("/api/site-content", undefined, {
+        expectSuccess: false,
+      });
       if (cancelled) return;
       if (!res.ok || !res.data || typeof res.data !== "object") {
         setLoadError(res.errorMessage || "Could not load order tools settings.");
