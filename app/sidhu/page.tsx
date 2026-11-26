@@ -3343,7 +3343,10 @@ export default function AdminPage() {
                   <CmsField label="Post CTA Link" k="blog_post_cta_link" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Post FAQ Heading" k="blog_post_faq_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Empty state" k="blog_empty" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["blog_title","blog_subtitle","blog_newsletter_title","blog_newsletter_sub","blog_tag","blog_read_more","blog_featured_label","blog_newsletter_btn","blog_newsletter_placeholder","blog_newsletter_thanks","blog_post_cta_title","blog_post_cta_sub","blog_post_cta_btn","blog_post_cta_link","blog_post_faq_title","blog_empty"])}>{contentSaving?"Saving...":"💾 Save Blog Copy"}</button>
+                  <CmsField label="Updates box on (1/0)" k="blog_updates_enabled" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Updates subtitle" k="blog_updates_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
+                  <CmsField label="Updates button" k="blog_updates_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["blog_title","blog_subtitle","blog_newsletter_title","blog_newsletter_sub","blog_tag","blog_read_more","blog_featured_label","blog_newsletter_btn","blog_newsletter_placeholder","blog_newsletter_thanks","blog_post_cta_title","blog_post_cta_sub","blog_post_cta_btn","blog_post_cta_link","blog_post_faq_title","blog_empty","blog_updates_enabled","blog_updates_sub","blog_updates_btn"])}>{contentSaving?"Saving...":"💾 Save Blog Copy"}</button>
                 </div>
               )}
 
