@@ -15,7 +15,15 @@ export const INTERNAL_SITE_CONTENT_KEYS = [
   "cod_risky_mode",
   "customer_email_confirmed_enabled",
   "customer_email_received_enabled",
+  "invoice_business_address",
+  "invoice_business_name",
+  "invoice_business_phone",
+  "invoice_footer_note",
+  "invoice_ntn",
+  "invoice_title",
   "shipping_restrict_to_zones",
+  "wa_confirm_template",
+  "wa_dispatch_template",
 ] as const;
 
 export type InternalSiteContentKey = (typeof INTERNAL_SITE_CONTENT_KEYS)[number];

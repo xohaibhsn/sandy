@@ -10,10 +10,13 @@ const {
 } = await import("../lib/siteContentVisibility.ts");
 
 describe("INTERNAL_SITE_CONTENT_KEYS filter", () => {
-  it("has 13 keys", () => {
-    assert.equal(INTERNAL_SITE_CONTENT_KEYS.length, 13);
+  it("has 21 keys (incl. order-tools invoice/WhatsApp)", () => {
+    assert.equal(INTERNAL_SITE_CONTENT_KEYS.length, 21);
     assert.equal(isInternalSiteContentKey("cod_otp_enabled"), true);
     assert.equal(isInternalSiteContentKey("shipping_enabled"), false);
+    assert.equal(isInternalSiteContentKey("invoice_business_name"), true);
+    assert.equal(isInternalSiteContentKey("wa_confirm_template"), true);
+    assert.equal(isInternalSiteContentKey("wa_dispatch_template"), true);
   });
 
   it("anonymous drops internal keys; staff keeps all", () => {

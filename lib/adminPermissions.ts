@@ -257,6 +257,15 @@ export const SUPER_ADMIN_ONLY_SITE_CONTENT_KEYS: ReadonlySet<string> = new Set([
   "social_instagram",
   "social_facebook",
   "social_tiktok",
+  // Order tools (BATCH-59): invoice / WhatsApp templates — Settings panel is super_admin only.
+  "invoice_business_name",
+  "invoice_business_address",
+  "invoice_business_phone",
+  "invoice_ntn",
+  "invoice_title",
+  "invoice_footer_note",
+  "wa_confirm_template",
+  "wa_dispatch_template",
 ]);
 
 export function isSuperAdminOnlySiteContentKey(key: unknown): boolean {

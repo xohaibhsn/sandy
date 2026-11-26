@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { adminRequest } from "../../lib/adminRequest";
+import {
+  ORDER_TOOLS_DEFAULTS,
+  buildInvoiceHtml,
+  buildPackingSlipHtml,
+  buildWhatsAppLink,
+  type OrderDocSettings,
+} from "../../lib/orderDocuments";
 import { formatPrice } from "../../lib/site";
 import { paymentLabel } from "./OrdersToolbar";
 
@@ -87,7 +94,9 @@ type DetailItem = {
 type DetailTax = {
   label?: string;
   vat_amount?: number | string;
+  lines?: unknown[] | null;
   has_snapshot?: boolean;
+  prices_include_tax?: boolean;
 };
 
 type DetailResponse = {
@@ -193,9 +202,12 @@ export default function OrderDetailDrawer({
   const [statusSelectNonce, setStatusSelectNonce] = useState(0);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ orderId: string; tone: "ok" | "error"; text: string } | null>(null);
+  const [orderTools, setOrderTools] = useState<OrderDocSettings>(ORDER_TOOLS_DEFAULTS);
+  const [printBlockedFor, setPrintBlockedFor] = useState<string | null>(null);
 
   const active = open && !!orderId;
   const requestKey = active ? `${orderId}:${attempt}` : "";
+  const printBlocked = !!orderId && printBlockedFor === orderId;
 
   useEffect(() => {
     if (!active || !orderId) return;
@@ -221,6 +233,25 @@ export default function OrderDetailDrawer({
       cancelled = true;
     };
   }, [active, orderId, attempt]);
+
+  useEffect(() => {
+    if (!active || !orderId) return;
+    let cancelled = false;
+    (async () => {
+      const res = await adminRequest<Record<string, string>>("/api/site-content");
+      if (cancelled || !res.ok || !res.data || typeof res.data !== "object") return;
+      const next: OrderDocSettings = { ...ORDER_TOOLS_DEFAULTS };
+      for (const k of Object.keys(ORDER_TOOLS_DEFAULTS) as (keyof OrderDocSettings)[]) {
+        if (Object.prototype.hasOwnProperty.call(res.data, k) && res.data[k] != null) {
+          next[k] = String(res.data[k]);
+        }
+      }
+      setOrderTools(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, orderId]);
 
   useEffect(() => {
     if (!active) return;
@@ -646,6 +677,157 @@ export default function OrderDetailDrawer({
                 <div style={{ fontSize: 12, color: "#999" }}>No receipt uploaded.</div>
               )}
             </div>
+
+            {(() => {
+              const docOrder = {
+                order_id: order.order_id,
+                customer_name: order.customer_name,
+                customer_email: order.customer_email,
+                customer_phone: order.customer_phone,
+                delivery_address: order.delivery_address,
+                city: order.city,
+                postcode: order.postcode,
+                payment_method: order.payment_method,
+                discount_amount: order.discount_amount,
+                coupon_code: order.coupon_code,
+                shipping_amount: order.shipping_amount,
+                vat_amount: taxAmount,
+                total: order.total,
+                created_at_pkt: order.created_at_pkt,
+                courier_name: courierName || null,
+                tracking_number: trackingNumber || null,
+                items,
+                tax_label: taxLabel,
+                tax_lines: Array.isArray(tax?.lines)
+                  ? (tax.lines as Array<Record<string, unknown>>).map((ln) => {
+                      const rawAmt = ln.amount ?? ln.vat_amount ?? ln.tax_amount;
+                      const amount =
+                        typeof rawAmt === "number" || typeof rawAmt === "string" ? rawAmt : null;
+                      const rawVat = ln.vat_amount;
+                      const vat_amount =
+                        typeof rawVat === "number" || typeof rawVat === "string" ? rawVat : null;
+                      return {
+                        label:
+                          typeof ln.label === "string"
+                            ? ln.label
+                            : typeof ln.tax_label === "string"
+                              ? ln.tax_label
+                              : taxLabel,
+                        amount,
+                        vat_amount,
+                        inclusive: ln.inclusive === true || ln.prices_include_tax === true,
+                        prices_include_tax: ln.prices_include_tax === true,
+                      };
+                    })
+                  : null,
+                prices_include_tax: tax?.prices_include_tax === true,
+              };
+              const confirmTpl =
+                orderTools.wa_confirm_template || ORDER_TOOLS_DEFAULTS.wa_confirm_template;
+              const dispatchTpl =
+                orderTools.wa_dispatch_template || ORDER_TOOLS_DEFAULTS.wa_dispatch_template;
+              const confirmLink = buildWhatsAppLink(docOrder, confirmTpl, { settings: orderTools });
+              const dispatchLink = buildWhatsAppLink(docOrder, dispatchTpl, { settings: orderTools });
+              const phoneOk = confirmLink.ok;
+              const dispatchEnabled = phoneOk && (!!courierName || !!trackingNumber);
+              const phoneTitle = "Phone is not a Pakistani mobile number";
+              const openPrint = (html: string) => {
+                const w = window.open("", "_blank", "noopener=no,width=900,height=1000");
+                if (!w) {
+                  setPrintBlockedFor(orderId);
+                  return;
+                }
+                setPrintBlockedFor(null);
+                w.document.open();
+                w.document.write(html);
+                w.document.close();
+                w.focus();
+                w.print();
+              };
+              const btnStyle: React.CSSProperties = {
+                fontSize: 12,
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #E5E5E5",
+                background: "#fff",
+                color: "#5B21B6",
+                cursor: "pointer",
+                textDecoration: "none",
+                display: "inline-block",
+              };
+              const disabledStyle: React.CSSProperties = {
+                ...btnStyle,
+                color: "#999",
+                cursor: "not-allowed",
+                pointerEvents: "none",
+                opacity: 0.65,
+              };
+              return (
+                <div style={{ marginTop: 16 }} data-order-customer-tools="1">
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 8 }}>
+                    Customer tools
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {phoneOk ? (
+                      <a
+                        href={confirmLink.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={btnStyle}
+                        data-wa-confirm="1"
+                      >
+                        WhatsApp: Confirm order
+                      </a>
+                    ) : (
+                      <span style={disabledStyle} title={phoneTitle} data-wa-confirm="1" data-wa-disabled="1">
+                        WhatsApp: Confirm order
+                      </span>
+                    )}
+                    {dispatchEnabled && dispatchLink.ok ? (
+                      <a
+                        href={dispatchLink.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={btnStyle}
+                        data-wa-dispatch="1"
+                      >
+                        WhatsApp: Dispatched
+                      </a>
+                    ) : (
+                      <span
+                        style={disabledStyle}
+                        title={!phoneOk ? phoneTitle : "Add a courier or tracking number first"}
+                        data-wa-dispatch="1"
+                        data-wa-disabled="1"
+                      >
+                        WhatsApp: Dispatched
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      style={btnStyle}
+                      data-print-invoice="1"
+                      onClick={() => openPrint(buildInvoiceHtml(docOrder, orderTools))}
+                    >
+                      Print invoice
+                    </button>
+                    <button
+                      type="button"
+                      style={btnStyle}
+                      data-print-packing-slip="1"
+                      onClick={() => openPrint(buildPackingSlipHtml(docOrder, orderTools))}
+                    >
+                      Print packing slip
+                    </button>
+                  </div>
+                  {printBlocked ? (
+                    <div style={{ marginTop: 8, fontSize: 12, color: "#DC2626" }} data-print-blocked="1">
+                      Allow pop-ups for this site to print.
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
 
             <div className="modal-field" style={{ marginTop: 16 }}>
               <label htmlFor="order-detail-status">Update Status</label>
