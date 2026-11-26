@@ -32,6 +32,7 @@ import OrderToolsSettingsPanel from "../../components/admin/OrderToolsSettingsPa
 import ShippingSettingsPanel from "../../components/admin/ShippingSettingsPanel";
 import BlacklistPanel, { CustomerBlockButton } from "../../components/admin/BlacklistPanel";
 import DashboardCards from "../../components/admin/DashboardCards";
+import CodInsightsPanel from "../../components/admin/CodInsightsPanel";
 import AdminGlobalSearch, { type AdminSearchTarget } from "../../components/admin/AdminGlobalSearch";
 const TipTapEditor = dynamic(() => import("../../components/admin/TipTapEditor"), { ssr: false });
 
@@ -1865,6 +1866,7 @@ export default function AdminPage() {
                   onNavigateTab={(next) => { if (next === "products" || next === "orders") setTab(next); }}
                 />
               )}
+              <CodInsightsPanel enabled={adminRole === "super_admin" || adminRole === "manager"} />
 
               {/* RECENT ORDERS (writers never fetch or see orders) */}
               {adminRole !== "writer" && (

@@ -14,6 +14,14 @@ import {
   type ParsedLineItem,
   type TrendPoint,
 } from "../../lib/dashboardExtras";
+import {
+  COD_INSIGHT_METRIC_SQL,
+  buildCodInsights,
+  type CodInsightRawRow,
+  type CodInsightsBundle,
+} from "../../lib/codInsights";
+import { PK_CITIES } from "../../lib/pkLocations";
+import { normaliseCity } from "../../lib/shippingNormalise";
 
 /**
  * ADMIN-DASH-01/02 — server-side dashboard aggregates (GET only).
@@ -380,6 +388,144 @@ async function loadCouponUsage(
   }));
 }
 
+const CITY_TO_PROVINCE = new Map(
+  PK_CITIES.map((c) => [normaliseCity(c.name), c.province] as const)
+);
+
+function mapRow(r: RowDataPacket, keyField: string): CodInsightRawRow {
+  return {
+    key: String(r[keyField] ?? ""),
+    orders: n(r.orders),
+    delivered: n(r.delivered),
+    rto: n(r.rto),
+    cancelled: n(r.cancelled),
+    open: n(r.open_cnt),
+    delivered_revenue: n(r.delivered_revenue),
+    delivered_revenue_ex_gst: n(r.delivered_revenue_ex_gst),
+  };
+}
+
+function parseInclude(req: NextApiRequest): Set<string> {
+  const raw = req.query.include;
+  const joined = Array.isArray(raw) ? raw.join(",") : String(raw || "");
+  return new Set(
+    joined
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+async function loadCodInsights(
+  fromSql: string | null,
+  toExclusiveSql: string | null
+): Promise<CodInsightsBundle> {
+  const date = orderDateClause("o", fromSql, toExclusiveSql);
+  const hasRto = await columnExists("orders", "rto");
+  // When rto column is absent (pre-0009 fixture), treat all cancelled as cancelled and rto=0.
+  const metrics = hasRto
+    ? COD_INSIGHT_METRIC_SQL
+    : `
+  COUNT(*) AS orders,
+  COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END), 0) AS delivered,
+  0 AS rto,
+  COALESCE(SUM(CASE WHEN o.status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
+  COALESCE(SUM(CASE WHEN o.status NOT IN ('delivered', 'cancelled') THEN 1 ELSE 0 END), 0) AS open_cnt,
+  COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total ELSE 0 END), 0) AS delivered_revenue,
+  COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total - COALESCE(o.vat_amount, 0) ELSE 0 END), 0) AS delivered_revenue_ex_gst
+`.replace(/\s+/g, " ").trim();
+
+  const hasCourier = await columnExists("orders", "courier_id");
+  const hasZone = await columnExists("orders", "shipping_zone");
+
+  const [cityRows] = await pool.query<RowDataPacket[]>(
+    `SELECT COALESCE(NULLIF(TRIM(o.city), ''), 'Unknown') AS grp, ${metrics}
+     FROM orders o
+     WHERE ${date.sql}
+     GROUP BY grp`,
+    date.params
+  );
+
+  const [payRows] = await pool.query<RowDataPacket[]>(
+    `SELECT COALESCE(NULLIF(TRIM(o.payment_method), ''), 'unknown') AS grp, ${metrics}
+     FROM orders o
+     WHERE ${date.sql}
+     GROUP BY grp`,
+    date.params
+  );
+
+  let courierRows: RowDataPacket[] = [];
+  if (hasCourier) {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT COALESCE(NULLIF(TRIM(c.name), ''), 'Not assigned') AS grp, ${metrics}
+       FROM orders o
+       LEFT JOIN couriers c ON c.id = o.courier_id
+       WHERE ${date.sql}
+       GROUP BY grp`,
+      date.params
+    );
+    courierRows = Array.isArray(rows) ? rows : [];
+  } else {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT 'Not assigned' AS grp, ${metrics}
+       FROM orders o
+       WHERE ${date.sql}
+       GROUP BY grp`,
+      date.params
+    );
+    courierRows = Array.isArray(rows) ? rows : [];
+  }
+
+  let zoneRows: RowDataPacket[] = [];
+  if (hasZone) {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT COALESCE(NULLIF(TRIM(o.shipping_zone), ''), 'No zone') AS grp, ${metrics}
+       FROM orders o
+       WHERE ${date.sql}
+       GROUP BY grp`,
+      date.params
+    );
+    zoneRows = Array.isArray(rows) ? rows : [];
+  } else {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT 'No zone' AS grp, ${metrics}
+       FROM orders o
+       WHERE ${date.sql}
+       GROUP BY grp`,
+      date.params
+    );
+    zoneRows = Array.isArray(rows) ? rows : [];
+  }
+
+  const by_city = (Array.isArray(cityRows) ? cityRows : []).map((r) => mapRow(r, "grp"));
+  const by_payment = (Array.isArray(payRows) ? payRows : []).map((r) => mapRow(r, "grp"));
+  const by_courier = courierRows.map((r) => mapRow(r, "grp"));
+  const by_zone = zoneRows.map((r) => mapRow(r, "grp"));
+
+  // orders has no province column (0002); derive from city via pkLocations.
+  const provinceMap = new Map<string, CodInsightRawRow>();
+  for (const row of by_city) {
+    const prov =
+      CITY_TO_PROVINCE.get(normaliseCity(row.key)) ||
+      (normaliseCity(row.key) ? "Unknown" : "Unknown");
+    const existing = provinceMap.get(prov);
+    if (!existing) {
+      provinceMap.set(prov, { ...row, key: prov });
+    } else {
+      existing.orders += row.orders;
+      existing.delivered += row.delivered;
+      existing.rto += row.rto;
+      existing.cancelled += row.cancelled;
+      existing.open += row.open;
+      existing.delivered_revenue += row.delivered_revenue;
+      existing.delivered_revenue_ex_gst += row.delivered_revenue_ex_gst;
+    }
+  }
+  const by_province = [...provinceMap.values()];
+
+  return buildCodInsights({ by_city, by_province, by_payment, by_courier, by_zone });
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader("Cache-Control", "private, no-store, max-age=0");
 
@@ -454,7 +600,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       product_count = 0;
     }
 
-    const [revenue_trend, top_products, low_stock, cancel_reasons, payment_methods, oldest_pending, coupon_usage] =
+    const include = parseInclude(req);
+    const wantCodInsights = include.has("cod_insights");
+
+    const [revenue_trend, top_products, low_stock, cancel_reasons, payment_methods, oldest_pending, coupon_usage, cod_insights] =
       await Promise.all([
         loadRevenueTrend(range.preset, range.fromSql, range.toExclusiveSql),
         loadTopProducts(range.fromSql, range.toExclusiveSql),
@@ -463,9 +612,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         loadPaymentSplit(range.fromSql, range.toExclusiveSql),
         loadOldestPending(),
         loadCouponUsage(range.fromSql, range.toExclusiveSql),
+        wantCodInsights
+          ? loadCodInsights(range.fromSql, range.toExclusiveSql)
+          : Promise.resolve(null),
       ]);
 
-    return res.status(200).json({
+    const body: Record<string, unknown> = {
       success: true,
       range: {
         preset: range.preset,
@@ -505,7 +657,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       payment_methods,
       oldest_pending,
       coupon_usage,
-    });
+    };
+
+    // D78 opt-in only — when include is absent the payload keys stay unchanged.
+    if (wantCodInsights && cod_insights) {
+      body.cod_insights = {
+        range: {
+          preset: range.preset,
+          from: range.from,
+          to: range.to,
+        },
+        ...cod_insights,
+      };
+    }
+
+    return res.status(200).json(body);
   } catch (err) {
     toSafeError(err);
     return res.status(500).json({ error: "Could not load dashboard summary" });
