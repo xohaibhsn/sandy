@@ -5,6 +5,7 @@ import xss from "xss";
 import { fixContentLinkRels } from "@/lib/seoLinks";
 import { useCart } from "../../lib/cartContext";
 import Navbar from "@/components/Navbar";
+import SmartImage from "@/components/SmartImage";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { formatPrice } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
@@ -95,7 +96,7 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
         .back-link:hover{color:#111;opacity:0.7;}
         .page-wrap{padding:110px 48px 80px;max-width:1180px;margin:0 auto;}
         .product-layout{display:grid;grid-template-columns:1.05fr 0.95fr;gap:64px;align-items:start;}
-        .product-img-box{background:#F7F5F2;border:none;border-radius:0;overflow:hidden;aspect-ratio:1;display:flex;align-items:center;justify-content:center;}
+        .product-img-box{background:#F7F5F2;border:none;border-radius:0;overflow:hidden;aspect-ratio:1;display:flex;align-items:center;justify-content:center;position:relative;}
         .product-img-box img{width:100%;height:100%;object-fit:cover;}
         .placeholder-img{font-size:80px;text-align:center;}
         .product-category{font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#6B6560;margin-bottom:12px;font-weight:600;}
@@ -155,7 +156,15 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
             <div className="product-layout">
               <div className="product-img-box">
                 {product.image
-                  ? <img src={product.image} alt={product.name} loading="eager" />
+                  ? <SmartImage
+                      src={product.image}
+                      alt={product.name}
+                      fill
+                      priority
+                      fetchPriority="high"
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      style={{ objectFit: "cover" }}
+                    />
                   : <div className="placeholder-img">📦</div>
                 }
               </div>

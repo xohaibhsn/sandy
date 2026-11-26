@@ -1,5 +1,6 @@
 "use client";
 
+import SmartImage from "@/components/SmartImage";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 import { WHATSAPP_DIGITS } from "@/lib/site";
 
@@ -36,9 +37,12 @@ export default function WhatsAppButton() {
       title={cmsText(sc, "whatsapp_btn_title", "Chat on WhatsApp")}
     >
       {config.iconUrl ? (
-        <img
+        <SmartImage
           src={config.iconUrl}
           alt="WhatsApp"
+          width={60}
+          height={60}
+          sizes="60px"
           style={{
             width: 60,
             height: 60,

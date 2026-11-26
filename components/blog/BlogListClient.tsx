@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
+import SmartImage from "@/components/SmartImage";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 import type { BlogCard } from "@/lib/blogList";
 
@@ -135,15 +135,6 @@ type Props = {
   emptyText: string;
 };
 
-function imageSrcUsable(src: string): { ok: true; src: string } | { ok: false } {
-  const s = String(src || "").trim();
-  if (!s) return { ok: false };
-  if (s.startsWith("https://res.cloudinary.com/") || s.startsWith("/")) {
-    return { ok: true, src: s };
-  }
-  return { ok: false };
-}
-
 export default function BlogListClient({
   cards,
   categories,
@@ -207,20 +198,17 @@ export default function BlogListClient({
                 <div className="featured-post">
                   <Link href={`/blog/${featuredPost.slug}`} className="featured-card">
                     <div className="featured-image">
-                      {(() => {
-                        const img = imageSrcUsable(featuredPost.featured_image);
-                        return img.ok ? (
-                          <Image
-                            src={img.src}
-                            alt={featuredPost.title}
-                            fill
-                            sizes="(max-width:768px) 100vw, 50vw"
-                            style={{ objectFit: "cover" }}
-                          />
-                        ) : (
-                          featuredPost.emoji
-                        );
-                      })()}
+                      {featuredPost.featured_image ? (
+                        <SmartImage
+                          src={featuredPost.featured_image}
+                          alt={featuredPost.title}
+                          fill
+                          sizes="(max-width:768px) 100vw, 50vw"
+                          style={{ objectFit: "cover" }}
+                        />
+                      ) : (
+                        featuredPost.emoji
+                      )}
                     </div>
                     <div className="featured-content">
                       <span className={`post-badge ${featuredPost.badge}`}>
@@ -246,20 +234,17 @@ export default function BlogListClient({
                   className="blog-card"
                 >
                   <div className="card-image">
-                    {(() => {
-                      const img = imageSrcUsable(post.featured_image);
-                      return img.ok ? (
-                        <Image
-                          src={img.src}
-                          alt={post.title}
-                          fill
-                          sizes="(max-width:768px) 100vw, 33vw"
-                          style={{ objectFit: "cover" }}
-                        />
-                      ) : (
-                        post.emoji
-                      );
-                    })()}
+                    {post.featured_image ? (
+                      <SmartImage
+                        src={post.featured_image}
+                        alt={post.title}
+                        fill
+                        sizes="(max-width:768px) 100vw, 33vw"
+                        style={{ objectFit: "cover" }}
+                      />
+                    ) : (
+                      post.emoji
+                    )}
                   </div>
                   <div className="card-body">
                     <span className={`post-badge ${post.badge}`}>{post.badgeText}</span>

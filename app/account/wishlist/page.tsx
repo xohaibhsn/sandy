@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SmartImage from "@/components/SmartImage";
 import { useCart } from "../../lib/cartContext";
 import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
 import { formatPrice } from "@/lib/site";
@@ -57,11 +58,12 @@ function WishlistView() {
             <div className="acc-list-row">
               <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
                 {item.image ? (
-                  // Product thumbnails may be absolute CDN URLs; match storefront <img> usage.
-                  // eslint-disable-next-line @next/next/no-img-element -- external product images
-                  <img
+                  <SmartImage
                     src={item.image}
                     alt={item.name}
+                    width={64}
+                    height={64}
+                    sizes="64px"
                     style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 10, background: "#F7F5F2" }}
                   />
                 ) : null}

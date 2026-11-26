@@ -5,6 +5,7 @@ import xss from "xss";
 import { fixContentLinkRels } from "@/lib/seoLinks";
 import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
+import SmartImage from "@/components/SmartImage";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 
 // Allowed HTML tags from TipTap editor output
@@ -157,7 +158,17 @@ export default function BlogPostClient({ post }: { post: Post | null }) {
               <span>📁 {post.category}</span>
             </div>
             {post.featured_image && (
-              <img src={post.featured_image} alt={post.title} className="featured-img" loading="eager" />
+              <SmartImage
+                src={post.featured_image}
+                alt={post.title}
+                className="featured-img"
+                width={1200}
+                height={630}
+                priority
+                fetchPriority="high"
+                sizes="(max-width: 768px) 100vw, 800px"
+                style={{ width: "100%", height: "auto", maxHeight: 420, objectFit: "cover" }}
+              />
             )}
             {post.excerpt && <div className="post-excerpt">{post.excerpt}</div>}
             {post.content && (

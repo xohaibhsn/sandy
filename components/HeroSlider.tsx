@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import SmartImage from "@/components/SmartImage";
 
 export interface HeroSliderProps {
   slides: string[];
@@ -186,11 +187,17 @@ export default function HeroSlider({ slides, children }: HeroSliderProps) {
       <div className="hero-slider-stage">
         {hasSlides &&
           slides.map((src, i) => (
-            <img
+            <SmartImage
               key={`${src}-${i}`}
               src={src}
               alt=""
+              fill
+              sizes="100vw"
+              priority={i === 0}
+              fetchPriority={i === 0 ? "high" : "auto"}
               className={`hero-slider-slide${i === index ? " active" : ""}`}
+              style={{ objectFit: "cover" }}
+              aria-hidden="true"
               draggable={false}
             />
           ))}

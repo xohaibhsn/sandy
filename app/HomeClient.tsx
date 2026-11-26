@@ -8,6 +8,7 @@ import { useCart } from "./lib/cartContext";
 import Navbar from "@/components/Navbar";
 import HeroSlider from "@/components/HeroSlider";
 import SiteFooter from "@/components/SiteFooter";
+import SmartImage from "@/components/SmartImage";
 import { cmsText, loadSiteContent, useSiteContent } from "@/hooks/useSiteContent";
 import { formatPrice } from "@/lib/site";
 
@@ -693,7 +694,13 @@ export default function HomeClient({
                     </span>
                   )}
                   {p.image ? (
-                    <img src={p.image} alt={p.name} />
+                    <SmartImage
+                      src={p.image}
+                      alt={p.name}
+                      fill
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                      style={{ objectFit: "cover" }}
+                    />
                   ) : (
                     <div className="image-placeholder">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">

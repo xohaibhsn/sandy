@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Navbar from "@/components/Navbar";
 import SiteFooter from "@/components/SiteFooter";
+import SmartImage from "@/components/SmartImage";
 import { useCart } from "../../lib/cartContext";
 import { formatPrice } from "@/lib/site";
 import { getPublicAvailability } from "@/lib/inventoryAvailability";
@@ -97,7 +98,13 @@ export default function CategoryClient({
                 <div className="product-image">
                   {p.badge ? <div className="product-badge">{p.badge}</div> : null}
                   {p.image ? (
-                    <img src={p.image} alt={p.name} />
+                    <SmartImage
+                      src={p.image}
+                      alt={p.name}
+                      fill
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                      style={{ objectFit: "cover" }}
+                    />
                   ) : (
                     <div style={{ fontSize: 48, color: "#CCC" }}>📦</div>
                   )}

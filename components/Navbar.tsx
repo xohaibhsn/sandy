@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import SmartImage from "@/components/SmartImage";
 import { cmsText, useSiteContent } from "@/hooks/useSiteContent";
 import { SITE_NAME, SITE_NAME_CAPS } from "@/lib/site";
 import { CUSTOMER_TEXTS } from "@/lib/customerTexts";
@@ -85,11 +86,15 @@ export default function Navbar({
   };
 
   const logoEl = logo ? (
-    <Link href="/" className="nav-logo nav-logo-img">
-      <img
+    <Link href="/" className="nav-logo nav-logo-img" style={{ position: "relative", display: "inline-block", height: 36, width: 160 }}>
+      <SmartImage
         src={logo}
         alt={brand}
-        style={{ height: 36, width: "auto", objectFit: "contain", display: "block" }}
+        fill
+        priority
+        fetchPriority="high"
+        sizes="160px"
+        style={{ objectFit: "contain", objectPosition: "left center" }}
       />
     </Link>
   ) : (

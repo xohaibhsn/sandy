@@ -5,6 +5,7 @@ import { fixContentLinkRels } from "@/lib/seoLinks";
 import { useCart } from "../lib/cartContext";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import Navbar from "@/components/Navbar";
+import SmartImage from "@/components/SmartImage";
 import { useContactConfig } from "@/hooks/useContactConfig";
 import { SITE_URL, formatPrice } from "@/lib/site";
 import SiteFooter from "@/components/SiteFooter";
@@ -226,7 +227,7 @@ export default function ProductsClient({
             <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:320,background:"#FFFFFF",border:"1px solid #E5E5E5",borderRadius:14,overflow:"hidden",zIndex:200,boxShadow:"0 8px 32px rgba(0,0,0,0.12)"}}>
               {searchResults.map((r:SearchResult)=>(
                 <a key={r.id} href={`/products/${r.slug}`} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",textDecoration:"none",borderBottom:"1px solid #F0F0F0",transition:"background 0.15s"}} onMouseEnter={e=>(e.currentTarget.style.background="#F9F9F9")} onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
-                  {r.image ? <img src={r.image} alt={r.name} style={{width:40,height:40,borderRadius:6,objectFit:"cover",border:"1px solid #E5E5E5"}} loading="lazy" /> : <div style={{width:40,height:40,borderRadius:6,background:"#F5F5F5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📦</div>}
+                  {r.image ? <SmartImage src={r.image} alt={r.name} width={40} height={40} sizes="40px" style={{width:40,height:40,borderRadius:6,objectFit:"cover",border:"1px solid #E5E5E5"}} /> : <div style={{width:40,height:40,borderRadius:6,background:"#F5F5F5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📦</div>}
                   <div style={{flex:1,overflow:"hidden"}}>
                     <div style={{fontSize:13,fontWeight:600,color:"#111",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</div>
                     <div style={{fontSize:11,color:"#888"}}>{r.category} · {formatPrice(r.price)}</div>
@@ -297,7 +298,13 @@ export default function ProductsClient({
                     </span>
                   )}
                   {p.image ? (
-                    <img src={p.image} alt={p.name} loading="lazy" />
+                    <SmartImage
+                      src={p.image}
+                      alt={p.name}
+                      fill
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                      style={{ objectFit: "cover" }}
+                    />
                   ) : (
                     <div className="image-placeholder">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">

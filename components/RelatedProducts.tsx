@@ -1,16 +1,8 @@
-import Image from "next/image";
 import Link from "next/link";
+import SmartImage from "@/components/SmartImage";
 import { formatPrice } from "@/lib/site";
+import { imageMode } from "@/lib/imageLoader";
 import type { RelatedProductCard } from "@/lib/relatedProducts";
-
-function imageSrcUsable(src: string | null): { kind: "cloudinary" | "relative" | "none"; src: string } {
-  if (!src) return { kind: "none", src: "" };
-  const s = String(src).trim();
-  if (!s) return { kind: "none", src: "" };
-  if (s.startsWith("https://res.cloudinary.com/")) return { kind: "cloudinary", src: s };
-  if (s.startsWith("/")) return { kind: "relative", src: s };
-  return { kind: "none", src: "" };
-}
 
 export default function RelatedProducts({
   title,
@@ -41,19 +33,20 @@ export default function RelatedProducts({
       <h2>{title}</h2>
       <div className="related-grid">
         {products.map((p) => {
-          const img = imageSrcUsable(p.image);
+          const mode = imageMode(p.image);
           return (
             <Link key={p.id} href={`/products/${p.slug}`} className="related-card">
               <div className="related-img">
                 {p.badge ? <span className="related-badge">{p.badge}</span> : null}
-                {img.kind === "none" ? (
+                {mode === "empty" ? (
                   <div className="related-placeholder">Product</div>
                 ) : (
-                  <Image
-                    src={img.src}
+                  <SmartImage
+                    src={p.image}
                     alt={p.name}
                     fill
                     sizes="(max-width:640px) 50vw, 25vw"
+                    style={{ objectFit: "cover" }}
                   />
                 )}
               </div>
