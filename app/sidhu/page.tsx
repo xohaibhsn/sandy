@@ -3190,7 +3190,11 @@ export default function AdminPage() {
                   <CmsField label="Min Price Placeholder" k="products_min" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Max Price Placeholder" k="products_max" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Apply Button" k="products_apply" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["products_tag","products_title","products_banner","products_empty","products_min","products_max","products_apply"])}>{contentSaving?"Saving...":"💾 Save Products Copy"}</button>
+                  <CmsField label="Related products (1 = on, 0 = off)" k="product_related_enabled" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Related products title" k="product_related_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="How many (2–8)" k="product_related_count" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <CmsField label="Fill with other products (1/0)" k="product_related_fill" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["products_tag","products_title","products_banner","products_empty","products_min","products_max","products_apply","product_related_enabled","product_related_title","product_related_count","product_related_fill"])}>{contentSaving?"Saving...":"💾 Save Products Copy"}</button>
                 </div>
               )}
 

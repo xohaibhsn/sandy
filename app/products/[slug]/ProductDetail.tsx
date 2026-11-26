@@ -181,7 +181,7 @@ export default function ProductDetail({ slug, initialProduct, categorySlug = nul
                 <div className="meta-row">
                   <span className="meta-pill">{availability?.label ?? "Availability unavailable"}</span>
                   <span className="meta-pill">{cmsText(sc, "pdp_pill_cod", "Cash on Delivery")}</span>
-                  <span className="meta-pill">{cmsText(sc, "pdp_pill_delivery", "Free delivery")}</span>
+                  <span className="meta-pill">{cmsText(sc, "pdp_pill_delivery", "Easy returns")}</span>
                   <span className="meta-pill">{cmsText(sc, "pdp_pill_region", "Pakistan-wide")}</span>
                 </div>
                 <div className="activation-note">

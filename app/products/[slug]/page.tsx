@@ -4,8 +4,11 @@ import ProductDetail from "./ProductDetail";
 import pool from "../../../lib/db";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
 import JsonLd from "@/components/JsonLd";
+import RelatedProducts from "@/components/RelatedProducts";
 import { CURRENCY_CODE, SITE_NAME, SITE_URL } from "@/lib/site";
 import { getPublicAvailability, schemaAvailabilityUrl } from "@/lib/inventoryAvailability";
+import { getSiteContentMap } from "@/lib/siteContent";
+import { getRelatedProducts, parseRelatedCms } from "@/lib/relatedProducts";
 
 interface Product {
   id: number; name: string; description: string;
@@ -128,6 +131,15 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     },
   };
 
+  const siteMap = await getSiteContentMap();
+  const relatedCms = parseRelatedCms(siteMap);
+  const related = relatedCms.enabled
+    ? await getRelatedProducts(
+        { id: product.id, category: product.category },
+        { count: relatedCms.count, fill: relatedCms.fill }
+      )
+    : [];
+
   return (
     <>
       <BreadcrumbSchema
@@ -139,6 +151,12 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       />
       <JsonLd data={productLd} />
       <ProductDetail slug={slug} initialProduct={product} categorySlug={categorySlug} />
+      {relatedCms.enabled ? (
+        <div className="related-products-wrap">
+          <style>{`.related-products-wrap{max-width:1180px;margin:0 auto;padding:0 48px 80px;}@media(max-width:768px){.related-products-wrap{padding:0 16px 60px;}}`}</style>
+          <RelatedProducts title={relatedCms.title} products={related} />
+        </div>
+      ) : null}
     </>
   );
 }
