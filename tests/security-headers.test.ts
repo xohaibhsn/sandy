@@ -37,9 +37,9 @@ describe("security headers (HARDEN-01)", () => {
     assert.equal(header("X-XSS-Protection"), "0");
   });
 
-  it("adds staged HSTS max-age=86400 without includeSubDomains/preload", () => {
+  it("adds HSTS max-age=15552000 without includeSubDomains/preload", () => {
     const hsts = header("Strict-Transport-Security");
-    assert.equal(hsts, "max-age=86400");
+    assert.equal(hsts, "max-age=15552000");
     assert.ok(!/includeSubDomains/i.test(hsts));
     assert.ok(!/preload/i.test(hsts));
   });

@@ -17,6 +17,6 @@ export const securityHeaders: SecurityHeader[] = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
   { key: "Content-Security-Policy", value: CONTENT_SECURITY_POLICY },
   { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
-  // Staged HSTS: 1 day; NO includeSubDomains; NO preload (Berlin may raise later).
-  { key: "Strict-Transport-Security", value: "max-age=86400" },
+  // HSTS 180 days (D57, raised 2026-11-28 after 7-day staging); NO includeSubDomains; NO preload.
+  { key: "Strict-Transport-Security", value: "max-age=15552000" },
 ];
