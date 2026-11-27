@@ -20,3 +20,49 @@ export const securityHeaders: SecurityHeader[] = [
   // HSTS 180 days (D57, raised 2026-11-28 after 7-day staging); NO includeSubDomains; NO preload.
   { key: "Strict-Transport-Security", value: "max-age=15552000" },
 ];
+
+/** Content-hashed Next build assets (/_next/static/*). */
+export const STATIC_ASSET_CACHE = "public, max-age=31536000, immutable";
+
+/** Public image/font files at site root and subfolders. */
+export const PUBLIC_FILE_CACHE = "public, max-age=86400";
+
+/**
+ * Next.js `headers()` source for public static files by extension.
+ * Verified with next/dist/compiled/path-to-regexp: matches
+ * /og-default.jpg, /uploads/x.webp, /favicon.ico, /fonts/a.woff2;
+ * does NOT match /api/products, /api/favicon, /products/phone-case, /_next/data/x.json.
+ */
+export const PUBLIC_FILE_SOURCE =
+  "/:path*.(png|jpg|jpeg|webp|avif|gif|svg|ico|woff|woff2)";
+
+export type HeaderRule = {
+  source: string;
+  headers: SecurityHeader[];
+};
+
+/**
+ * Ordered header rules for next.config.ts. Next.js: last matching rule wins
+ * for the same header key, so Cache-Control overrides come AFTER the catch-all
+ * that also sets security headers (HSTS/CSP/XFO/nosniff stay from rule 1).
+ */
+export function buildHeaderRules(): HeaderRule[] {
+  return [
+    {
+      source: "/(.*)",
+      headers: securityHeaders,
+    },
+    {
+      source: "/_next/static/:path*",
+      headers: [{ key: "Cache-Control", value: STATIC_ASSET_CACHE }],
+    },
+    {
+      source: PUBLIC_FILE_SOURCE,
+      headers: [{ key: "Cache-Control", value: PUBLIC_FILE_CACHE }],
+    },
+    {
+      source: "/_next/image",
+      headers: [{ key: "Cache-Control", value: PUBLIC_FILE_CACHE }],
+    },
+  ];
+}

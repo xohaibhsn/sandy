@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { securityHeaders } from "./lib/securityHeaders";
+import { buildHeaderRules } from "./lib/securityHeaders";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -29,12 +29,7 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: securityHeaders,
-      },
-    ];
+    return buildHeaderRules();
   },
 };
 
