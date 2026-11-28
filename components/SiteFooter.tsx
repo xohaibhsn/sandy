@@ -75,6 +75,7 @@ export default function SiteFooter() {
           <li><a href="/privacy-policy">{cmsText(sc, "footer_privacy", "Privacy Policy")}</a></li>
           <li><a href="/terms">{cmsText(sc, "footer_terms", "Terms & Conditions")}</a></li>
           <li><a href="/refund-policy">{cmsText(sc, "footer_refund", "Refund Policy")}</a></li>
+          <li><a href="/shipping-policy">{cmsText(sc, "footer_shipping", "Shipping Policy")}</a></li>
           <li><a href="/faq">{cmsText(sc, "footer_faq", "FAQ")}</a></li>
         </ul>
         {(ig || fb || tt) ? (

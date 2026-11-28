@@ -140,3 +140,52 @@ test("static file checks: pages, sidhu, cart", () => {
   assert.ok(cart.includes("/refund-policy"));
   assert.ok(cart.includes("cart_policy_prefix"));
 });
+
+test("shipping default: 9 h2 in order; checkout marker; no hard day/Rs numbers except 48 hours; links", () => {
+  const html = LEGAL_DEFAULT_HTML.shipping;
+  const countH2 = (s: string) => (s.match(/<h2>/g) || []).length;
+  assert.equal(countH2(html), 9);
+  const order = [
+    "1. Overview",
+    "2. Where We Deliver",
+    "3. Delivery Charges",
+    "4. Order Confirmation and Dispatch",
+    "5. Delivery Times",
+    "6. Tracking Your Order",
+    "7. Receiving Your Parcel",
+    "8. Failed or Refused Deliveries",
+    "9. Contact Us",
+  ];
+  const r = renderLegalBody("", html, contact);
+  assert.deepEqual(r.toc.map((t) => t.label), order);
+  assert.match(html, /shown at checkout/);
+  const without48 = html.replace(/within 48 hours/g, "within XX hours");
+  assert.equal(/\b\d+\s*(day|days|working day|Rs|PKR)\b/i.test(without48), false);
+  assert.match(html, /href="\/terms"/);
+  assert.match(html, /href="\/order-tracking"/);
+  assert.match(html, /href="\/refund-policy"/);
+  assert.match(LEGAL_DEFAULT_HTML.terms, /href="\/shipping-policy"/);
+});
+
+test("static: shipping page, sitemap, footer, layout canonical/robots", () => {
+  const shippingPage = readFileSync(path.join(root, "app/shipping-policy/page.tsx"), "utf8");
+  const shippingLayout = readFileSync(path.join(root, "app/shipping-policy/layout.tsx"), "utf8");
+  const footer = readFileSync(path.join(root, "components/SiteFooter.tsx"), "utf8");
+  const sitemap = readFileSync(path.join(root, "app/sitemap.ts"), "utf8");
+  const sidhu = readFileSync(path.join(root, "app/sidhu/page.tsx"), "utf8");
+
+  assert.match(shippingPage, /renderLegalBody/);
+  assert.ok(shippingPage.includes('"shipping_title"'));
+  assert.ok(shippingPage.includes('"shipping_updated"'));
+  assert.ok(shippingPage.includes('"shipping_content"'));
+  assert.ok(shippingPage.includes("Shipping Policy"));
+  assert.ok(sidhu.includes("|| LEGAL_DEFAULT_HTML.shipping"));
+  assert.ok(sidhu.includes("footer_shipping"));
+
+  const smMatches = sitemap.match(/\/shipping-policy/g) || [];
+  assert.equal(smMatches.length, 1);
+  assert.ok(footer.includes("/shipping-policy"));
+  assert.ok(footer.includes("footer_shipping"));
+  assert.match(shippingLayout, /canonical: `\$\{SITE_URL\}\/shipping-policy`/);
+  assert.match(shippingLayout, /robots:\s*\{\s*index:\s*true,\s*follow:\s*true\s*\}/);
+});

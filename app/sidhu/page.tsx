@@ -3301,11 +3301,12 @@ export default function AdminPage() {
                     <CmsField label="Footer: Privacy" k="footer_privacy" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Footer: Terms" k="footer_terms" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Footer: Refund" k="footer_refund" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
+                    <CmsField label="Footer: Shipping" k="footer_shipping" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                     <CmsField label="Footer: FAQ" k="footer_faq" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   </div>
                   <CmsField label="Footer copyright" k="footer_text" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Footer tagline" k="footer_tagline" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["nav_home","nav_products","nav_track","nav_blog","nav_contact","nav_cart_label","nav_shop_label","footer_privacy","footer_terms","footer_refund","footer_faq","footer_text","footer_tagline"])}>{contentSaving?"Saving...":"💾 Save Nav & Footer"}</button>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["nav_home","nav_products","nav_track","nav_blog","nav_contact","nav_cart_label","nav_shop_label","footer_privacy","footer_terms","footer_refund","footer_shipping","footer_faq","footer_text","footer_tagline"])}>{contentSaving?"Saving...":"💾 Save Nav & Footer"}</button>
                 </div>
               )}
 
@@ -3365,6 +3366,9 @@ export default function AdminPage() {
                   <div className="modal-field"><label>Refund Title</label><input style={{width:"100%"}} value={siteContent.refund_title||""} onChange={e=>setSiteContent(s=>({...s,refund_title:e.target.value}))} /></div>
                   <div className="modal-field"><label>Refund Last Updated</label><input style={{width:"100%"}} value={siteContent.refund_updated||""} onChange={e=>setSiteContent(s=>({...s,refund_updated:e.target.value}))} /></div>
                   <div className="modal-field"><label>Refund Body</label><TipTapEditor content={toEditorHtml(siteContent.refund_content || LEGAL_DEFAULT_HTML.refund)} onChange={(html)=>setSiteContent(s=>({...s,refund_content:html}))} placeholder="Leave empty to use the default refund policy..." /></div>
+                  <div className="modal-field"><label>Shipping Title</label><input style={{width:"100%"}} value={siteContent.shipping_title||""} onChange={e=>setSiteContent(s=>({...s,shipping_title:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Shipping Last Updated</label><input style={{width:"100%"}} value={siteContent.shipping_updated||""} onChange={e=>setSiteContent(s=>({...s,shipping_updated:e.target.value}))} /></div>
+                  <div className="modal-field"><label>Shipping Body</label><TipTapEditor content={toEditorHtml(siteContent.shipping_content || LEGAL_DEFAULT_HTML.shipping)} onChange={(html)=>setSiteContent(s=>({...s,shipping_content:html}))} placeholder="Leave empty to use the default shipping policy..." /></div>
                   <CmsField label="Legal Tag" k="legal_tag" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <div style={{margin:"16px 0 10px",fontSize:13,fontWeight:700,color:"#5B21B6"}}>REFUND SUMMARY CARDS</div>
                   {[1,2,3,4].map(n=>(
@@ -3376,7 +3380,7 @@ export default function AdminPage() {
                   <CmsField label="Refund CTA Title" k="refund_cta_title" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
                   <CmsField label="Refund CTA Subtitle" k="refund_cta_sub" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} area />
                   <CmsField label="Refund CTA Button" k="refund_cta_btn" siteContent={siteContent} setSiteContent={setSiteContentAndClearMsg} />
-                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["privacy_title","privacy_updated","privacy_content","terms_title","terms_updated","terms_content","refund_title","refund_updated","refund_content","legal_tag","refund_sum1_title","refund_sum1_text","refund_sum2_title","refund_sum2_text","refund_sum3_title","refund_sum3_text","refund_sum4_title","refund_sum4_text","refund_cta_title","refund_cta_sub","refund_cta_btn"])}>{contentSaving?"Saving...":"💾 Save Legal"}</button>
+                  <button className="btn-primary" disabled={contentSaving} onClick={()=>saveContent(["privacy_title","privacy_updated","privacy_content","terms_title","terms_updated","terms_content","refund_title","refund_updated","refund_content","shipping_title","shipping_updated","shipping_content","legal_tag","refund_sum1_title","refund_sum1_text","refund_sum2_title","refund_sum2_text","refund_sum3_title","refund_sum3_text","refund_sum4_title","refund_sum4_text","refund_cta_title","refund_cta_sub","refund_cta_btn"])}>{contentSaving?"Saving...":"💾 Save Legal"}</button>
                 </div>
               )}
             </div>
